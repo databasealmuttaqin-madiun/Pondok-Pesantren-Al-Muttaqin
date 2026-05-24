@@ -664,54 +664,52 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
 
       {/* 2. KARTU DIGITAL SANTRI PREVIEW & CETAK MODAL */}
       {showCardModal && selectedStudent && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-900/60 transition-opacity" onClick={() => setShowCardModal(false)}></div>
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div className="inline-block align-middle bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
-              
-              {/* Modal Header */}
-              <div className="bg-sky-900 px-6 py-4 text-white flex items-center justify-between">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Award className="w-5 h-5 text-sky-300" /> Pratinjau Dokumen Santri
-                </h3>
-                <button
-                  onClick={() => setShowCardModal(false)}
-                  className="text-sky-200 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-gray-900/60 transition-opacity" onClick={() => setShowCardModal(false)}></div>
+          <div className="relative bg-white rounded-3xl text-left shadow-2xl flex flex-col w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="bg-sky-900 px-6 py-4 text-white flex items-center justify-between shrink-0">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <Award className="w-5 h-5 text-sky-300" /> Pratinjau Dokumen Santri
+              </h3>
+              <button
+                onClick={() => setShowCardModal(false)}
+                className="text-sky-200 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              {/* Navigation Tabs inside Modal */}
-              <div className="flex border-b border-gray-200 bg-white px-6">
-                <button
-                  onClick={() => setPreviewTab("formulir")}
-                  className={`py-3 px-5 font-bold text-xs md:text-sm border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                    previewTab === "formulir"
-                      ? "border-sky-600 text-sky-600 font-black"
-                      : "border-transparent text-gray-500 hover:text-gray-750"
-                  }`}
-                >
-                  <FileText className="w-4 h-4" /> Pratinjau Formulir Data Pribadi
-                </button>
-                <button
-                  onClick={() => setPreviewTab("card")}
-                  className={`py-3 px-5 font-bold text-xs md:text-sm border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                    previewTab === "card"
-                      ? "border-sky-600 text-sky-600 font-black"
-                      : "border-transparent text-gray-500 hover:text-gray-750"
-                  }`}
-                >
-                  <Award className="w-4 h-4" /> Smart Card Digital
-                </button>
-              </div>
+            {/* Navigation Tabs inside Modal */}
+            <div className="flex border-b border-gray-200 bg-white px-6 shrink-0">
+              <button
+                onClick={() => setPreviewTab("formulir")}
+                className={`py-3 px-5 font-bold text-xs md:text-sm border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+                  previewTab === "formulir"
+                    ? "border-sky-600 text-sky-600 font-black"
+                    : "border-transparent text-gray-500 hover:text-gray-750"
+                }`}
+              >
+                <FileText className="w-4 h-4" /> Pratinjau Formulir Data Pribadi
+              </button>
+              <button
+                onClick={() => setPreviewTab("card")}
+                className={`py-3 px-5 font-bold text-xs md:text-sm border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+                  previewTab === "card"
+                    ? "border-sky-600 text-sky-600 font-black"
+                    : "border-transparent text-gray-500 hover:text-gray-750"
+                }`}
+              >
+                <Award className="w-4 h-4" /> Smart Card Digital
+              </button>
+            </div>
 
-              {/* Modal Body */}
-              <div className="p-4 md:p-8 bg-slate-100 flex flex-col items-center justify-center max-h-[70vh] overflow-y-auto">
+            {/* Modal Body */}
+            <div className="p-4 md:p-8 bg-slate-100 flex flex-col items-center justify-start flex-1 overflow-y-auto w-full">
                 {previewTab === "formulir" ? (
                   /* TAB 1: FORMULIR DATA PRIBADI SANTRI */
-                  <div className="w-full max-w-[800px] bg-white border border-gray-200 rounded-xl shadow-lg p-5 md:p-8" id="printable-formulir-id">
+                  <div className="w-full max-w-[800px] bg-white border border-gray-200 rounded-xl shadow-lg p-5 md:p-8 shrink-0" id="printable-formulir-id">
                     {/* Header / Kop Pondok Pesantren */}
                     <div className="flex flex-row items-center gap-4 pb-4 border-b-4 border-black">
                       {/* Logo */}
@@ -744,14 +742,13 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
 
                     {/* Personal core profile and passport photo */}
                     {(() => {
-                      const stats = getDeterministicStats(selectedStudent.nama_lengkap, selectedStudent.nik);
                       const isFemale = (selectedStudent.jenis_kelamin || inferGender(selectedStudent.nama_lengkap)) === "P";
                       
                       const renderFormRow = (label: string, value: string | undefined | null) => (
                         <div className="flex items-baseline text-[11px] md:text-xs py-1 hover:bg-slate-50 border-b border-dotted border-gray-200">
                           <span className="w-32 md:w-36 text-gray-500 font-medium shrink-0">{label}</span>
                           <span className="mr-2 text-gray-400 font-bold">:</span>
-                          <span className="font-extrabold text-slate-800 flex-1 truncate">{value || "—"}</span>
+                          <span className="font-extrabold text-slate-800 flex-1 whitespace-pre-wrap">{value || "—"}</span>
                         </div>
                       );
 
@@ -772,135 +769,84 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
                               <span className="text-[8px] font-mono font-bold text-gray-400 uppercase tracking-widest">3x4 Resmi</span>
                             </div>
 
-                            {/* Core Details list */}
+                            {/* A. DATA SISWA list */}
                             <div className="flex-1 w-full space-y-0.5">
                               {renderFormRow("Nama Lengkap", selectedStudent.nama_lengkap)}
                               {renderFormRow("Nama Panggilan", selectedStudent.nama_panggilan)}
-                              {renderFormRow("Tempat, Tgl Lahir", `${selectedStudent.tempat_lahir}, ${formatIndoDate(selectedStudent.tanggal_lahir)}`)}
-                              {renderFormRow("Status Menikah", "Belum Menikah")}
-                              {renderFormRow("Nama Pegon", "—")}
                               {renderFormRow("Jenis Kelamin", isFemale ? "Perempuan" : "Laki-laki")}
-                              {renderFormRow("Kewarganegaraan", "Indonesia")}
-                              {renderFormRow("Anak Ke", `${stats.childNo} dari ${stats.siblings} bersaudara`)}
+                              {renderFormRow("Tempat, Tgl Lahir", `${selectedStudent.tempat_lahir}, ${selectedStudent.tanggal_lahir ? formatIndoDate(selectedStudent.tanggal_lahir) : "—"}`)}
+                              {renderFormRow("Kategori Data", selectedStudent.kategori)}
+                              {renderFormRow("NIK", selectedStudent.nik)}
+                              {renderFormRow(selectedStudent.kategori === "Reguler" ? "NPSN" : "NISN", selectedStudent.kategori === "Reguler" ? selectedStudent.npsn : selectedStudent.nisn)}
                             </div>
                           </div>
 
-                          {/* A. STATUS SANTRI & PENDIDIKAN */}
+                          {/* B. STATUS PENDIDIKAN & ASRAMA */}
                           <div>
                             <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
                               <GraduationCap className="w-4 h-4 text-sky-200" />
-                              <span>A. STATUS SANTRI & PENDIDIKAN</span>
+                              <span>B. STATUS PENDIDIKAN & ASRAMA</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
                               <div>
-                                {renderFormRow("Status Mondok", selectedStudent.kategori === "Reguler" ? "Reguler" : "Mukim Syariah")}
-                                {renderFormRow("Kelas", "—")}
-                                {renderFormRow("Asrama", selectedStudent.kamar || "—")}
-                                {renderFormRow("Pendidikan", selectedStudent.kategori)}
-                                {renderFormRow("Bahasa Makna", "Jawa")}
-                                {renderFormRow("Mulai Mengaji", "—")}
+                                {renderFormRow("Kamar", selectedStudent.kamar)}
+                                {renderFormRow("Status", selectedStudent.status || "Aktif")}
                               </div>
                               <div>
-                                {renderFormRow("Kelompok", "—")}
-                                {renderFormRow("Ruang Makan", "—")}
-                                {renderFormRow("Instansi", stats.instansi)}
-                                {renderFormRow("Bahasa Keseharian", "Jawa")}
+                                {renderFormRow("Kelas Pengajian", selectedStudent.kelas_pengajian)}
+                                {renderFormRow("Kelas Sekolah", selectedStudent.kelas_sekolah)}
                               </div>
                             </div>
                           </div>
 
-                          {/* B. IDENTITAS & KONTAK */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
-                              <FileText className="w-4 h-4 text-sky-200" />
-                              <span>B. IDENTITAS & KONTAK</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
-                              <div>
-                                {renderFormRow("Identitas", "NIK")}
-                                {renderFormRow("Nomor Telepon", stats.phone)}
-                              </div>
-                              <div>
-                                {renderFormRow("Nomor", selectedStudent.nik)}
-                                {renderFormRow("Email", stats.email)}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* C. ALAMAT DOMISILI */}
+                          {/* C. ALAMAT LENGKAP */}
                           <div>
                             <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
                               <Home className="w-4 h-4 text-sky-200" />
-                              <span>C. ALAMAT DOMISILI</span>
+                              <span>C. ALAMAT LENGKAP</span>
                             </div>
                             <div className="space-y-0.5">
-                              {renderFormRow("Alamat Lengkap", `${selectedStudent.alamat}, RT ${selectedStudent.rt || "—"} / RW ${selectedStudent.rw || "—"}, Kel. ${selectedStudent.desa_kelurahan}, Kec. ${selectedStudent.kecamatan}, ${selectedStudent.kabupaten_kota}, ${selectedStudent.provinsi}`)}
-                              {renderFormRow("Alamat Sambung", `${selectedStudent.kelompok_sambung} - ${selectedStudent.desa_sambung}, Daerah ${selectedStudent.daerah}`)}
+                              {renderFormRow("Alamat Lengkap", selectedStudent.alamat)}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5 mt-0.5">
+                              <div>
+                                {renderFormRow("RT / RW", `${selectedStudent.rt || "—"} / ${selectedStudent.rw || "—"}`)}
+                                {renderFormRow("Desa/Kelurahan", selectedStudent.desa_kelurahan)}
+                              </div>
+                              <div>
+                                {renderFormRow("Kecamatan", selectedStudent.kecamatan)}
+                                {renderFormRow("Kab./Kota", selectedStudent.kabupaten_kota)}
+                                {renderFormRow("Provinsi", selectedStudent.provinsi)}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* D. ALAMAT SAMBUNG */}
+                          <div>
+                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
+                              <MapPin className="w-4 h-4 text-sky-200" />
+                              <span>D. ALAMAT SAMBUNG</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
+                              <div>
+                                {renderFormRow("Kelompok Sambung", selectedStudent.kelompok_sambung)}
+                                {renderFormRow("Daerah", selectedStudent.daerah)}
+                              </div>
+                              <div>
+                                {renderFormRow("Desa Sambung", selectedStudent.desa_sambung)}
+                              </div>
                             </div>
                           </div>
 
-                          {/* D. ORANG TUA & WALI */}
+                          {/* E. ORANG TUA */}
                           <div>
                             <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-2">
                               <Users className="w-4 h-4 text-sky-200" />
-                              <span>D. ORANG TUA & WALI</span>
+                              <span>E. ORANG TUA</span>
                             </div>
-                            
-                            <div className="text-[10px] uppercase font-black tracking-wider text-sky-800 border-b border-sky-100 pb-0.5 mb-2 mt-3 select-none">
-                              Data Ayah
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
-                              <div>
-                                {renderFormRow("Nama Ayah", selectedStudent.nama_ayah)}
-                                {renderFormRow("Nomor Telepon Ayah", stats.phone)}
-                              </div>
-                              <div>
-                                {renderFormRow("Pendidikan Ayah", "—")}
-                                {renderFormRow("Pekerjaan Ayah", "—")}
-                              </div>
-                            </div>
-
-                            <div className="text-[10px] uppercase font-black tracking-wider text-sky-800 border-b border-sky-100 pb-0.5 mb-2 mt-3 select-none">
-                              Data Ibu
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
-                              <div>
-                                {renderFormRow("Nama Ibu", selectedStudent.nama_ibu)}
-                                {renderFormRow("Nomor Telepon Ibu", stats.phone)}
-                              </div>
-                              <div>
-                                {renderFormRow("Pendidikan Ibu", "—")}
-                                {renderFormRow("Pekerjaan Ibu", "—")}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* E. KESEHATAN & FISIK */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
-                              <Heart className="w-4 h-4 text-sky-200" />
-                              <span>E. KESEHATAN & FISIK</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-0.5">
-                              {renderFormRow("Golongan Darah", stats.blood)}
-                              {renderFormRow("Tinggi Badan", `${stats.height} cm`)}
-                              {renderFormRow("Berat Badan", `${stats.weight} kg`)}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5 mt-0.5">
-                              {renderFormRow("Riwayat Penyakit", "—")}
-                              {renderFormRow("Alergi", "—")}
-                            </div>
-                          </div>
-
-                          {/* F. INFORMASI TAMBAHAN */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
-                              <Info className="w-4 h-4 text-sky-200" />
-                              <span>F. INFORMASI TAMBAHAN</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
-                              {renderFormRow("Hobi", stats.hobby)}
-                              {renderFormRow("Keahlian", stats.skill)}
+                            <div className="grid grid-cols-1 gap-y-0.5">
+                              {renderFormRow("Nama Ayah", selectedStudent.nama_ayah)}
+                              {renderFormRow("Nama Ibu", selectedStudent.nama_ibu)}
                             </div>
                           </div>
 
@@ -1062,7 +1008,7 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
               </div>
 
               {/* Modal Footer Controls */}
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-end gap-3.5 border-t border-gray-150">
+              <div className="bg-gray-50 px-6 py-4 flex items-center justify-end gap-3.5 border-t border-gray-150 shrink-0">
                 <button
                   onClick={() => setShowCardModal(false)}
                   className="px-4 py-2.5 rounded-xl border border-gray-250 text-sm font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
@@ -1078,7 +1024,6 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
               </div>
 
             </div>
-          </div>
         </div>
       )}
 

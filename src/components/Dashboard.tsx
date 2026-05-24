@@ -115,52 +115,10 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
         {/* GAUGE STATS & REGION LISTING (Left: 5 columns) */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           
-          {/* Custom visually rich Percentage breakdown charts */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-4">
-            <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <TrendingUp className="w-3.5 h-3.5 text-sky-600" /> Proporsi Santri Terdaftar
-            </h3>
-            
-            <div className="space-y-3 pt-1">
-              {/* Progress 1: SMP */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="font-semibold text-slate-600">Pendidikan SMP</span>
-                  <span className="font-mono font-bold text-blue-700">{smpCount} Santri ({smpPercent}%)</span>
-                </div>
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-blue-600 h-full rounded-full" style={{ width: `${smpPercent}%` }}></div>
-                </div>
-              </div> 
-
-              {/* Progress 2: SMA */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="font-semibold text-slate-600">Pendidikan SMA</span>
-                  <span className="font-mono font-bold text-indigo-700">{smaCount} Santri ({smaPercent}%)</span>
-                </div>
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${smaPercent}%` }}></div>
-                </div>
-              </div> 
-
-              {/* Progress 3: Reguler */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="font-semibold text-slate-600">Non-Formal Reguler</span>
-                  <span className="font-mono font-bold text-amber-700">{regulerCount} Santri ({regulerPercent}%)</span>
-                </div>
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full" style={{ width: `${regulerPercent}%` }}></div>
-                </div>
-              </div>
-            </div>
-          </div> 
-
           {/* Regional distribution table */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
             <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <Map className="w-3.5 h-3.5 text-sky-600" /> Distribusi Daerah Sambung
+              <Map className="w-3.5 h-3.5 text-sky-600" /> Daerah Sambung
             </h3>
             
             {sortedDaerah.length === 0 ? (
@@ -249,7 +207,7 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
               onClick={onNavigateToForm}
               className="bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-[11px] px-3.5 py-1.5 rounded transition-all flex items-center gap-1 cursor-pointer animate-pulse"
             >
-              🚀 Daftarkan Santri Baru Sekarang
+              🚀 Tambah Santri
             </button>
           </div>
         </div> 
