@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #fcfcfd;
+}
+
+/* Custom Scrollbar Styles: Ultra-thin, auto-hides when not hovered/touched, and hides the arrow scroll buttons */
+::-webkit-scrollbar {
+  width: 5px; /* Thinner vertical scrollbar */
+  height: 5px; /* Thinner horizontal scrollbar */
+  background: transparent;
+}
+
+/* Transparent track */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Fully invisible thumb by default */
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  transition: background-color 0.3s ease;
+}
+
+/* For Firefox support of auto-hiding thin scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent; /* Slate-400 equivalent for Firefox auto-fade */
+}
+
+/* When any scrollable container is hovered, show the thin scrollbar thumb */
+*:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.45); /* Elegant soft gray (slate) */
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+/* Active touch/hover directly on the scrollbar thumb makes it clearer and darker */
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(71, 85, 105, 0.75) !important; /* Stronger dark slate gray on hover */
+}
+
+/* Hide the native scrollbar navigation arrow buttons to maintain a clean aesthetic */
+::-webkit-scrollbar-button {
+  display: none !important;
+}
+
+/* Print optimizations */
+@media print {
+  body {
+    background-color: white !important;
+  }
+}
+

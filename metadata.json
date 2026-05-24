@@ -1,0 +1,6 @@
+{
+  "name": "Pondok Pesantren Al Muttaqin",
+  "description": "Pondok Pesantren Al Muttaqin",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
