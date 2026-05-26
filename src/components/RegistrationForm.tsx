@@ -23,9 +23,9 @@ export default function RegistrationForm({
   isSubmitting, 
   initialData, 
   onCancel,
-  rooms = ["Kamar Al-Fatih", "Kamar Sultan Agung", "Kamar Gajah Mada", "Kamar Diponegoro"],
-  recitationClasses = ["Kelas Al-Quran Pemula", "Kelas Tajwid & Makhraj", "Kelas Tahfidz Juz 30", "Kelas Kitab Fathul Qorib", "Kelas Hadits Arbain"],
-  schoolClasses = ["Kelas VII-A SMP", "Kelas VII-B SMP", "Kelas VIII SMP", "Kelas IX SMP", "Kelas X-MIPA SMA", "Kelas XI-IPS SMA", "Kelas XII SMA"]
+  rooms = [],
+  recitationClasses = [],
+  schoolClasses = []
 }: RegistrationFormProps) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<SantriData>(() => {

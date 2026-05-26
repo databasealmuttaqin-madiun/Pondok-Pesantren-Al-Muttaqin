@@ -124,30 +124,19 @@ export default function App() {
   const [rooms, setRooms] = useState<string[]>(() => {
     const saved = localStorage.getItem("manajemen_rooms");
     const parsed = saved ? JSON.parse(saved) : [];
-    const defaults = ["Kamar Al-Fatih", "Kamar Sultan Agung", "Kamar Gajah Mada", "Kamar Diponegoro"];
-    return parsed.filter((item: string) => !defaults.includes(item));
+    return parsed;
   });
 
   const [recitationClasses, setRecitationClasses] = useState<string[]>(() => {
     const saved = localStorage.getItem("manajemen_recitation_classes");
     const parsed = saved ? JSON.parse(saved) : [];
-    const defaults = ["Kelas Al-Quran Pemula", "Kelas Tajwid & Makhraj", "Kelas Tahfidz Juz 30", "Kelas Kitab Fathul Qorib", "Kelas Hadits Arbain"];
-    return parsed.filter((item: string) => !defaults.includes(item));
+    return parsed;
   });
 
   const [schoolClasses, setSchoolClasses] = useState<string[]>(() => {
     const saved = localStorage.getItem("manajemen_school_classes");
     const parsed = saved ? JSON.parse(saved) : [];
-    const defaults = [
-      "Kelas VII-A SMP",
-      "Kelas VII-B SMP",
-      "Kelas VIII SMP",
-      "Kelas IX SMP",
-      "Kelas X-MIPA SMA",
-      "Kelas XI-IPS SMA",
-      "Kelas XII SMA"
-    ];
-    return parsed.filter((item: string) => !defaults.includes(item));
+    return parsed;
   });
 
   const [metadataMap, setMetadataMap] = useState<Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>>(() => {

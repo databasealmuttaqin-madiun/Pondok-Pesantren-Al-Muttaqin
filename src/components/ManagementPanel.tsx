@@ -31,10 +31,17 @@ export default function ManagementPanel({
   // Current plotting mode: "kamar", "pengajian", "sekolah"
   const [activeMode, setActiveMode] = useState<"kamar" | "pengajian" | "sekolah">("kamar");
 
+  // State for hiding the banner
+  const [showBanner, setShowBanner] = useState(true);
+
   // State for quick creation modal popups/forms
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showAddRecitation, setShowAddRecitation] = useState(false);
   const [showAddSchool, setShowAddSchool] = useState(false);
+
+  // State for moving a student
+  const [movingStudent, setMovingStudent] = useState<{ nik: string; name: string; currentVal: string } | null>(null);
+  const [moveTarget, setMoveTarget] = useState("");
 
   // Quick form input states
   const [roomName, setRoomName] = useState("");
@@ -291,45 +298,97 @@ export default function ManagementPanel({
     <div className="space-y-6" id="plotting_siswa_panel_module">
       
       {/* HEADER BAR AND QUICK ACTION BUTTONS */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <span className="bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-200 w-fit block">
-            Pusat Pemetaan
-          </span>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
-            Plotting Siswa
-          </h2>
-          <p className="text-slate-550 text-xs leading-relaxed max-w-2xl font-medium">
-            Atur dan petakan penempatan asrama kamar tidur santri, pengelompokan kelas pengajian Al-Quran, serta pencatatan kelas sekolah reguler formal dalam satu dasbor terpadu.
-          </p>
-        </div>
-
-        {/* 6. RIGHT TOP QUICK ACTIONS FOR NEW CREATION */}
-        <div className="flex flex-wrap gap-2 shrink-0 self-start md:self-center">
+      {showBanner && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-start justify-between gap-4 relative animate-fade-in group">
+          <div className="space-y-1">
+            <span className="bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-200 w-fit block">
+              Pusat Pemetaan
+            </span>
+            <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
+              Plotting Siswa
+            </h2>
+            <p className="text-slate-550 text-xs leading-relaxed max-w-2xl font-medium">
+              Atur dan petakan penempatan asrama kamar tidur santri, pengelompokan kelas pengajian Al-Quran, serta pencatatan kelas sekolah reguler formal dalam satu dasbor terpadu.
+            </p>
+          </div>
+          
           <button
-            onClick={() => setShowAddRoom(true)}
-            className="bg-indigo-650 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            onClick={() => setShowBanner(false)}
+            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
+            title="Sembunyikan panel ini"
           >
-            + Buat Kamar
-          </button>
-          <button
-            onClick={() => setShowAddRecitation(true)}
-            className="bg-sky-650 hover:bg-sky-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
-          >
-            + Buat Kelas Diniyah
-          </button>
-          <button
-            onClick={() => setShowAddSchool(true)}
-            className="bg-blue-650 hover:bg-blue-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
-          >
-            + Buat Kelas Formal
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+            </svg>
           </button>
         </div>
-      </div>
+      )}
 
       {feedback && (
         <div className="p-3.5 bg-emerald-50 border border-emerald-250 text-emerald-900 text-xs font-bold rounded-xl animate-fade-in text-center shadow-sm">
           Sistem Notifikasi: {feedback}
+        </div>
+      )}
+
+      {/* POPUP MODAL PINDAH KAMAR / KELAS */}
+      {movingStudent && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 max-w-md w-full shadow-xl space-y-4 animate-fade-in">
+            <div className="space-y-1">
+              <span className="bg-indigo-50 text-indigo-700 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border border-indigo-150">
+                Pindah {modeInfo.label}
+              </span>
+              <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide">
+                Posisikan Penempatan Baru
+              </h3>
+              <p className="text-xs text-slate-550 font-normal leading-relaxed">
+                Pindahkan <strong className="text-slate-800 font-bold">{movingStudent.name}</strong> dari <strong className="text-slate-800 font-bold">{movingStudent.currentVal}</strong> ke tujuan baru di bawah ini.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Pilih {modeInfo.label} Baru</label>
+                <select
+                  value={moveTarget}
+                  onChange={(e) => setMoveTarget(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-500 font-bold text-slate-800"
+                >
+                  <option value="">-- KELUARKAN / KOSONGKAN PENEMPATAN --</option>
+                  {modeInfo.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMovingStudent(null);
+                    setMoveTarget("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 text-slate-650 font-bold text-xs rounded-xl hover:bg-slate-205 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAssignMetadata(movingStudent.nik, modeInfo.key, moveTarget);
+                    triggerFeedback(`Berhasil memindahkan ${movingStudent.name} ke "${moveTarget || 'Dikosongkan'}"`);
+                    setMovingStudent(null);
+                    setMoveTarget("");
+                  }}
+                  className="px-4 py-2 bg-indigo-650 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 cursor-pointer"
+                >
+                  Simpan Perpindahan
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -482,50 +541,80 @@ export default function ManagementPanel({
         </div>
       )}
 
-      {/* SELECT LABELS (1. KAMAR, PLOTTING SELECTIONS, ICONLESS) */}
-      <div className="grid grid-cols-3 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner">
-        <button
-          onClick={() => {
-            setActiveMode("kamar");
-            setSelectedNik("");
-            setSelectedTarget("");
-          }}
-          className={`py-3 text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
-            activeMode === "kamar"
-              ? "bg-white text-indigo-705 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Kamar
-        </button>
-        <button
-          onClick={() => {
-            setActiveMode("pengajian");
-            setSelectedNik("");
-            setSelectedTarget("");
-          }}
-          className={`py-3 text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
-            activeMode === "pengajian"
-              ? "bg-white text-indigo-705 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Kelas Pengajian
-        </button>
-        <button
-          onClick={() => {
-            setActiveMode("sekolah");
-            setSelectedNik("");
-            setSelectedTarget("");
-          }}
-          className={`py-3 text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
-            activeMode === "sekolah"
-              ? "bg-white text-indigo-705 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Kelas Sekolah
-        </button>
+      {/* SELECT LABELS DAN QUICK ACTION BUTTON (Erat dengan menu yang diaktifkan agar tombol langsung terlihat) */}
+      <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-white rounded-2xl border border-slate-200 p-4 shadow-sm" id="pilihan_menu_plotting_dan_tombol">
+        <div className="grid grid-cols-3 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner flex-1 max-w-xl">
+          <button
+            onClick={() => {
+              setActiveMode("kamar");
+              setSelectedNik("");
+              setSelectedTarget("");
+            }}
+            className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+              activeMode === "kamar"
+                ? "bg-white text-indigo-705 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Kamar
+          </button>
+          <button
+            onClick={() => {
+              setActiveMode("pengajian");
+              setSelectedNik("");
+              setSelectedTarget("");
+            }}
+            className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+              activeMode === "pengajian"
+                ? "bg-white text-indigo-705 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Kelas Pengajian
+          </button>
+          <button
+            onClick={() => {
+              setActiveMode("sekolah");
+              setSelectedNik("");
+              setSelectedTarget("");
+            }}
+            className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+              activeMode === "sekolah"
+                ? "bg-white text-indigo-705 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Kelas Sekolah
+          </button>
+        </div>
+
+        {/* TOMBOL BERGANTUNG PADA TAB YANG AKTIF */}
+        <div className="shrink-0 flex justify-end" id="tombol_buat_dinamis_tab">
+          {activeMode === "kamar" && (
+            <button
+              onClick={() => setShowAddRoom(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all cursor-pointer whitespace-nowrap"
+            >
+              Buat Kamar
+            </button>
+          )}
+          {activeMode === "pengajian" && (
+            <button
+              onClick={() => setShowAddRecitation(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all cursor-pointer whitespace-nowrap"
+            >
+              Buat Kelas
+            </button>
+          )}
+          {activeMode === "sekolah" && (
+            <button
+              onClick={() => setShowAddSchool(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all cursor-pointer whitespace-nowrap"
+            >
+              Buat Kelas
+            </button>
+          )}
+        </div>
       </div>
 
       {/* TWO COLUMNS WORKSPACE BENTO LAYOUT (No Icons allowed) */}
@@ -657,11 +746,18 @@ export default function ManagementPanel({
                                 </span>
                                 
                                 <button
-                                  onClick={() => handleClearStudentPlot(siswa.nik, siswa.nama_lengkap, groupName)}
-                                  className="text-[9px] text-red-600 hover:text-red-800 hover:underline font-bold bg-red-50 hover:bg-red-100 px-1.5 py-0.5 rounded cursor-pointer leading-tight"
-                                  title="Keluarkan dari group ini"
+                                  onClick={() => {
+                                    setMoveTarget(groupName);
+                                    setMovingStudent({
+                                      nik: siswa.nik,
+                                      name: siswa.nama_lengkap,
+                                      currentVal: groupName
+                                    });
+                                  }}
+                                  className="text-[9px] text-indigo-600 hover:text-indigo-850 hover:underline font-bold bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded cursor-pointer leading-tight"
+                                  title={`Pindahkan ${siswa.nama_lengkap}`}
                                 >
-                                  Keluarkan
+                                  Pindah
                                 </button>
                               </div>
                             ))

@@ -52,10 +52,6 @@ export default function PerizinanPanel({
   // Consolidate rooms: defaults from props + any custom ones found on assigned students
   const allRooms = Array.from(
     new Set([
-      "Kamar Al-Fatih", 
-      "Kamar Sultan Agung", 
-      "Kamar Gajah Mada", 
-      "Kamar Diponegoro",
       ...rooms, 
       ...students.map(s => s.kamar).filter((k): k is string => !!k)
     ])
@@ -528,11 +524,7 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                         : "bg-white border-slate-200 text-slate-700 hover:bg-emerald-50/20"
                     }`}
                   >
-                    <span className="text-xl">🏡</span>
-                    <span className="text-xs font-bold font-mono">AKTIF / DI PP</span>
-                    <span className={`text-[10px] mt-0.5 font-medium ${selectedStatus === "Aktif" ? "text-emerald-50" : "text-slate-400"}`}>
-                      Santri menetap di asrama
-                    </span>
+                    <span className="text-xs font-bold font-mono">AKTIF</span>
                   </button>
 
                   {/* SAKIT */}
@@ -545,11 +537,7 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                         : "bg-white border-slate-200 text-slate-700 hover:bg-amber-50/20"
                     }`}
                   >
-                    <span className="text-xl">🤒</span>
-                    <span className="text-xs font-bold font-mono">SAKIT / POSKES</span>
-                    <span className={`text-[10px] mt-0.5 font-medium ${selectedStatus === "Sakit" ? "text-amber-50" : "text-slate-400"}`}>
-                      Santri dalam perawatan
-                    </span>
+                    <span className="text-xs font-bold font-mono">SAKIT</span>
                   </button>
 
                   {/* PULANG */}
@@ -562,11 +550,7 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                         : "bg-white border-slate-200 text-slate-700 hover:bg-rose-50/20"
                     }`}
                   >
-                    <span className="text-xl">🎒</span>
-                    <span className="text-xs font-bold font-mono">PULANG (IZIN)</span>
-                    <span className={`text-[10px] mt-0.5 font-medium ${selectedStatus === "Pulang" ? "text-rose-50" : "text-slate-400"}`}>
-                      Sedang libur / izin pulang
-                    </span>
+                    <span className="text-xs font-bold font-mono">PULANG</span>
                   </button>
                 </div>
 
