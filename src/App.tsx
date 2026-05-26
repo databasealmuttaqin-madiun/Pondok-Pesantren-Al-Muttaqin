@@ -6,7 +6,8 @@ import Dashboard from "./components/Dashboard";
 import DatabaseSetupHelper from "./components/DatabaseSetupHelper";
 import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils } from "lucide-react";
+import PerizinanPanel from "./components/PerizinanPanel";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils, UserCheck } from "lucide-react";
 
 const DEMO_SANTRI: SantriData[] = [
   {
@@ -108,7 +109,7 @@ const DEMO_SANTRI: SantriData[] = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "presensi_sholat" | "presensi_doa_malam" | "presensi_makan">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "presensi_sholat" | "presensi_doa_malam" | "presensi_makan" | "perizinan">("dashboard");
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem("sidebar_collapsed");
@@ -154,19 +155,45 @@ export default function App() {
     return saved ? JSON.parse(saved) : {};
   });
 
-  // Helper to hydrate students with local status overrides
-  const hydrateStudentsWithStatus = (list: SantriData[]): SantriData[] => {
+  // Helper to hydrate students with all status sources including cloud status_siswa, cloud plotting and local storage
+  const hydrateWithAllStatusSources = (
+    list: SantriData[],
+    cloudStatusMap?: Record<string, "Aktif" | "Sakit" | "Pulang">,
+    cloudPlottingMap?: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>
+  ): SantriData[] => {
     const savedStatusMap = JSON.parse(localStorage.getItem("santri_status_map") || "{}");
+    const savedMetadataMap = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
     return list.map((s) => {
       const formatted = formatSantriData(s);
+      const nameKey = formatted.nama_lengkap.trim().toLowerCase();
+      
+      // status_siswa overrides has highest priority
+      const cloudStatus = cloudStatusMap ? cloudStatusMap[nameKey] : null;
+      
+      // Local storage overrides (keyed by name, id, or NIK)
+      const localStatus = savedStatusMap[formatted.nama_lengkap] || savedStatusMap[s.id || s.nik];
+
+      // Plottings
+      const cloudPlot = cloudPlottingMap ? cloudPlottingMap[nameKey] : null;
+      const localPlot = savedMetadataMap[s.nik] || {};
+      
       return {
         ...formatted,
-        status: savedStatusMap[s.id || s.nik] || s.status || "Aktif"
+        status: cloudStatus || localStatus || formatted.status || "Aktif",
+        kamar: (cloudPlot?.kamar !== undefined ? cloudPlot.kamar : (localPlot.kamar !== undefined ? localPlot.kamar : formatted.kamar)) || "",
+        kelas_pengajian: (cloudPlot?.kelas_pengajian !== undefined ? cloudPlot.kelas_pengajian : (localPlot.kelas_pengajian !== undefined ? localPlot.kelas_pengajian : formatted.kelas_pengajian)) || "",
+        kelas_sekolah: (cloudPlot?.kelas_sekolah !== undefined ? cloudPlot.kelas_sekolah : (localPlot.kelas_sekolah !== undefined ? localPlot.kelas_sekolah : formatted.kelas_sekolah)) || "",
       };
     });
   };
 
-  const handleAssignMetadata = (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => {
+  // Helper to hydrate students with local status overrides
+  const hydrateStudentsWithStatus = (list: SantriData[]): SantriData[] => {
+    return hydrateWithAllStatusSources(list);
+  };
+
+  const handleAssignMetadata = async (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => {
+    // 1. Update local metadataMap state
     const updated = {
       ...metadataMap,
       [nik]: {
@@ -176,6 +203,122 @@ export default function App() {
     };
     setMetadataMap(updated);
     localStorage.setItem("santri_custom_metadata_map", JSON.stringify(updated));
+
+    // Update students state immediately for ultra-fast local reactivity
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.nik === nik) {
+          return {
+            ...s,
+            [key]: value
+          };
+        }
+        return s;
+      })
+    );
+
+    // Try to update database if connected
+    if (dbStatus === "connected") {
+      const studentObj = students.find((s) => s.nik === nik);
+      if (studentObj) {
+        const studentName = studentObj.nama_lengkap.trim();
+        try {
+          if (key === "kamar") {
+            // Check if there is already an entry for this student in 'kamar' table
+            const { data: existingKamar } = await supabase
+              .from("kamar")
+              .select("id")
+              .eq("nama", studentName);
+
+            if (existingKamar && existingKamar.length > 0) {
+              if (value === "") {
+                const { error } = await supabase
+                  .from("kamar")
+                  .delete()
+                  .eq("id", existingKamar[0].id);
+                if (error) console.warn("Failed to delete kamar entry:", error.message);
+              } else {
+                const { error } = await supabase
+                  .from("kamar")
+                  .update({ kamar: value })
+                  .eq("id", existingKamar[0].id);
+                if (error) console.warn("Failed to update kamar entry:", error.message);
+              }
+            } else if (value !== "") {
+              const { error } = await supabase
+                .from("kamar")
+                .insert([{ nama: studentName, kamar: value }]);
+              if (error) console.warn("Failed to insert kamar entry:", error.message);
+            }
+            triggerNotification(`Plotting Kamar berhasil disimpan ke "${value || 'Kosong'}"`, "success");
+
+          } else if (key === "kelas_pengajian") {
+            // Check if there is already an entry for this student in 'kelas_pengajian' table
+            const { data: existingPengajian } = await supabase
+              .from("kelas_pengajian")
+              .select("id")
+              .eq("nama", studentName);
+
+            if (existingPengajian && existingPengajian.length > 0) {
+              if (value === "") {
+                const { error } = await supabase
+                  .from("kelas_pengajian")
+                  .delete()
+                  .eq("id", existingPengajian[0].id);
+                if (error) console.warn("Failed to delete kelas_pengajian entry:", error.message);
+              } else {
+                const { error } = await supabase
+                  .from("kelas_pengajian")
+                  .update({ kelas: value })
+                  .eq("id", existingPengajian[0].id);
+                if (error) console.warn("Failed to update kelas_pengajian entry:", error.message);
+              }
+            } else if (value !== "") {
+              const { error } = await supabase
+                .from("kelas_pengajian")
+                .insert([{ nama: studentName, kelas: value }]);
+              if (error) console.warn("Failed to insert kelas_pengajian entry:", error.message);
+            }
+            triggerNotification(`Plotting Kelas Pengajian berhasil disimpan ke "${value || 'Kosong'}"`, "success");
+
+          } else if (key === "kelas_sekolah") {
+            // Supports both "kelas sekolah" (with space) and "kelas_sekolah" (with underscore)
+            const tables = ["kelas sekolah", "kelas_sekolah"];
+            let success = false;
+
+            for (const tableName of tables) {
+              try {
+                const { data: existingSchool, error: selectErr } = await supabase
+                  .from(tableName)
+                  .select("id")
+                  .eq("nama", studentName);
+
+                if (!selectErr && existingSchool) {
+                  if (existingSchool.length > 0) {
+                    if (value === "") {
+                      await supabase.from(tableName).delete().eq("id", existingSchool[0].id);
+                    } else {
+                      await supabase.from(tableName).update({ kelas: value }).eq("id", existingSchool[0].id);
+                    }
+                  } else if (value !== "") {
+                    await supabase.from(tableName).insert([{ nama: studentName, kelas: value }]);
+                  }
+                  success = true;
+                  break;
+                }
+              } catch (e) {
+                // Try next table
+              }
+            }
+            triggerNotification(`Plotting Kelas Sekolah berhasil disimpan ke "${value || 'Kosong'}"`, "success");
+          }
+        } catch (err: any) {
+          console.warn("Supabase plotting synchronization error:", err?.message);
+        }
+      }
+    } else {
+      triggerNotification(`Plotting disimpan di lokal!`, "success");
+    }
   };
   
   // Floating Toast Notifications System State
@@ -214,7 +357,136 @@ export default function App() {
         }
       } else {
         setDbStatus("connected");
-        const formattedList = hydrateStudentsWithStatus(data || []);
+        
+        let cloudStatusMap: Record<string, "Aktif" | "Sakit" | "Pulang"> = {};
+        const { data: statusOverrides, error: statusErr } = await supabase
+          .from("status_siswa")
+          .select("nama, status");
+        
+        if (statusErr) {
+          console.error("Gagal mendapatkan status dari tabel status_siswa:", statusErr.message);
+        } else if (statusOverrides) {
+          statusOverrides.forEach((row) => {
+            if (row.nama && row.status) {
+              const normStatus = row.status.trim().toLowerCase();
+              let standardized: "Aktif" | "Sakit" | "Pulang" = "Aktif";
+              if (normStatus === "sakit") standardized = "Sakit";
+              else if (normStatus === "pulang") standardized = "Pulang";
+              
+              cloudStatusMap[row.nama.trim().toLowerCase()] = standardized;
+            }
+          });
+        }
+
+        // Fetch new plotting table records to merge overrides
+        let cloudPlottingMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }> = {};
+        
+        // 1. Load room mappings from 'kamar' table
+        try {
+          const { data: assignmentsKamar } = await supabase.from("kamar").select("nama, kamar");
+          if (assignmentsKamar) {
+             assignmentsKamar.forEach((row) => {
+               if (row.nama) {
+                 const key = row.nama.trim().toLowerCase();
+                 if (!cloudPlottingMap[key]) cloudPlottingMap[key] = {};
+                 cloudPlottingMap[key].kamar = row.kamar || "";
+               }
+             });
+          }
+        } catch (err) {
+          console.warn("Table 'kamar' assignment load error:", err);
+        }
+
+        // 2. Load recitation class mappings from 'kelas_pengajian' table
+        try {
+          const { data: assignmentsPengajian } = await supabase.from("kelas_pengajian").select("nama, kelas");
+          if (assignmentsPengajian) {
+             assignmentsPengajian.forEach((row) => {
+               if (row.nama) {
+                 const key = row.nama.trim().toLowerCase();
+                 if (!cloudPlottingMap[key]) cloudPlottingMap[key] = {};
+                 cloudPlottingMap[key].kelas_pengajian = row.kelas || "";
+               }
+             });
+          }
+        } catch (err) {
+          console.warn("Table 'kelas_pengajian' assignment load error:", err);
+        }
+
+        // 3. Load school class mappings from 'kelas sekolah' or 'kelas_sekolah' table (handles space/underscore alternative)
+        try {
+          let assignmentsSchool = null;
+          const { data: dbSpace, error: spaceErr } = await supabase.from("kelas sekolah").select("nama, kelas");
+          if (!spaceErr && dbSpace) {
+            assignmentsSchool = dbSpace;
+          } else {
+            const { data: dbUnderline } = await supabase.from("kelas_sekolah").select("nama, kelas");
+            if (dbUnderline) {
+              assignmentsSchool = dbUnderline;
+            }
+          }
+          if (assignmentsSchool) {
+             assignmentsSchool.forEach((row) => {
+               if (row.nama) {
+                 const key = row.nama.trim().toLowerCase();
+                 if (!cloudPlottingMap[key]) cloudPlottingMap[key] = {};
+                 cloudPlottingMap[key].kelas_sekolah = row.kelas || "";
+               }
+             });
+          }
+        } catch (err) {
+          console.warn("Table 'kelas sekolah' school assignment load error:", err);
+        }
+
+        // 4. Load master list of kamar from 'plotting' table
+        try {
+          const { data: plotRooms } = await supabase
+            .from("plotting")
+            .select("nama")
+            .eq("jenis", "kamar");
+
+          if (plotRooms && plotRooms.length > 0) {
+            const dbRoomList = plotRooms.map((r) => r.nama).filter(Boolean);
+            setRooms(dbRoomList);
+            localStorage.setItem("manajemen_rooms", JSON.stringify(dbRoomList));
+          }
+        } catch (err) {
+          console.warn("Gagal memuat master daftar kamar dari plotting:", err);
+        }
+
+        // 5. Load master list of kelas pengajian from 'plotting' table
+        try {
+          const { data: plotRecitation } = await supabase
+            .from("plotting")
+            .select("nama")
+            .eq("jenis", "kelas pengajian");
+
+          if (plotRecitation && plotRecitation.length > 0) {
+            const dbRecitationList = plotRecitation.map((r) => r.nama).filter(Boolean);
+            setRecitationClasses(dbRecitationList);
+            localStorage.setItem("manajemen_recitation_classes", JSON.stringify(dbRecitationList));
+          }
+        } catch (err) {
+          console.warn("Gagal memuat master kelas pengajian dari plotting:", err);
+        }
+
+        // 6. Load master list of kelas sekolah from 'plotting' table
+        try {
+          const { data: plotSchool } = await supabase
+            .from("plotting")
+            .select("nama")
+            .eq("jenis", "kelas sekolah");
+
+          if (plotSchool && plotSchool.length > 0) {
+            const dbSchoolListPlot = plotSchool.map((r) => r.nama).filter(Boolean);
+            setSchoolClasses(dbSchoolListPlot);
+            localStorage.setItem("manajemen_school_classes", JSON.stringify(dbSchoolListPlot));
+          }
+        } catch (err) {
+          console.warn("Gagal memuat master kelas sekolah dari plotting:", err);
+        }
+
+        const formattedList = hydrateWithAllStatusSources(data || [], cloudStatusMap, cloudPlottingMap);
         setStudents(formattedList);
         // Also save to localStorage as a background backup!
         localStorage.setItem("santri_local_backup", JSON.stringify(formattedList));
@@ -255,7 +527,8 @@ export default function App() {
     setIsFormSubmitting(true);
     try {
       const formattedData = formatSantriData(data);
-      // Clean undefined fields to keep Supabase happy
+      const targetStatus = formattedData.status || "Aktif";
+      // Clean undefined fields to keep Supabase happy, exclude removed 'status' column
       const payload: Partial<SantriData> = {
         kategori: formattedData.kategori,
         nama_lengkap: formattedData.nama_lengkap,
@@ -278,7 +551,6 @@ export default function App() {
         kamar: formattedData.kamar || "",
         kelas_pengajian: formattedData.kelas_pengajian || "",
         kelas_sekolah: formattedData.kelas_sekolah || "",
-        status: formattedData.status || "Aktif",
         jenis_kelamin: formattedData.jenis_kelamin || "L",
       };
 
@@ -309,6 +581,41 @@ export default function App() {
           if (error) throw error;
           triggerNotification(`Santri baru ${formattedData.nama_lengkap} berhasil terdaftarkan ke cloud database!`, "success");
         }
+
+        // Upsert / sync status back into "status_siswa" table
+        try {
+          const { data: existingStatus } = await supabase
+            .from("status_siswa")
+            .select("id")
+            .ilike("nama", formattedData.nama_lengkap.trim());
+
+          if (existingStatus && existingStatus.length > 0) {
+            await supabase
+              .from("status_siswa")
+              .update({ status: targetStatus, created_at: new Date().toISOString() })
+              .eq("id", existingStatus[0].id);
+          } else {
+            // Also test if there is any other match before inserting a duplicate
+            const { data: existingExact } = await supabase
+              .from("status_siswa")
+              .select("id")
+              .eq("nama", formattedData.nama_lengkap);
+
+            if (existingExact && existingExact.length > 0) {
+              await supabase
+                .from("status_siswa")
+                .update({ status: targetStatus, created_at: new Date().toISOString() })
+                .eq("id", existingExact[0].id);
+            } else {
+              await supabase
+                .from("status_siswa")
+                .insert([{ nama: formattedData.nama_lengkap, status: targetStatus }]);
+            }
+          }
+        } catch (statusErr: any) {
+          console.warn("Gagal menyinkronkan status ke tabel status_siswa:", statusErr?.message);
+        }
+
         await checkConnectionAndLoad(); // reload
       } else {
         // Offline Fallback - Save to state and Web LocalStorage
@@ -369,19 +676,45 @@ export default function App() {
       setStudents(updatedList);
       localStorage.setItem("santri_data", JSON.stringify(updatedList));
 
-      // 3. Try to update status column in supabase if connected
+      // 3. Try to update status in supabase status_siswa if connected
       if (dbStatus === "connected") {
-        const queryField = typeof studentIdOrNik === "number" ? "id" : "nik";
-        const { error } = await supabase
-          .from(TABLE_NAME)
-          .update({ status: newStatus })
-          .eq(queryField, studentIdOrNik);
+        const studentObj = students.find((s) => (s.id && s.id === studentIdOrNik) || s.nik === studentIdOrNik);
+        const studentName = studentObj ? studentObj.nama_lengkap : "";
 
-        if (error) {
-          console.warn("Supabase update error (probably status column missing in your DB):", error.message);
-        } else {
-          triggerNotification(`Status diperbarui ke "${newStatus}" di Cloud Database`, "success");
-          return;
+        if (studentName) {
+          try {
+            const { data: existingStatus } = await supabase
+              .from("status_siswa")
+              .select("id")
+              .ilike("nama", studentName.trim());
+
+            if (existingStatus && existingStatus.length > 0) {
+              const { error } = await supabase
+                .from("status_siswa")
+                .update({ status: newStatus, created_at: new Date().toISOString() })
+                .eq("id", existingStatus[0].id);
+
+              if (error) {
+                console.error("Gagal memperbarui tabel status_siswa:", error.message);
+              } else {
+                triggerNotification(`Status diperbarui ke "${newStatus}" di Cloud Database`, "success");
+                return;
+              }
+            } else {
+              const { error } = await supabase
+                .from("status_siswa")
+                .insert([{ nama: studentName, status: newStatus, created_at: new Date().toISOString() }]);
+
+              if (error) {
+                console.error("Gagal menambahkan ke tabel status_siswa:", error.message);
+              } else {
+                triggerNotification(`Status ditambahkan ke "${newStatus}" di Cloud Database`, "success");
+                return;
+              }
+            }
+          } catch (statusErr: any) {
+            console.warn("Supabase status_siswa sync error:", statusErr?.message);
+          }
         }
       }
       triggerNotification(`Status diperbarui ke "${newStatus}"`, "success");
@@ -506,11 +839,12 @@ export default function App() {
               {[
                 { id: "dashboard", label: "Dasbor Ringkasan", icon: LayoutDashboard },
                 { id: "list", label: "Database Santri", icon: TableProperties },
+                { id: "perizinan", label: "Perizinan Santri", icon: UserCheck },
                 { id: "presensi_sholat", label: "Presensi Sholat", icon: ClipboardList },
                 { id: "presensi_doa_malam", label: "Presensi Doa Malam", icon: Moon },
                 { id: "presensi_makan", label: "Presensi Makan", icon: Utensils },
                 { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", icon: UserPlus },
-                { id: "management", label: "Manajemen Unit", icon: Sliders },
+                { id: "management", label: "Plotting Siswa", icon: Sliders },
                 { id: "setup", label: "Koneksi & Panduan", icon: Database },
               ].map((tab) => {
                 const TabIcon = tab.icon;
@@ -636,6 +970,17 @@ export default function App() {
               />
             )}
 
+            {activeTab === "perizinan" && (
+              <div className="w-full">
+                <PerizinanPanel
+                  students={students}
+                  rooms={rooms}
+                  onRefreshAll={checkConnectionAndLoad}
+                  onTriggerNotification={triggerNotification}
+                />
+              </div>
+            )}
+
             {activeTab === "presensi_sholat" && (
               <div className="w-full">
                 <PresensiPanel students={students} activeMenu="sholat" />
@@ -691,11 +1036,12 @@ export default function App() {
           {[
             { id: "dashboard", label: "Dasbor", icon: LayoutDashboard },
             { id: "list", label: "Database", icon: TableProperties },
+            { id: "perizinan", label: "Izin", icon: UserCheck },
             { id: "presensi_sholat", label: "Sholat", icon: ClipboardList },
             { id: "presensi_doa_malam", label: "Doa", icon: Moon },
             { id: "presensi_makan", label: "Makan", icon: Utensils },
             { id: "form", label: editingStudent ? "Edit" : "Daftar", icon: UserPlus },
-            { id: "management", label: "Manajemen", icon: Sliders },
+            { id: "management", label: "Plotting", icon: Sliders },
             { id: "setup", label: "Cloud", icon: Database },
           ].map((tab) => {
             const TabIcon = tab.icon;

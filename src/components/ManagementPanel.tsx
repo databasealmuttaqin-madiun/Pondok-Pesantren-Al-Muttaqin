@@ -1,9 +1,5 @@
 import React, { useState } from "react";
-import { 
-  Plus, Trash2, Users, Layers, Compass, Sparkles, BookOpenCheck, 
-  UserCheck, GraduationCap, Building, Trash, Notebook, Calendar, Eye 
-} from "lucide-react";
-import { SantriData } from "../supabaseClient";
+import { SantriData, supabase } from "../supabaseClient";
 
 interface ManagementPanelProps {
   students: SantriData[];
@@ -17,31 +13,8 @@ interface ManagementPanelProps {
   schoolClasses: string[];
   setSchoolClasses: (classes: string[]) => void;
   
-  // Custom metadata mappings saved in state of App.tsx
   metadataMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>;
   onAssignMetadata: (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => void;
-}
-
-// In-app extended storage models for detailed metadata
-interface RoomDetail {
-  name: string;
-  building: string;
-  custodian: string;
-  capacity: number;
-}
-
-interface RecitationDetail {
-  name: string;
-  level: string;
-  teacher: string;
-  schedule: string;
-}
-
-interface SchoolDetail {
-  name: string;
-  level: string; // SMP, SMA, Reguler
-  homeroomTeacher: string;
-  academicYear: string;
 }
 
 export default function ManagementPanel({ 
@@ -55,750 +28,677 @@ export default function ManagementPanel({
   metadataMap,
   onAssignMetadata
 }: ManagementPanelProps) {
-  const [activeTab, setActiveTab] = useState<"kamar" | "pengajian" | "sekolah">("kamar");
-  
-  // Detailed metadata states loaded/backed by localStorage
-  const [roomDetails, setRoomDetails] = useState<RoomDetail[]>(() => {
-    const saved = localStorage.getItem("manajemen_room_details");
-    const parsed = saved ? JSON.parse(saved) : [];
-    const defaultNames = ["Kamar Al-Fatih", "Kamar Sultan Agung", "Kamar Gajah Mada", "Kamar Diponegoro"];
-    return parsed.filter((r: RoomDetail) => !defaultNames.includes(r.name));
-  });
+  // Current plotting mode: "kamar", "pengajian", "sekolah"
+  const [activeMode, setActiveMode] = useState<"kamar" | "pengajian" | "sekolah">("kamar");
 
-  const [recitationDetails, setRecitationDetails] = useState<RecitationDetail[]>(() => {
-    const saved = localStorage.getItem("manajemen_recitation_details");
-    const parsed = saved ? JSON.parse(saved) : [];
-    const defaultNames = ["Kelas Al-Quran Pemula", "Kelas Tajwid & Makhraj", "Kelas Tahfidz Juz 30", "Kelas Kitab Fathul Qorib", "Kelas Hadits Arbain"];
-    return parsed.filter((rd: RecitationDetail) => !defaultNames.includes(rd.name));
-  });
+  // State for quick creation modal popups/forms
+  const [showAddRoom, setShowAddRoom] = useState(false);
+  const [showAddRecitation, setShowAddRecitation] = useState(false);
+  const [showAddSchool, setShowAddSchool] = useState(false);
 
-  const [schoolDetails, setSchoolDetails] = useState<SchoolDetail[]>(() => {
-    const saved = localStorage.getItem("manajemen_school_details");
-    const parsed = saved ? JSON.parse(saved) : [];
-    const defaultNames = [
-      "Kelas VII-A SMP",
-      "Kelas VII-B SMP",
-      "Kelas VIII SMP",
-      "Kelas IX SMP",
-      "Kelas X-MIPA SMA",
-      "Kelas XI-IPS SMA",
-      "Kelas XII SMA"
-    ];
-    return parsed.filter((sd: SchoolDetail) => !defaultNames.includes(sd.name));
-  });
+  // Quick form input states
+  const [roomName, setRoomName] = useState("");
+  const [roomBuilding, setRoomBuilding] = useState("");
 
-  // Modal State to view assigned students
-  const [selectedEntityForModal, setSelectedEntityForModal] = useState<{
-    type: "kamar" | "pengajian" | "sekolah";
-    name: string;
-  } | null>(null);
+  const [recitationName, setRecitationName] = useState("");
+  const [recitationCategory, setRecitationCategory] = useState("SMP");
 
-  // Form Inputs
-  const [roomInput, setRoomInput] = useState({ name: "", building: "", custodian: "", capacity: 100 });
-  const [recitationInput, setRecitationInput] = useState({ name: "", level: "SMP", teacher: "", schedule: "" });
-  const [schoolInput, setSchoolInput] = useState({ name: "", level: "SMP", homeroomTeacher: "", academicYear: "" });
+  const [schoolName, setSchoolName] = useState("");
+  const [schoolCategory, setSchoolCategory] = useState("SMP");
 
-  // Notifications inside management view
-  const [localFeedback, setLocalFeedback] = useState<string | null>(null);
+  // Plotting selection inputs
+  const [selectedNik, setSelectedNik] = useState("");
+  const [selectedTarget, setSelectedTarget] = useState("");
 
-  const showFeedback = (msg: string) => {
-    setLocalFeedback(msg);
-    setTimeout(() => setLocalFeedback(null), 3000);
+  // Feedback notifications
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const triggerFeedback = (msg: string) => {
+    setFeedback(msg);
+    setTimeout(() => setFeedback(null), 3000);
   };
 
-  // Helper selectors to compute occupied stats
-  const countAssigned = (type: "kamar" | "kelas_pengajian" | "kelas_sekolah", name: string) => {
-    return students.filter((s) => {
-      // Check in direct student data (if column exists)
-      const directVal = s[type as keyof SantriData];
-      if (directVal === name) return true;
-      
-      // Check in metadataMap
-      const mapped = metadataMap[s.nik];
-      if (mapped) {
-        if (type === "kamar" && mapped.kamar === name) return true;
-        if (type === "kelas_pengajian" && mapped.kelas_pengajian === name) return true;
-        if (type === "kelas_sekolah" && mapped.kelas_sekolah === name) return true;
-      }
-      return false;
-    }).length;
+  // Helper to retrieve current mapping for a student
+  const getStudentCurrentPlot = (student: SantriData, mode: "kamar" | "pengajian" | "sekolah") => {
+    if (mode === "kamar") {
+      return student.kamar || "";
+    }
+    if (mode === "pengajian") {
+      return student.kelas_pengajian || "";
+    }
+    return student.kelas_sekolah || "";
   };
 
-  const getAssignedStudents = (type: "kamar" | "kelas_pengajian" | "kelas_sekolah", name: string) => {
-    return students.filter((s) => {
-      const directVal = s[type as keyof SantriData];
-      if (directVal === name) return true;
-      
-      const mapped = metadataMap[s.nik];
-      if (mapped) {
-        if (type === "kamar" && mapped.kamar === name) return true;
-        if (type === "kelas_pengajian" && mapped.kelas_pengajian === name) return true;
-        if (type === "kelas_sekolah" && mapped.kelas_sekolah === name) return true;
+  // Get active lists based on the selected mode
+  const getModeLabelKey = () => {
+    switch (activeMode) {
+      case "kamar": return { key: "kamar" as const, label: "Kamar", options: rooms };
+      case "pengajian": return { key: "kelas_pengajian" as const, label: "Kelas Pengajian", options: recitationClasses };
+      case "sekolah": return { key: "kelas_sekolah" as const, label: "Kelas Sekolah", options: schoolClasses };
+    }
+  };
+
+  const modeInfo = getModeLabelKey();
+
+  // Handle student plotting submission
+  const handleSavePlot = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedNik) {
+      triggerFeedback("Silakan pilih siswa terlebih dahulu.");
+      return;
+    }
+    if (!selectedTarget) {
+      triggerFeedback(`Silakan pilih target ${modeInfo.label} terlebih dahulu.`);
+      return;
+    }
+
+    onAssignMetadata(selectedNik, modeInfo.key, selectedTarget);
+    
+    // Find student name for custom helpful message
+    const matched = students.find((s) => s.nik === selectedNik);
+    const sName = matched ? matched.nama_lengkap : "Siswa";
+    
+    triggerFeedback(`Berhasil memplot ${sName} ke ${modeInfo.label} "${selectedTarget}"`);
+    setSelectedNik("");
+    setSelectedTarget("");
+  };
+
+  // Quick Action: Add Room
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomName.trim()) return;
+
+    const formatted = roomName.trim();
+    if (rooms.includes(formatted)) {
+      alert("Nama kamar sudah terdaftar!");
+      return;
+    }
+
+    // 1. Update local states
+    const updated = [...rooms, formatted];
+    setRooms(updated);
+    localStorage.setItem("manajemen_rooms", JSON.stringify(updated));
+
+    // Save empty or custom buildings in local details too
+    const savedDetails = localStorage.getItem("manajemen_room_details");
+    const parsed = savedDetails ? JSON.parse(savedDetails) : [];
+    const updatedDetails = [...parsed, { name: formatted, building: roomBuilding.trim() || "Gedung Utama" }];
+    localStorage.setItem("manajemen_room_details", JSON.stringify(updatedDetails));
+
+    // 2. Sync to Supabase in parallel
+    try {
+      // Masuk ke tabel 'plotting'
+      const { error: errPlot } = await supabase
+        .from("plotting")
+        .insert([{ jenis: "kamar", nama: formatted }]);
+
+      if (errPlot) console.warn("Supabase plotting insert warning:", errPlot.message);
+    } catch (dbErr: any) {
+      console.warn("Database offline / connection warning:", dbErr?.message);
+    }
+
+    setRoomName("");
+    setRoomBuilding("");
+    setShowAddRoom(false);
+    triggerFeedback(`Kamar "${formatted}" berhasil dibuat & disinkronkan ke database.`);
+  };
+
+  // Quick Action: Add Recitation
+  const handleCreateRecitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recitationName.trim()) return;
+
+    const formatted = recitationName.trim();
+    if (recitationClasses.includes(formatted)) {
+      alert("Nama kelas pengajian sudah terdaftar!");
+      return;
+    }
+
+    // 1. Update local states
+    const updated = [...recitationClasses, formatted];
+    setRecitationClasses(updated);
+    localStorage.setItem("manajemen_recitation_classes", JSON.stringify(updated));
+
+    const savedDetails = localStorage.getItem("manajemen_recitation_details");
+    const parsed = savedDetails ? JSON.parse(savedDetails) : [];
+    const updatedDetails = [...parsed, { name: formatted, level: recitationCategory }];
+    localStorage.setItem("manajemen_recitation_details", JSON.stringify(updatedDetails));
+
+    // 2. Sync to Supabase
+    try {
+      // Masuk ke tabel 'plotting'
+      const { error: errPlot } = await supabase
+        .from("plotting")
+        .insert([{ jenis: "kelas pengajian", nama: formatted }]);
+
+      if (errPlot) console.warn("Supabase plotting insert warning:", errPlot.message);
+    } catch (dbErr: any) {
+      console.warn("Database offline / connection warning:", dbErr?.message);
+    }
+
+    setRecitationName("");
+    setShowAddRecitation(false);
+    triggerFeedback(`Kelas Pengajian "${formatted}" berhasil dibuat & disinkronkan.`);
+  };
+
+  // Quick Action: Add School Class
+  const handleCreateSchool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schoolName.trim()) return;
+
+    const formatted = schoolName.trim();
+    if (schoolClasses.includes(formatted)) {
+      alert("Nama kelas sekolah sudah terdaftar!");
+      return;
+    }
+
+    // 1. Update local states
+    const updated = [...schoolClasses, formatted];
+    setSchoolClasses(updated);
+    localStorage.setItem("manajemen_school_classes", JSON.stringify(updated));
+
+    const savedDetails = localStorage.getItem("manajemen_school_details");
+    const parsed = savedDetails ? JSON.parse(savedDetails) : [];
+    const updatedDetails = [...parsed, { name: formatted, level: schoolCategory }];
+    localStorage.setItem("manajemen_school_details", JSON.stringify(updatedDetails));
+
+    // 2. Sync to Supabase
+    try {
+      // Masuk ke tabel 'plotting'
+      const { error: errPlot } = await supabase
+        .from("plotting")
+        .insert([{ jenis: "kelas sekolah", nama: formatted }]);
+
+      if (errPlot) console.warn("Supabase plotting insert warning:", errPlot.message);
+    } catch (dbErr: any) {
+      console.warn("Database offline / connection warning:", dbErr?.message);
+    }
+
+    setSchoolName("");
+    setShowAddSchool(false);
+    triggerFeedback(`Kelas Sekolah "${formatted}" berhasil dibuat & disinkronkan.`);
+  };
+
+  // Delete Entity Options completely
+  const handleDeleteOption = async (itemToDelete: string) => {
+    const confirmVal = window.confirm(`Apakah Anda yakin ingin menghapus ${modeInfo.label} "${itemToDelete}"? Semua siswa yang di-plot ke sini akan dikosongkan pemetaannya.`);
+    if (!confirmVal) return;
+
+    // 1. Local storage removal
+    if (activeMode === "kamar") {
+      const updated = rooms.filter((r) => r !== itemToDelete);
+      setRooms(updated);
+      localStorage.setItem("manajemen_rooms", JSON.stringify(updated));
+
+      // Database delete
+      try {
+        await supabase.from("kamar").delete().eq("kamar", itemToDelete);
+        await supabase.from("plotting").delete().eq("nama", itemToDelete).eq("jenis", "kamar");
+      } catch (e: any) {
+        console.warn("Supabase delete error:", e.message);
       }
-      return false;
+
+    } else if (activeMode === "pengajian") {
+      const updated = recitationClasses.filter((r) => r !== itemToDelete);
+      setRecitationClasses(updated);
+      localStorage.setItem("manajemen_recitation_classes", JSON.stringify(updated));
+
+      // Database delete
+      try {
+        await supabase.from("kelas_pengajian").delete().eq("kelas", itemToDelete);
+        await supabase.from("plotting").delete().eq("nama", itemToDelete).eq("jenis", "kelas pengajian");
+      } catch (e: any) {
+        console.warn("Supabase delete error:", e.message);
+      }
+
+    } else if (activeMode === "sekolah") {
+      const updated = schoolClasses.filter((r) => r !== itemToDelete);
+      setSchoolClasses(updated);
+      localStorage.setItem("manajemen_school_classes", JSON.stringify(updated));
+
+      // Database delete (supports both space and underscore tables)
+      try {
+        await supabase.from("kelas sekolah").delete().eq("kelas", itemToDelete);
+      } catch {}
+      try {
+        await supabase.from("kelas_sekolah").delete().eq("kelas", itemToDelete);
+      } catch {}
+      try {
+        await supabase.from("plotting").delete().eq("nama", itemToDelete).eq("jenis", "kelas sekolah");
+      } catch (e: any) {
+        console.warn("Supabase delete error:", e.message);
+      }
+    }
+
+    // Reset students that mapped into this to empty locally and remote
+    students.forEach((s) => {
+      const plottedVal = getStudentCurrentPlot(s, activeMode);
+      if (plottedVal === itemToDelete) {
+        onAssignMetadata(s.nik, modeInfo.key, "");
+      }
     });
+
+    triggerFeedback(`Berhasil menghapus ${modeInfo.label} "${itemToDelete}" dari sistem & database.`);
   };
 
-  // 1. ADD KAMAR
-  const handleAddRoom = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!roomInput.name.trim()) return;
-    
-    const formattedName = roomInput.name.trim();
-    if (rooms.includes(formattedName)) {
-      showFeedback("Nama kamar sudah terdaftar!");
-      return;
-    }
-
-    const updatedRooms = [...rooms, formattedName];
-    setRooms(updatedRooms);
-    localStorage.setItem("manajemen_rooms", JSON.stringify(updatedRooms));
-
-    const updatedDetails = [...roomDetails, {
-      name: formattedName,
-      building: roomInput.building.trim() || "Gedung Umum",
-      custodian: "",
-      capacity: 100
-    }];
-    setRoomDetails(updatedDetails);
-    localStorage.setItem("manajemen_room_details", JSON.stringify(updatedDetails));
-
-    setRoomInput({ name: "", building: "", custodian: "", capacity: 100 });
-    showFeedback(`Kamar "${formattedName}" berhasil ditambahkan!`);
-  };
-
-  // DELETE KAMAR
-  const handleDeleteRoom = (nameToDelete: string) => {
-    const confirmVal = window.confirm(`Apakah Anda yakin ingin menghapus "${nameToDelete}" dari data manajemen kamar?`);
-    if (!confirmVal) return;
-
-    const updatedRooms = rooms.filter((r) => r !== nameToDelete);
-    setRooms(updatedRooms);
-    localStorage.setItem("manajemen_rooms", JSON.stringify(updatedRooms));
-
-    const updatedDetails = roomDetails.filter((r) => r.name !== nameToDelete);
-    setRoomDetails(updatedDetails);
-    localStorage.setItem("manajemen_room_details", JSON.stringify(updatedDetails));
-    
-    showFeedback(`Kamar "${nameToDelete}" berhasil dihapus.`);
-  };
-
-  // 2. ADD RECITATION CLASS
-  const handleAddRecitation = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!recitationInput.name.trim()) return;
-
-    const formattedName = recitationInput.name.trim();
-    if (recitationClasses.includes(formattedName)) {
-      showFeedback("Nama kelas pengajian sudah terdaftar!");
-      return;
-    }
-
-    const updatedClasses = [...recitationClasses, formattedName];
-    setRecitationClasses(updatedClasses);
-    localStorage.setItem("manajemen_recitation_classes", JSON.stringify(updatedClasses));
-
-    const updatedDetails = [...recitationDetails, {
-      name: formattedName,
-      level: recitationInput.level || "SMP",
-      teacher: "",
-      schedule: ""
-    }];
-    setRecitationDetails(updatedDetails);
-    localStorage.setItem("manajemen_recitation_details", JSON.stringify(updatedDetails));
-
-    setRecitationInput({ name: "", level: "SMP", teacher: "", schedule: "" });
-    showFeedback(`Kelas pengajian "${formattedName}" berhasil ditambahkan!`);
-  };
-
-  // DELETE RECITATION CLASS
-  const handleDeleteRecitation = (nameToDelete: string) => {
-    const confirmVal = window.confirm(`Apakah Anda yakin ingin menghapus kelas "${nameToDelete}"?`);
-    if (!confirmVal) return;
-
-    const updatedClasses = recitationClasses.filter((c) => c !== nameToDelete);
-    setRecitationClasses(updatedClasses);
-    localStorage.setItem("manajemen_recitation_classes", JSON.stringify(updatedClasses));
-
-    const updatedDetails = recitationDetails.filter((c) => c.name !== nameToDelete);
-    setRoomDetails(updatedDetails); // Keep reference
-    setRecitationDetails(updatedDetails);
-    localStorage.setItem("manajemen_recitation_details", JSON.stringify(updatedDetails));
-
-    showFeedback(`Kelas pengajian "${nameToDelete}" berhasil dihapus.`);
-  };
-
-  // 3. ADD SCHOOL CLASS
-  const handleAddSchool = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!schoolInput.name.trim()) return;
-
-    const formattedName = schoolInput.name.trim();
-    if (schoolClasses.includes(formattedName)) {
-      showFeedback("Nama kelas sekolah sudah terdaftar!");
-      return;
-    }
-
-    const updatedClasses = [...schoolClasses, formattedName];
-    setSchoolClasses(updatedClasses);
-    localStorage.setItem("manajemen_school_classes", JSON.stringify(updatedClasses));
-
-    const updatedDetails = [...schoolDetails, {
-      name: formattedName,
-      level: schoolInput.level || "SMP",
-      homeroomTeacher: "",
-      academicYear: ""
-    }];
-    setSchoolDetails(updatedDetails);
-    localStorage.setItem("manajemen_school_details", JSON.stringify(updatedDetails));
-
-    setSchoolInput({ name: "", level: "SMP", homeroomTeacher: "", academicYear: "" });
-    showFeedback(`Kelas sekolah "${formattedName}" berhasil ditambahkan!`);
-  };
-
-  // DELETE SCHOOL CLASS
-  const handleDeleteSchool = (nameToDelete: string) => {
-    const confirmVal = window.confirm(`Apakah Anda yakin ingin menghapus kelas sekolah "${nameToDelete}"?`);
-    if (!confirmVal) return;
-
-    const updatedClasses = schoolClasses.filter((c) => c !== nameToDelete);
-    setSchoolClasses(updatedClasses);
-    localStorage.setItem("manajemen_school_classes", JSON.stringify(updatedClasses));
-
-    const updatedDetails = schoolDetails.filter((c) => c.name !== nameToDelete);
-    setSchoolDetails(updatedDetails);
-    localStorage.setItem("manajemen_school_details", JSON.stringify(updatedDetails));
-
-    showFeedback(`Kelas sekolah "${nameToDelete}" ditiadakan.`);
-  };
-
-  // Find detailed match or construct fallback
-  const findRoomDetail = (name: string): RoomDetail => {
-    return roomDetails.find((r) => r.name === name) || { name, building: "Gedung Utama", custodian: "", capacity: 100 };
-  };
-
-  const findRecitationDetail = (name: string): RecitationDetail => {
-    return recitationDetails.find((c) => c.name === name) || { name, level: "SMP", teacher: "", schedule: "" };
-  };
-
-  const findSchoolDetail = (name: string): SchoolDetail => {
-    return schoolDetails.find((c) => c.name === name) || { name, level: "SMP", homeroomTeacher: "", academicYear: "" };
-  };
-
-  // Total Assignments overall
-  const countTotalCategoryAssignments = (type: "kamar" | "kelas_pengajian" | "kelas_sekolah") => {
-    return students.filter((s) => {
-      const direct = s[type as keyof SantriData];
-      if (direct) return true;
-      const mapped = metadataMap[s.nik];
-      return !!(mapped && mapped[type === "kelas_pengajian" ? "kelas_pengajian" : type === "kelas_sekolah" ? "kelas_sekolah" : "kamar"]);
-    }).length;
+  // Un-plot or remove single student from their current target
+  const handleClearStudentPlot = (sNik: string, sName: string, destinationLabel: string) => {
+    onAssignMetadata(sNik, modeInfo.key, "");
+    triggerFeedback(`Berhasil mengeluarkan ${sName} dari ${modeInfo.label} "${destinationLabel}"`);
   };
 
   return (
-    <div className="space-y-5" id="management_panel_module">
+    <div className="space-y-6" id="plotting_siswa_panel_module">
       
-      {/* HEADER BANNER */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-44 h-44 bg-sky-50 rounded-full blur-2xl opacity-70 pointer-events-none"></div>
-        
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5 flex-1 select-none">
-            <span className="bg-sky-50 text-sky-700 text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border border-sky-100 block w-fit">
-              ADMINISTRATIVE HUB
-            </span>
-            <h2 className="text-sm md:text-base font-extrabold tracking-tight text-slate-800 uppercase" id="management-hub-title">
-              MANAJEMEN INTEGRASI pondok pesantren
-            </h2>
-            <p className="text-slate-500 text-[11px] leading-tight max-w-2xl font-medium">
-              Kelola entitas kepengasuhan santri. Atur pembagian Kamar Asrama, Kelas Pengajian (Diniyah Al-Quran), serta Kelas Sekolah Formal bagi para santri yang terdaftar secara digital.
-            </p>
-          </div>
-
-          <div className="flex gap-2 shrink-0 md:self-center">
-            <div className="bg-sky-50 border border-sky-200 p-2.5 rounded-xl text-center min-w-16">
-              <span className="block text-xl font-extrabold text-sky-700">{rooms.length}</span>
-              <span className="block text-[8px] text-slate-400 font-bold uppercase">Kamar</span>
-            </div>
-            <div className="bg-sky-50 border border-sky-200 p-2.5 rounded-xl text-center min-w-16">
-              <span className="block text-xl font-extrabold text-indigo-600">{recitationClasses.length}</span>
-              <span className="block text-[8px] text-slate-400 font-bold uppercase">Ngaji</span>
-            </div>
-            <div className="bg-sky-50 border border-sky-200 p-2.5 rounded-xl text-center min-w-16">
-              <span className="block text-xl font-extrabold text-blue-600">{schoolClasses.length}</span>
-              <span className="block text-[8px] text-slate-400 font-bold uppercase">Sekolah</span>
-            </div>
-          </div>
+      {/* HEADER BAR AND QUICK ACTION BUTTONS */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <span className="bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-200 w-fit block">
+            Pusat Pemetaan
+          </span>
+          <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
+            Plotting Siswa
+          </h2>
+          <p className="text-slate-550 text-xs leading-relaxed max-w-2xl font-medium">
+            Atur dan petakan penempatan asrama kamar tidur santri, pengelompokan kelas pengajian Al-Quran, serta pencatatan kelas sekolah reguler formal dalam satu dasbor terpadu.
+          </p>
         </div>
 
-        {localFeedback && (
-          <div className="mt-4 p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg text-center animate-fade-in">
-            ✅ {localFeedback}
-          </div>
-        )}
-      </div>
-
-      {/* THREE-WAY SUB NAVIGATION */}
-      <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm" id="management-tabs">
-        <button
-          onClick={() => setActiveTab("kamar")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-            activeTab === "kamar"
-              ? "bg-sky-600 text-white shadow"
-              : "text-slate-650 hover:bg-slate-50 hover:text-slate-900"
-          }`}
-        >
-          <Building className="w-3.5 h-3.5" />
-          <span>🛏️ Manajemen Kamar ({rooms.length})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("pengajian")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-            activeTab === "pengajian"
-              ? "bg-sky-600 text-white shadow"
-              : "text-slate-650 hover:bg-slate-50 hover:text-slate-900"
-          }`}
-        >
-          <Notebook className="w-3.5 h-3.5" />
-          <span>📖 Kelas Pengajian ({recitationClasses.length})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("sekolah")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-            activeTab === "sekolah"
-              ? "bg-sky-600 text-white shadow"
-              : "text-slate-650 hover:bg-slate-50 hover:text-slate-900"
-          }`}
-        >
-          <GraduationCap className="w-3.5 h-3.5" />
-          <span>🏫 Kelas Sekolah ({schoolClasses.length})</span>
-        </button>
-      </div>
-
-      {/* TAB CONTENTS - TWO COLUMNS BENTO LAYOUT (Add Form Left, Detailed Grid Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        
-        {/* LEFT COMPONENT COLUMN: INPUT FORM (4 Columns) */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm h-fit">
-          <div className="border-b border-light-100 pb-2 mb-4">
-            <h3 className="text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
-              <Plus className="w-4 h-4 text-sky-600" />
-              {activeTab === "kamar" && "Formulir Tambah Kamar"}
-              {activeTab === "pengajian" && "Formulir Tambah Kelas Pengajian"}
-              {activeTab === "sekolah" && "Formulir Tambah Kelas Sekolah"}
-            </h3>
-            <p className="text-[10px] text-slate-405 font-medium mt-0.5">
-              Masukkan informasi detail di bawah untuk merekam unit manajemen baru.
-            </p>
-          </div>
-
-          {/* 1. ROOM ADD FORM */}
-          {activeTab === "kamar" && (
-            <form onSubmit={handleAddRoom} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Nama Kamar Asrama <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={roomInput.name}
-                  onChange={(e) => setRoomInput({ ...roomInput, name: e.target.value })}
-                  placeholder="Contoh: Kamar Al-Ghozali"
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 font-semibold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Cakupan Gedung
-                </label>
-                <input
-                  type="text"
-                  value={roomInput.building}
-                  onChange={(e) => setRoomInput({ ...roomInput, building: e.target.value })}
-                  placeholder="Contoh: Gedung Umar LT 2"
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-lg shadow transition-colors block text-center cursor-pointer mt-3"
-              >
-                Simpan & Daftarkan Kamar
-              </button>
-            </form>
-          )}
-
-          {/* 2. RECITATION ADD FORM */}
-          {activeTab === "pengajian" && (
-            <form onSubmit={handleAddRecitation} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Kategori Santri <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={recitationInput.level}
-                  onChange={(e) => setRecitationInput({ ...recitationInput, level: e.target.value })}
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white font-semibold"
-                >
-                  <option value="SMP">SMP</option>
-                  <option value="SMA">SMA</option>
-                  <option value="Reguler">Reguler</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Nama Kelas Pengajian <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={recitationInput.name}
-                  onChange={(e) => setRecitationInput({ ...recitationInput, name: e.target.value })}
-                  placeholder="Contoh: Kelas Al-Quran Pemula"
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-lg shadow transition-colors block text-center cursor-pointer mt-3"
-              >
-                Simpan & Daftarkan Kelas Ngaji
-              </button>
-            </form>
-          )}
-
-          {/* 3. SCHOOL ADD FORM */}
-          {activeTab === "sekolah" && (
-            <form onSubmit={handleAddSchool} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Kategori Santri <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={schoolInput.level}
-                  onChange={(e) => setSchoolInput({ ...schoolInput, level: e.target.value })}
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white font-semibold"
-                >
-                  <option value="SMP">SMP</option>
-                  <option value="SMA">SMA</option>
-                  <option value="Reguler">Reguler</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Nama Kelas Sekolah <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={schoolInput.name}
-                  onChange={(e) => setSchoolInput({ ...schoolInput, name: e.target.value })}
-                  placeholder="Contoh: Kelas VII-A SMP"
-                  className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 font-semibold"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-lg shadow transition-colors block text-center cursor-pointer mt-3"
-              >
-                Simpan & Daftarkan Kelas Sekolah
-              </button>
-            </form>
-          )}
+        {/* 6. RIGHT TOP QUICK ACTIONS FOR NEW CREATION */}
+        <div className="flex flex-wrap gap-2 shrink-0 self-start md:self-center">
+          <button
+            onClick={() => setShowAddRoom(true)}
+            className="bg-indigo-650 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
+          >
+            + Buat Kamar
+          </button>
+          <button
+            onClick={() => setShowAddRecitation(true)}
+            className="bg-sky-650 hover:bg-sky-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
+          >
+            + Buat Kelas Diniyah
+          </button>
+          <button
+            onClick={() => setShowAddSchool(true)}
+            className="bg-blue-650 hover:bg-blue-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap"
+          >
+            + Buat Kelas Formal
+          </button>
         </div>
-
-        {/* RIGHT COMPONENT COLUMN: INTERACTIVE LISTINGS & STATS (8 Columns) */}
-        <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col justify-between min-h-[400px]">
-          
-          <div className="space-y-3">
-            <div className="border-b border-light-100 pb-2 flex items-center justify-between">
-              <h3 className="text-xs font-black text-slate-800 uppercase flex items-center gap-1.5 leading-none">
-                {activeTab === "kamar" && <Building className="w-4 h-4 text-sky-600" />}
-                {activeTab === "pengajian" && <Notebook className="w-4 h-4 text-sky-600" />}
-                {activeTab === "sekolah" && <GraduationCap className="w-4 h-4 text-sky-600" />}
-                <span>Daftar Unit Terdaftar & Kepadatan Santri</span>
-              </h3>
-              
-              <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-150 px-2 py-0.5 rounded font-mono font-bold uppercase">
-                {activeTab === "kamar" && `Total: ${rooms.length} Kamar`}
-                {activeTab === "pengajian" && `Total: ${recitationClasses.length} Pengajian`}
-                {activeTab === "sekolah" && `Total: ${schoolClasses.length} Kelas`}
-              </span>
-            </div>
-
-            {/* ERROR / EMPTY STATE */}
-            {((activeTab === "kamar" && rooms.length === 0) ||
-              (activeTab === "pengajian" && recitationClasses.length === 0) ||
-              (activeTab === "sekolah" && schoolClasses.length === 0)) && (
-              <div className="text-center py-12 text-slate-400 italic text-xs">
-                ⚠️ Belum ada entitas yang dibuat. Silakan tambahkan pada formulir di sebelah kiri.
-              </div>
-            )}
-
-            {/* 1. ROOMS DENSE TABLE LISTING */}
-            {activeTab === "kamar" && rooms.length > 0 && (
-              <div className="overflow-x-auto select-none rounded-lg border border-slate-100">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] text-slate-500 uppercase font-black border-b border-slate-100">
-                      <th className="p-2.5">Nama Kamar</th>
-                      <th className="p-2.5">Lokasi / Gedung</th>
-                      <th className="p-2.5 text-center">Santri Terisi</th>
-                      <th className="p-2.5 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {rooms.map((roomName) => {
-                      const detail = findRoomDetail(roomName);
-                      const assignedCount = countAssigned("kamar", roomName);
-                      return (
-                        <tr key={roomName} className="hover:bg-slate-50/40 transition-colors group">
-                          <td className="p-2.5 font-bold text-slate-800">
-                            🏢 {roomName}
-                          </td>
-                          <td className="p-2.5 text-slate-500">{detail.building}</td>
-                          <td className="p-2.5 text-center">
-                            <span 
-                              onClick={() => assignedCount > 0 && setSelectedEntityForModal({ type: "kamar", name: roomName })}
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono font-bold text-[10px] cursor-pointer ${
-                                assignedCount > 0 
-                                  ? "bg-sky-50 text-sky-700 border border-sky-100 hover:bg-sky-100/50" 
-                                  : "bg-slate-50 text-slate-400 border border-slate-200"
-                              }`}
-                              title="Klik untuk melihat daftar santri di kamar ini"
-                            >
-                              {assignedCount} anak
-                              <Eye className="w-3 h-3 text-slate-400" />
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-right">
-                            <button
-                              onClick={() => handleDeleteRoom(roomName)}
-                              className="text-slate-400 hover:text-red-650 p-1 hover:bg-red-50 rounded transition-colors inline-block"
-                              title="Hapus Kamar"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* 2. RECITATION DETAILS LISTING */}
-            {activeTab === "pengajian" && recitationClasses.length > 0 && (
-              <div className="overflow-x-auto select-none rounded-lg border border-slate-100">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] text-slate-500 uppercase font-black border-b border-slate-100">
-                      <th className="p-2.5">Nama Kelas Ngaji</th>
-                      <th className="p-2.5 text-center">Kategori</th>
-                      <th className="p-2.5 text-center">Santri</th>
-                      <th className="p-2.5 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {recitationClasses.map((className) => {
-                      const detail = findRecitationDetail(className);
-                      const assignedCount = countAssigned("kelas_pengajian", className);
-                      return (
-                        <tr key={className} className="hover:bg-slate-50/40 transition-colors">
-                          <td className="p-2.5 font-bold text-slate-800">
-                            📖 {className}
-                          </td>
-                          <td className="p-2.5 text-center font-bold text-indigo-700">
-                            <span className="bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-full text-[9px] uppercase">
-                              {detail.level}
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <span 
-                              onClick={() => assignedCount > 0 && setSelectedEntityForModal({ type: "pengajian", name: className })}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono font-bold text-[10px] cursor-pointer ${
-                                assignedCount > 0 
-                                  ? "bg-sky-50 text-sky-700 border border-sky-100 hover:bg-sky-100/50" 
-                                  : "bg-slate-50 text-slate-400 border border-slate-200"
-                              }`}
-                              title="Klik untuk melihat santri"
-                            >
-                              {assignedCount} anak
-                              <Eye className="w-3 h-3 text-slate-400" />
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-right">
-                            <button
-                              onClick={() => handleDeleteRecitation(className)}
-                              className="text-slate-400 hover:text-red-650 p-1 hover:bg-red-50 rounded transition-colors inline-block"
-                              title="Hapus Kelas"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* 3. SCHOOL DETAILS LISTING */}
-            {activeTab === "sekolah" && schoolClasses.length > 0 && (
-              <div className="overflow-x-auto select-none rounded-lg border border-slate-100">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] text-slate-500 uppercase font-black border-b border-slate-100">
-                      <th className="p-2.5">Nama Kelas Sekolah</th>
-                      <th className="p-2.5 text-center">Kategori</th>
-                      <th className="p-2.5 text-center">Santri</th>
-                      <th className="p-2.5 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {schoolClasses.map((className) => {
-                      const detail = findSchoolDetail(className);
-                      const assignedCount = countAssigned("kelas_sekolah", className);
-                      return (
-                        <tr key={className} className="hover:bg-slate-50/40 transition-colors">
-                          <td className="p-2.5 font-bold text-slate-800">
-                            🏫 {className}
-                          </td>
-                          <td className="p-2.5 text-center font-bold text-blue-700">
-                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
-                              detail.level === "SMP" 
-                                ? "bg-blue-50 border border-blue-150 text-blue-700"
-                                : detail.level === "SMA"
-                                ? "bg-indigo-50 border border-indigo-150 text-indigo-700"
-                                : "bg-amber-50 border border-amber-150 text-amber-700"
-                            }`}>
-                              {detail.level}
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <span 
-                              onClick={() => assignedCount > 0 && setSelectedEntityForModal({ type: "sekolah", name: className })}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono font-bold text-[10px] cursor-pointer ${
-                                assignedCount > 0 
-                                  ? "bg-sky-50 text-sky-700 border border-sky-100 hover:bg-sky-100/50" 
-                                  : "bg-slate-50 text-slate-400 border border-slate-200"
-                              }`}
-                              title="Klik untuk melihat santri"
-                            >
-                              {assignedCount} anak
-                              <Eye className="w-3 h-3 text-slate-400" />
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-right">
-                            <button
-                              onClick={() => handleDeleteSchool(className)}
-                              className="text-slate-400 hover:text-red-650 p-1 hover:bg-red-50 rounded transition-colors inline-block"
-                              title="Hapus Kelas"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 gap-2 select-none">
-            <span className="font-semibold flex items-center gap-1">
-              💡 <span>Tip:</span> Anda dapat langsung memetakan santri ke unit-unit di atas saat mengisi <strong>Formulir Registrasi</strong>.
-            </span>
-            <span className="bg-slate-50 text-slate-450 border border-slate-100 px-2 py-1 rounded font-mono font-bold text-right shrink-0">
-              Sinkronisasi: OK (Local-Storage & Cloud-Ready)
-            </span>
-          </div>
-        </div>
-
       </div>
 
-      {/* VIEW ASSIGNED STUDENTS MODAL DIALOG */}
-      {selectedEntityForModal && (
+      {feedback && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-250 text-emerald-900 text-xs font-bold rounded-xl animate-fade-in text-center shadow-sm">
+          Sistem Notifikasi: {feedback}
+        </div>
+      )}
+
+      {/* QUICK FLOATING MODALS FOR CREATIONS (PLAIN TEXT BASED, ICONLESS) */}
+      {showAddRoom && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full overflow-hidden shadow-xl animate-scale-up">
-            
-            {/* Modal Header */}
-            <div className="bg-sky-600 px-4 py-3.5 text-white flex justify-between items-center">
-              <div>
-                <span className="bg-sky-750/70 text-sky-100 text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded">
-                  {selectedEntityForModal.type === "kamar" && "Anggota Kamar Asrama"}
-                  {selectedEntityForModal.type === "pengajian" && "Daftar Absensi Mengaji"}
-                  {selectedEntityForModal.type === "sekolah" && "Daftar Absensi Sekolah Formal"}
-                </span>
-                <h3 className="font-extrabold text-sm uppercase tracking-tight mt-1 leading-none">
-                  {selectedEntityForModal.name}
-                </h3>
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 max-w-md w-full shadow-xl space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide">
+              Buat Kamar Asrama Baru
+            </h3>
+            <form onSubmit={handleCreateRoom} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Nama Kamar</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kamar Al-Ghazali"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-500 font-semibold text-slate-800"
+                />
               </div>
-              <button 
-                onClick={() => setSelectedEntityForModal(null)}
-                className="text-white/85 hover:text-white font-black text-xs hover:bg-white/10 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal Body: Student list */}
-            <div className="p-4 max-h-[300px] overflow-y-auto divide-y divide-slate-100">
-              {getAssignedStudents(
-                selectedEntityForModal.type === "kamar" 
-                  ? "kamar" 
-                  : selectedEntityForModal.type === "pengajian" 
-                  ? "kelas_pengajian" 
-                  : "kelas_sekolah",
-                selectedEntityForModal.name
-              ).map((student, idx) => (
-                <div key={student.nik} className="py-2 flex items-center justify-between text-xs font-semibold hover:bg-slate-50/50 rounded-lg px-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-400 select-none font-mono">#{idx+1}</span>
-                    <span className="text-slate-800 font-bold">{student.nama_lengkap}</span>
-                  </div>
-                  <span className="text-[9px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold tracking-tight">
-                    {student.kategori}
-                  </span>
-                </div>
-              ))}
-              
-              {getAssignedStudents(
-                selectedEntityForModal.type === "kamar" 
-                  ? "kamar" 
-                  : selectedEntityForModal.type === "pengajian" 
-                  ? "kelas_pengajian" 
-                  : "kelas_sekolah",
-                selectedEntityForModal.name
-              ).length === 0 && (
-                <p className="text-center py-6 text-slate-400 italic text-xs">Belum ada santri yang dimasukkan.</p>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="bg-slate-50 px-4 py-3 border-t border-slate-150 flex justify-end">
-              <button
-                onClick={() => setSelectedEntityForModal(null)}
-                className="px-4 py-1.5 text-xs bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-700 font-bold tracking-wide cursor-pointer shadow-sm transition-all"
-              >
-                Tutup Jendela
-              </button>
-            </div>
-
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Lokasi / Gedung</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Gedung Abu Bakar LT 1"
+                  value={roomBuilding}
+                  onChange={(e) => setRoomBuilding(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRoom(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-650 font-bold text-xs rounded-xl hover:bg-slate-205 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-650 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 cursor-pointer"
+                >
+                  Simpan Kamar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {showAddRecitation && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 max-w-md w-full shadow-xl space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide">
+              Buat Kelas Pengajian (Ngaji)
+            </h3>
+            <form onSubmit={handleCreateRecitation} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Nama Kelas Pengajian</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kelas Makhraj & Tajwid"
+                  value={recitationName}
+                  onChange={(e) => setRecitationName(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-500 font-semibold text-slate-800"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Jenjang / Kategori</label>
+                <select
+                  value={recitationCategory}
+                  onChange={(e) => setRecitationCategory(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none"
+                >
+                  <option value="SMP">SMP</option>
+                  <option value="SMA">SMA</option>
+                  <option value="Reguler">Reguler</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRecitation(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-650 font-bold text-xs rounded-xl hover:bg-slate-205 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sky-655 text-white font-bold text-xs rounded-xl hover:bg-sky-700 cursor-pointer"
+                >
+                  Simpan Kelas Ngaji
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAddSchool && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 max-w-md w-full shadow-xl space-y-4">
+            <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide">
+              Buat Kelas Sekolah Formal
+            </h3>
+            <form onSubmit={handleCreateSchool} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Nama Kelas Formal</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kelas X-IPA 2 SMA"
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-500 font-semibold text-slate-800"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-505 uppercase block">Jenjang Sekolah</label>
+                <select
+                  value={schoolCategory}
+                  onChange={(e) => setSchoolCategory(e.target.value)}
+                  className="w-full p-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none"
+                >
+                  <option value="SMP">SMP</option>
+                  <option value="SMA">SMA</option>
+                  <option value="Reguler">Reguler</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddSchool(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-650 font-bold text-xs rounded-xl hover:bg-slate-205 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-655 text-white font-bold text-xs rounded-xl hover:bg-blue-700 cursor-pointer"
+                >
+                  Simpan Kelas
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SELECT LABELS (1. KAMAR, PLOTTING SELECTIONS, ICONLESS) */}
+      <div className="grid grid-cols-3 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner">
+        <button
+          onClick={() => {
+            setActiveMode("kamar");
+            setSelectedNik("");
+            setSelectedTarget("");
+          }}
+          className={`py-3 text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+            activeMode === "kamar"
+              ? "bg-white text-indigo-705 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Kamar
+        </button>
+        <button
+          onClick={() => {
+            setActiveMode("pengajian");
+            setSelectedNik("");
+            setSelectedTarget("");
+          }}
+          className={`py-3 text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+            activeMode === "pengajian"
+              ? "bg-white text-indigo-705 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Kelas Pengajian
+        </button>
+        <button
+          onClick={() => {
+            setActiveMode("sekolah");
+            setSelectedNik("");
+            setSelectedTarget("");
+          }}
+          className={`py-3 text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+            activeMode === "sekolah"
+              ? "bg-white text-indigo-705 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Kelas Sekolah
+        </button>
+      </div>
+
+      {/* TWO COLUMNS WORKSPACE BENTO LAYOUT (No Icons allowed) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* LEFT COMPONENT: PLOTTING ASSIGNER CONTROLLER FORM */}
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm h-fit space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="text-xs font-black text-slate-800 uppercase leading-none">
+              Formulir Alokasi Plotting
+            </h3>
+            <p className="text-[10px] text-slate-450 font-bold mt-1 uppercase">
+              Mode Aktif: {modeInfo.label}
+            </p>
+          </div>
+
+          <form onSubmit={handleSavePlot} className="space-y-4">
+            
+            {/* Step 1: Select Student */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
+                Langkah 1: Pilih Siswa / Santri
+              </label>
+              <select
+                required
+                value={selectedNik}
+                onChange={(e) => setSelectedNik(e.target.value)}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 bg-white"
+              >
+                <option value="">-- PILIH NAMA SISWA --</option>
+                {students.map((student) => {
+                  const currentPlotted = getStudentCurrentPlot(student, activeMode);
+                  const suffix = currentPlotted ? `(${currentPlotted})` : "(Belum di-plot)";
+                  return (
+                    <option key={student.nik} value={student.nik}>
+                      {student.nama_lengkap} {suffix}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Step 2: Select Designation */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
+                Langkah 2: Pilih Tujuan {modeInfo.label}
+              </label>
+              <select
+                required
+                value={selectedTarget}
+                onChange={(e) => setSelectedTarget(e.target.value)}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 bg-white"
+              >
+                <option value="">-- PILIH TUJUAN {modeInfo.label.toUpperCase()} --</option>
+                {modeInfo.options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              className="w-full py-3 bg-slate-900 hover:bg-slate-850 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all text-center cursor-pointer uppercase tracking-wider"
+            >
+              Simpan Pemetaan Plotting
+            </button>
+          </form>
+        </div>
+
+        {/* RIGHT COMPONENT: DETAILED GRID GROUPS OF ASSIGNMENTS */}
+        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm min-h-[400px] flex flex-col justify-between">
+          
+          <div className="space-y-4">
+            
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">
+                Ringkasan Penempatan {modeInfo.label} Santri
+              </h3>
+              <span className="text-[9px] bg-slate-100 border border-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded font-mono uppercase">
+                Menampilkan {modeInfo.options.length} {modeInfo.label}
+              </span>
+            </div>
+
+            {modeInfo.options.length === 0 && (
+              <div className="text-center py-16 text-slate-405 font-semibold text-xs italic">
+                Pemberitahuan: Belum ada data {modeInfo.label.toLowerCase()} yang dibuat. Silakan tambahkan terlebih dahulu dengan opsi di kanan atas.
+              </div>
+            )}
+
+            {modeInfo.options.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {modeInfo.options.map((groupName) => {
+                  // Filter students assigned into this item group
+                  const mappedStudents = students.filter((s) => {
+                    const plottedVal = getStudentCurrentPlot(s, activeMode);
+                    return plottedVal === groupName;
+                  });
+
+                  return (
+                    <div 
+                      key={groupName} 
+                      className="border border-slate-200 rounded-2xl p-4 bg-slate-50/20 hover:bg-slate-55/10 transition-all flex flex-col justify-between space-y-3"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start gap-2 border-b border-slate-100 pb-1.5">
+                          <span className="font-extrabold text-xs text-slate-900 block truncate">
+                            {groupName}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded font-mono">
+                            {mappedStudents.length} siswa
+                          </span>
+                        </div>
+
+                        {/* Student listing under this category */}
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                          {mappedStudents.length === 0 ? (
+                            <p className="text-[10px] text-slate-400 italic font-medium py-1">Kosong (belum ada siswa)</p>
+                          ) : (
+                            mappedStudents.map((siswa, idx) => (
+                              <div 
+                                key={siswa.nik} 
+                                className="flex justify-between items-center text-[11px] py-1 hover:bg-slate-50 rounded px-1 group"
+                              >
+                                <span className="font-semibold text-slate-700 truncate">
+                                  {idx + 1}. {siswa.nama_lengkap}
+                                </span>
+                                
+                                <button
+                                  onClick={() => handleClearStudentPlot(siswa.nik, siswa.nama_lengkap, groupName)}
+                                  className="text-[9px] text-red-600 hover:text-red-800 hover:underline font-bold bg-red-50 hover:bg-red-100 px-1.5 py-0.5 rounded cursor-pointer leading-tight"
+                                  title="Keluarkan dari group ini"
+                                >
+                                  Keluarkan
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Group controller footer */}
+                      <div className="pt-2 border-t border-slate-100/60 flex justify-end">
+                        <button
+                          onClick={() => handleDeleteOption(groupName)}
+                          className="text-[10px] text-slate-500 hover:text-red-700 font-bold hover:underline cursor-pointer"
+                        >
+                          Hapus {modeInfo.label}
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+          </div>
+
+          <div className="mt-6 pt-3 border-t border-slate-150 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 gap-2 font-semibold">
+            <span>
+              Info: Sinkronisasi database lokal & cloud plotting berjalan otomatis penuh.
+            </span>
+            <span className="bg-slate-100 text-slate-650 px-2.5 py-1 rounded font-mono font-bold uppercase border border-slate-205">
+              Status Sinkronisasi Supabase: Terhubung
+            </span>
+          </div>
+
+        </div>
+
+      </div>
 
     </div>
   );
