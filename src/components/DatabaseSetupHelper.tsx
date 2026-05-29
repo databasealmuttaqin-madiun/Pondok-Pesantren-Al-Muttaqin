@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS santri (
     kelas_pengajian VARCHAR(120) DEFAULT '',
     kelas_sekolah VARCHAR(120) DEFAULT '',
     jenis_kelamin VARCHAR(2) DEFAULT 'L' CHECK (jenis_kelamin IN ('L', 'P')),
-    nfc_id VARCHAR(120) DEFAULT ''
+    nfc_id VARCHAR(120) DEFAULT '',
+    foto TEXT DEFAULT ''
 );
 
 -- Mengaktifkan Row Level Security untuk tabel santri
@@ -179,6 +180,7 @@ CREATE POLICY "Akses Publik Kelas Sekolah Alt Seluruh Operasi" ON kelas_sekolah
 
 ALTER TABLE santri ADD COLUMN IF NOT EXISTS jenis_kelamin VARCHAR(2) DEFAULT 'L' CHECK (jenis_kelamin IN ('L', 'P'));
 ALTER TABLE santri ADD COLUMN IF NOT EXISTS nfc_id VARCHAR(120) DEFAULT '';
+ALTER TABLE santri ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT '';
 ALTER TABLE santri ALTER COLUMN nik TYPE VARCHAR(16);
 ALTER TABLE santri ADD CONSTRAINT santri_nik_unique UNIQUE (nik);
 
@@ -293,6 +295,19 @@ CREATE POLICY "Akses Publik Kelas Sekolah Seluruh Operasi" ON "kelas sekolah"
 
 CREATE POLICY "Akses Publik Kelas Sekolah Alt Seluruh Operasi" ON kelas_sekolah 
     AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);
+
+-- 4. KEAMANAN STORAGE BUCKET (foto_siswa)
+INSERT INTO storage.buckets (id, name, public) VALUES ('foto_siswa', 'foto_siswa', true) ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Foto siswa publicly accessible" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can upload foto" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can update foto" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can delete foto" ON storage.objects;
+
+CREATE POLICY "Foto siswa publicly accessible" ON storage.objects FOR SELECT USING (bucket_id = 'foto_siswa');
+CREATE POLICY "Anyone can upload foto" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'foto_siswa');
+CREATE POLICY "Anyone can update foto" ON storage.objects FOR UPDATE USING (bucket_id = 'foto_siswa');
+CREATE POLICY "Anyone can delete foto" ON storage.objects FOR DELETE USING (bucket_id = 'foto_siswa');
 `;
 
   const copyToClipboard = () => {

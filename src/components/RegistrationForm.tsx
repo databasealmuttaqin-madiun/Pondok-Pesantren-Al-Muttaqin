@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, MapPin, Users, HeartHandshake, CheckCircle2, ArrowRight, ArrowLeft, Send, Sparkles } from "lucide-react";
-import { SantriData, formatSantriData } from "../supabaseClient";
+import { User, MapPin, Users, HeartHandshake, CheckCircle2, ArrowRight, ArrowLeft, Send, Sparkles, Camera, Upload, X, Loader2 } from "lucide-react";
+import { SantriData, formatSantriData, supabase } from "../supabaseClient";
 
 interface RegistrationFormProps {
   onSubmit: (data: SantriData) => Promise<{ success: boolean; error?: string }>;
@@ -68,6 +68,9 @@ export default function RegistrationForm({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touchStatus, setTouchStatus] = useState<Record<string, boolean>>({});
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Automatically format all fields to Title Case when entering confirmation step (Step 4)
   React.useEffect(() => {
@@ -75,6 +78,59 @@ export default function RegistrationForm({
       setFormData((prev) => formatSantriData(prev));
     }
   }, [step]);
+
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      setUploadError("Ukuran foto maksimal 5 MB.");
+      return;
+    }
+    
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Format file harus berupa gambar (JPEG, PNG).");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setUploadError("");
+
+    try {
+      // Create a unique file name
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from("foto_siswa")
+        .upload(filePath, file);
+
+      if (error) {
+        throw error;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("foto_siswa")
+        .getPublicUrl(filePath);
+
+      setFormData(prev => ({ ...prev, foto: publicUrl }));
+    } catch (err: any) {
+      console.error("Error uploading photo:", err);
+      // If error is RLS related
+      if (err?.message?.includes("row-level security")) {
+        setUploadError("Gagal: Kebijakan Keamanan (RLS) pada tabel/bucket belum diatur. Silakan buka menu 'Koneksi Cloud' lalu jalankan SQL untuk Opsi C (RLS).");
+      } else {
+        setUploadError(`Gagal mengunggah foto. Pastikan internet stabil dan format didukung. (${err?.message || ""})`);
+      }
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   // Real-time Validation Helper
   const validateField = (name: keyof SantriData, value: string, category: string): string => {
@@ -304,6 +360,58 @@ export default function RegistrationForm({
               <h3 className="text-xs font-bold text-sky-600 uppercase border-b border-sky-100 pb-2 mb-3 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-sky-500 rounded-full"></span> Data Identitas Diri
               </h3>
+
+              {/* Photo Upload Section */}
+              <div className="flex flex-col md:flex-row items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="relative w-20 h-20 rounded-full bg-white border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center shrink-0">
+                  {isUploadingPhoto ? (
+                    <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+                  ) : formData.foto ? (
+                    <img src={formData.foto} alt="Foto Profil Santri" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-8 h-8 text-slate-300" />
+                  )}
+                  {formData.foto && !isUploadingPhoto && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, foto: "" }))}
+                      className="absolute bottom-0 right-0 left-0 bg-red-500/80 text-white py-0.5 flex items-center justify-center hover:bg-red-600 transition-colors"
+                      title="Hapus Foto"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5 text-center md:text-left flex-1">
+                  <h4 className="text-xs font-bold text-slate-700">Foto Profil / Pas Foto (Opsional)</h4>
+                  <p className="text-[10px] text-slate-500 leading-relaxed max-w-sm">
+                    Unggah pas foto untuk ID Card &amp; administrasi. Format JPG/PNG (Maks. 5MB).
+                  </p>
+                  <div className="mt-2 pt-1 inline-block">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                      id="upload-foto-btn"
+                      disabled={isUploadingPhoto}
+                    />
+                    <label
+                      htmlFor="upload-foto-btn"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded flex-shrink-0 cursor-pointer transition-all ${
+                        isUploadingPhoto
+                          ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                          : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-sky-700 shadow-sm"
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      {isUploadingPhoto ? "Mengunggah..." : formData.foto ? "Perbarui Foto" : "Pilih Foto"}
+                    </label>
+                  </div>
+                  {uploadError && <p className="text-[10px] text-red-500 font-medium">⚠️ {uploadError}</p>}
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {/* Kategori */}

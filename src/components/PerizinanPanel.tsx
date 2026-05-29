@@ -479,7 +479,11 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-base">{student.jenis_kelamin === "P" ? "🧕" : "👳"}</span>
+                            {student.foto ? (
+                              <img src={student.foto} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <span className="text-base">{student.jenis_kelamin === "P" ? "🧕" : "👳"}</span>
+                            )}
                             <div className="min-w-0">
                               <span className="block font-bold truncate text-slate-800 leading-tight">{student.nama_lengkap}</span>
                               <span className="text-[10px] text-slate-400 truncate block mt-0.5">{student.kategori} | NIK: {student.nik}</span>

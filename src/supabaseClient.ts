@@ -54,6 +54,7 @@ export interface SantriData {
   status?: "Aktif" | "Sakit" | "Pulang";
   jenis_kelamin?: "L" | "P";
   nfc_id?: string;
+  foto?: string;
 }
 
 /**
@@ -97,5 +98,6 @@ export function formatSantriData(s: SantriData): SantriData {
     status: s.status || "Aktif",
     jenis_kelamin: s.jenis_kelamin || "L",
     nfc_id: s.nfc_id || "",
+    foto: s.foto || "",
   };
 }

@@ -541,6 +541,7 @@ export default function App() {
         kelas_pengajian: formattedData.kelas_pengajian || "",
         kelas_sekolah: formattedData.kelas_sekolah || "",
         jenis_kelamin: formattedData.jenis_kelamin || "L",
+        foto: formattedData.foto || "",
       };
 
       if (data.kategori !== "Reguler") {

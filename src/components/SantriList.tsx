@@ -458,7 +458,9 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
                               ? "bg-rose-100/70 border border-rose-200 text-rose-500" 
                               : "bg-sky-100/70 border border-sky-200 text-sky-500"
                           }`}>
-                            {studentGender === "P" ? (
+                            {s.foto ? (
+                              <img src={s.foto} alt="" className="w-full h-full object-cover" />
+                            ) : studentGender === "P" ? (
                               <span className="text-base filter saturate-100 drop-shadow">🧕</span>
                             ) : (
                               <span className="text-base filter saturate-100 drop-shadow">👳</span>
@@ -759,9 +761,13 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
                             {/* Photo (Red background for authentic Indonesian passphoto aspect) */}
                             <div className="flex flex-col items-center gap-1 shrink-0 self-center md:self-start">
                               <div className="w-[110px] h-[145px] bg-[#c22026] rounded border border-gray-300 shadow-sm flex items-center justify-center overflow-hidden relative">
-                                <span className="text-5xl filter saturate-75 drop-shadow-md select-none">
-                                  {isFemale ? "🧕" : "👳"}
-                                </span>
+                                {selectedStudent.foto ? (
+                                  <img src={selectedStudent.foto} alt="Foto Santri" className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-5xl filter saturate-75 drop-shadow-md select-none">
+                                    {isFemale ? "🧕" : "👳"}
+                                  </span>
+                                )}
                                 <div className="absolute inset-x-0 bottom-0 bg-black/40 text-[7px] text-white py-1 font-bold tracking-widest text-center uppercase">
                                   PASFOTO
                                 </div>
@@ -890,9 +896,13 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
                         {/* Portrait Placeholder */}
                         <div className="col-span-4 flex flex-col items-center space-y-1.5 pt-1">
                           <div className="w-28 h-36 bg-gray-50 border-2 border-sky-700/25 rounded-md flex flex-col items-center justify-center text-center p-3 relative overflow-hidden group/pic">
-                            <span className="text-3xl filter saturate-50">
-                              {(selectedStudent.jenis_kelamin || inferGender(selectedStudent.nama_lengkap)) === "P" ? "🧕" : "👳"}
-                            </span>
+                            {selectedStudent.foto ? (
+                              <img src={selectedStudent.foto} alt="Foto Santri" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-3xl filter saturate-50">
+                                {(selectedStudent.jenis_kelamin || inferGender(selectedStudent.nama_lengkap)) === "P" ? "🧕" : "👳"}
+                              </span>
+                            )}
                             <div className="absolute inset-x-0 bottom-0 py-1 bg-sky-700/90 text-[8px] text-sky-100 font-black tracking-wider uppercase">
                               STUDENT
                             </div>

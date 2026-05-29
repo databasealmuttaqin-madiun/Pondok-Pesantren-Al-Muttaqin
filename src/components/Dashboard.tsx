@@ -169,9 +169,13 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
                 {recentStudents.map((s) => (
                   <div key={s.id || s.nik} className="py-2.5 flex items-center justify-between gap-3 group/item">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-slate-50 border border-slate-150 flex items-center justify-center font-bold text-[10px] text-slate-600 group-hover/item:bg-sky-50 group-hover/item:text-sky-600 transition-colors">
-                        {s.nama_lengkap.split(" ").slice(0, 2).map((w) => w[0]).join("")}
-                      </div>
+                      {s.foto ? (
+                        <img src={s.foto} alt="" className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-150" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-slate-50 border border-slate-150 flex items-center justify-center font-bold text-[10px] text-slate-600 group-hover/item:bg-sky-50 group-hover/item:text-sky-600 transition-colors shrink-0">
+                          {s.nama_lengkap.split(" ").slice(0, 2).map((w) => w[0]).join("")}
+                        </div>
+                      )}
                       <div>
                         <h4 className="font-semibold text-xs text-slate-800 group-hover/item:text-sky-900 truncate max-w-[150px] md:max-w-[240px]">
                           {s.nama_lengkap}
