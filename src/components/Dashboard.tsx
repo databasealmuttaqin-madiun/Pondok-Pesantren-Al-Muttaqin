@@ -6,9 +6,11 @@ interface DashboardProps {
   students: SantriData[];
   onNavigateToForm: () => void;
   onNavigateToList: () => void;
+  isDarkMode: boolean;
+  setIsDarkMode: (val: boolean) => void;
 }
 
-export default function Dashboard({ students, onNavigateToForm, onNavigateToList }: DashboardProps) {
+export default function Dashboard({ students, onNavigateToForm, onNavigateToList, isDarkMode, setIsDarkMode }: DashboardProps) {
   // Compute basic metrics
   const totalCount = students.length;
   const smpCount = students.filter((s) => s.kategori === "SMP").length;

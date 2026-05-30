@@ -136,8 +136,12 @@ export default function RegistrationForm({
 
   // Real-time Validation Helper
   const validateField = (name: keyof SantriData, value: string, category: string): string => {
-    if (!value && name !== "nisn" && name !== "npsn") {
-      return "Wajib diisi";
+    const isRequired = name === "kategori" || name === "jenis_kelamin" || name === "nama_lengkap";
+    if (!value) {
+      if (isRequired) {
+        return "Wajib diisi";
+      }
+      return "";
     }
 
     if (name === "nik") {
@@ -147,12 +151,10 @@ export default function RegistrationForm({
 
     if (name === "rt" || name === "rw") {
       if (!/^\d+$/.test(value)) return "Harus berupa angka";
-      if (value.length < 1) return "Wajib diisi";
       if (value.length > 3) return "Maksimal 3 angka";
     }
 
     if (name === "nisn" && (category === "SMP" || category === "SMA")) {
-      if (!value) return "NISN wajib diisi untuk kategori SMP/SMA";
       if (!/^\d+$/.test(value)) return "NISN harus berupa angka";
     }
 
@@ -210,7 +212,7 @@ export default function RegistrationForm({
 
     if (currentStep === 1) {
       // Step 1: Personal Data
-      const fields: (keyof SantriData)[] = ["kategori", "nama_lengkap", "nama_panggilan", "nik", "tempat_lahir", "tanggal_lahir"];
+      const fields: (keyof SantriData)[] = ["kategori", "jenis_kelamin", "nama_lengkap", "nama_panggilan", "nik", "tempat_lahir", "tanggal_lahir"];
       if (formData.kategori === "SMP" || formData.kategori === "SMA") {
         fields.push("nisn");
       }
@@ -531,7 +533,7 @@ export default function RegistrationForm({
                 {/* NIK */}
                 <div className="space-y-1">
                   <label htmlFor="nik" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                    <span>NIK (16 Angka) <span className="text-red-500">*</span></span>
+                    <span>NIK (16 Angka)</span>
                   </label>
                   <input
                     type="text"
@@ -580,7 +582,7 @@ export default function RegistrationForm({
                 {/* Nama Panggilan */}
                 <div className="space-y-1">
                   <label htmlFor="nama_panggilan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Nama Panggilan <span className="text-red-500">*</span>
+                    Nama Panggilan
                   </label>
                   <input
                     type="text"
@@ -605,7 +607,7 @@ export default function RegistrationForm({
                 {formData.kategori !== "Reguler" ? (
                   <div className="space-y-1">
                     <label htmlFor="nisn" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                      <span>NISN <span className="text-red-500">*</span></span>
+                      <span>NISN</span>
                     </label>
                     <input
                       type="text"
@@ -640,7 +642,7 @@ export default function RegistrationForm({
                 {/* Tempat Lahir */}
                 <div className="space-y-1">
                   <label htmlFor="tempat_lahir" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Tempat Lahir <span className="text-red-500">*</span>
+                    Tempat Lahir
                   </label>
                   <input
                     type="text"
@@ -664,7 +666,7 @@ export default function RegistrationForm({
                 {/* Tanggal Lahir */}
                 <div className="space-y-1">
                   <label htmlFor="tanggal_lahir" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Tanggal Lahir <span className="text-red-500">*</span>
+                    Tanggal Lahir
                   </label>
                   <input
                     type="date"
@@ -704,7 +706,7 @@ export default function RegistrationForm({
                 {/* Alamat (Jalan / Dusun) */}
                 <div className="md:col-span-3 space-y-1">
                   <label htmlFor="alamat" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Alamat Lengkap (Jalan / Dusun) <span className="text-red-500">*</span>
+                    Alamat Lengkap (Jalan / Dusun)
                   </label>
                   <input
                     type="text"
@@ -728,7 +730,7 @@ export default function RegistrationForm({
                 {/* RT */}
                 <div className="space-y-1">
                   <label htmlFor="rt" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                    <span>RT <span className="text-red-500">*</span></span>
+                    <span>RT</span>
                   </label>
                   <input
                     type="text"
@@ -753,7 +755,7 @@ export default function RegistrationForm({
                 {/* RW */}
                 <div className="space-y-1">
                   <label htmlFor="rw" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                    <span>RW <span className="text-red-500">*</span></span>
+                    <span>RW</span>
                   </label>
                   <input
                     type="text"
@@ -778,7 +780,7 @@ export default function RegistrationForm({
                 {/* Desa / Kelurahan */}
                 <div className="space-y-1">
                   <label htmlFor="desa_kelurahan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Desa / Kelurahan <span className="text-red-500">*</span>
+                    Desa / Kelurahan
                   </label>
                   <input
                     type="text"
@@ -802,7 +804,7 @@ export default function RegistrationForm({
                 {/* Kecamatan */}
                 <div className="space-y-1">
                   <label htmlFor="kecamatan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Kecamatan <span className="text-red-500">*</span>
+                    Kecamatan
                   </label>
                   <input
                     type="text"
@@ -826,7 +828,7 @@ export default function RegistrationForm({
                 {/* Kabupaten / Kota */}
                 <div className="space-y-1">
                   <label htmlFor="kabupaten_kota" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Kabupaten / Kota <span className="text-red-500">*</span>
+                    Kabupaten / Kota
                   </label>
                   <input
                     type="text"
@@ -850,7 +852,7 @@ export default function RegistrationForm({
                 {/* Provinsi */}
                 <div className="space-y-1">
                   <label htmlFor="provinsi" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Provinsi <span className="text-red-500">*</span>
+                    Provinsi
                   </label>
                   <select
                     id="provinsi"
@@ -891,7 +893,7 @@ export default function RegistrationForm({
                   {/* Nama Ayah */}
                   <div className="space-y-1">
                     <label htmlFor="nama_ayah" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      Nama Lengkap Ayah Kandung <span className="text-red-500">*</span>
+                      Nama Lengkap Ayah Kandung
                     </label>
                     <input
                       type="text"
@@ -915,7 +917,7 @@ export default function RegistrationForm({
                   {/* Nama Ibu */}
                   <div className="space-y-1">
                     <label htmlFor="nama_ibu" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      Nama Lengkap Ibu Kandung <span className="text-red-500">*</span>
+                      Nama Lengkap Ibu Kandung
                     </label>
                     <input
                       type="text"
@@ -948,7 +950,7 @@ export default function RegistrationForm({
                   {/* Kelompok Sambung */}
                   <div className="space-y-1">
                     <label htmlFor="kelompok_sambung" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      Kelompok Sambung <span className="text-red-500">*</span>
+                      Kelompok Sambung
                     </label>
                     <input
                       type="text"
@@ -972,7 +974,7 @@ export default function RegistrationForm({
                   {/* Desa Sambung */}
                   <div className="space-y-1">
                     <label htmlFor="desa_sambung" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      Desa Sambung <span className="text-red-500">*</span>
+                      Desa Sambung
                     </label>
                     <input
                       type="text"
@@ -996,7 +998,7 @@ export default function RegistrationForm({
                   {/* Daerah */}
                   <div className="space-y-1">
                     <label htmlFor="daerah" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      Daerah <span className="text-red-500">*</span>
+                      Daerah
                     </label>
                     <input
                       type="text"

@@ -8,7 +8,9 @@ import DatabaseSetupHelper from "./components/DatabaseSetupHelper";
 import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils, UserCheck } from "lucide-react";
+import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint } from "lucide-react";
+import NfcRegisterPanel from "./components/NfcRegisterPanel";
 
 const DEMO_SANTRI: SantriData[] = [
   {
@@ -128,7 +130,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "presensi_sholat" | "presensi_doa_malam" | "presensi_makan" | "perizinan">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc">("dashboard");
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem("sidebar_collapsed");
@@ -167,7 +169,8 @@ export default function App() {
   const hydrateWithAllStatusSources = (
     list: SantriData[],
     cloudStatusMap?: Record<string, "Aktif" | "Sakit" | "Pulang">,
-    cloudPlottingMap?: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>
+    cloudPlottingMap?: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>,
+    cloudNfcMap?: Record<string, string>
   ): SantriData[] => {
     const savedStatusMap = JSON.parse(localStorage.getItem("santri_status_map") || "{}");
     const savedMetadataMap = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
@@ -185,12 +188,16 @@ export default function App() {
       const cloudPlot = cloudPlottingMap ? cloudPlottingMap[nameKey] : null;
       const localPlot = savedMetadataMap[s.nik] || {};
       
+      // NFC Mapping override
+      const cloudNfcId = cloudNfcMap ? cloudNfcMap[nameKey] : null;
+      
       return {
         ...formatted,
         status: cloudStatus || localStatus || formatted.status || "Aktif",
         kamar: (cloudPlot?.kamar !== undefined ? cloudPlot.kamar : (localPlot.kamar !== undefined ? localPlot.kamar : formatted.kamar)) || "",
         kelas_pengajian: (cloudPlot?.kelas_pengajian !== undefined ? cloudPlot.kelas_pengajian : (localPlot.kelas_pengajian !== undefined ? localPlot.kelas_pengajian : formatted.kelas_pengajian)) || "",
         kelas_sekolah: (cloudPlot?.kelas_sekolah !== undefined ? cloudPlot.kelas_sekolah : (localPlot.kelas_sekolah !== undefined ? localPlot.kelas_sekolah : formatted.kelas_sekolah)) || "",
+        nfc_id: cloudNfcId || formatted.nfc_id || "",
       };
     });
   };
@@ -494,7 +501,25 @@ export default function App() {
           console.warn("Gagal memuat master kelas sekolah dari plotting:", err);
         }
 
-        const formattedList = hydrateWithAllStatusSources(data || [], cloudStatusMap, cloudPlottingMap);
+        // 7. Load NFC card mapping from 'nfc' table
+        let cloudNfcMap: Record<string, string> = {};
+        try {
+          const { data: dbNfc, error: nfcErr } = await supabase
+            .from("nfc")
+            .select("nama, serial_number");
+          
+          if (!nfcErr && dbNfc) {
+            dbNfc.forEach((row) => {
+              if (row.nama && row.serial_number) {
+                cloudNfcMap[row.nama.trim().toLowerCase()] = String(row.serial_number).trim();
+              }
+            });
+          }
+        } catch (err) {
+          console.warn("Gagal memuat master data NFC dari tabel nfc:", err);
+        }
+
+        const formattedList = hydrateWithAllStatusSources(data || [], cloudStatusMap, cloudPlottingMap, cloudNfcMap);
         setStudents(formattedList);
         // Also save to localStorage as a background backup!
         localStorage.setItem("santri_local_backup", JSON.stringify(formattedList));
@@ -561,6 +586,7 @@ export default function App() {
         kelas_sekolah: formattedData.kelas_sekolah || "",
         jenis_kelamin: formattedData.jenis_kelamin || "L",
         foto: formattedData.foto || "",
+        nfc_id: formattedData.nfc_id || "",
       };
 
       if (data.kategori !== "Reguler") {
@@ -733,6 +759,83 @@ export default function App() {
     }
   };
 
+  // Update students NFC Card ID
+  const handleUpdateStudentNfc = async (studentId: number, nfcId: string | null): Promise<boolean> => {
+    // Update students immediately in memory for real-time responsiveness
+    setStudents((prev) =>
+      prev.map((s) => (s.id === studentId ? { ...s, nfc_id: nfcId || "" } : s))
+    );
+
+    // Save locally
+    const currentCached = localStorage.getItem("santri_data");
+    if (currentCached) {
+      try {
+        const parsed = JSON.parse(currentCached);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.map((s: any) => (s.id === studentId ? { ...s, nfc_id: nfcId || "" } : s));
+          localStorage.setItem("santri_data", JSON.stringify(updated));
+        }
+      } catch (err) {
+        console.warn("Local storage update parse error:", err);
+      }
+    }
+
+    if (dbStatus === "connected") {
+      try {
+        const targetStudent = students.find((s) => s.id === studentId);
+        if (targetStudent) {
+          const studentName = targetStudent.nama_lengkap.trim();
+
+          // 1. Delete any existing rows in 'nfc' table with this student's name (nama)
+          await supabase
+            .from("nfc")
+            .delete()
+            .eq("nama", studentName);
+
+          // 2. Delete any existing rows in 'nfc' table with this serial number (serial_number) to prevent duplicates
+          if (nfcId && nfcId.trim() !== "") {
+            await supabase
+              .from("nfc")
+              .delete()
+              .eq("serial_number", nfcId.trim());
+
+            // 3. Insert new row with the updated student mapping
+            const { error: insertErr } = await supabase
+              .from("nfc")
+              .insert([
+                {
+                  nama: studentName,
+                  serial_number: nfcId.trim()
+                }
+              ]);
+            if (insertErr) {
+              console.warn("Gagal meregistrasikan ke tabel nfc:", insertErr.message);
+            }
+          }
+        }
+
+        // 4. Update the standard 'nfc_id' in 'santri' table
+        const { error } = await supabase
+          .from(TABLE_NAME)
+          .update({ nfc_id: nfcId || "" })
+          .eq("id", studentId);
+
+        if (error) {
+          triggerNotification(`Gagal menyimpan ke database server: ${error.message}`, "error");
+          return false;
+        }
+        triggerNotification(`Berhasil memperbarui data kartu NFC siswa!`, "success");
+        return true;
+      } catch (e: any) {
+        triggerNotification(`Gagal terhubung ke database: ${e.message}`, "error");
+        return false;
+      }
+    } else {
+      triggerNotification(`Tersimpan secara lokal (offline)!`, "success");
+      return true;
+    }
+  };
+
   // Delete a Santri
   const handleDeleteStudent = async (id: number) => {
     try {
@@ -785,11 +888,20 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return <LoginForm onSuccess={(user) => setCurrentUser(user)} />;
+    return (
+      <LoginForm 
+        onSuccess={(user) => setCurrentUser(user)} 
+        isDarkMode={isDarkMode} 
+        setIsDarkMode={setIsDarkMode} 
+      />
+    );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 text-slate-900 font-sans overflow-hidden select-none" id="boarding_school_app">
+    <div className="h-screen flex flex-col bg-[#f3f6fc] dark:bg-[#080914] text-slate-800 dark:text-slate-100 font-sans overflow-hidden select-none transition-colors duration-300 relative z-10" id="boarding_school_app">
+      
+      {/* 0. FLOATING COSMIC BACKGROUND GRADIENTS & SHAPES */}
+      <BackgroundDecorations isDarkMode={isDarkMode} />
       
       {/* 1. TOP FLOATING NOTIFICATION BANNER */}
       {notification && (
@@ -810,9 +922,9 @@ export default function App() {
       )}
 
       {/* 2. HEADER */}
-      <header className="h-14 bg-[#91d1fa] text-[#041e49] flex items-center justify-between px-6 shrink-0 shadow-sm border-b border-[#73baeb]/60 z-40 select-none">
+      <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex items-center justify-between px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-white/50 dark:bg-black/30 rounded-lg flex items-center justify-center overflow-hidden border border-[#041e49]/15 shadow-sm">
+          <div className="w-9 h-9 bg-white/50 dark:bg-black/30 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200/50 dark:border-slate-800 shadow-sm">
             <img
               src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
               alt="Logo Pondok"
@@ -821,18 +933,18 @@ export default function App() {
             />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-sm md:text-base font-bold tracking-tight uppercase leading-none text-[#041e49]">Pondok Pesantren Al-Muttaqin</h1>
-            <span className="text-[9px] text-[#041e49]/85 tracking-wider font-mono mt-0.5 uppercase leading-none">Kota Madiun</span>
+            <h1 className="text-sm md:text-base font-bold tracking-tight uppercase leading-none text-slate-800 dark:text-slate-100">Pondok Pesantren Al-Muttaqin</h1>
+            <span className="text-[14px-small] text-slate-500 dark:text-slate-400 font-semibold tracking-wider font-mono mt-0.5 uppercase leading-none text-[9px]">Kota Madiun</span>
           </div>
         </div>
 
         {/* Administrator Profile Info & Logout */}
-        <div className="flex items-center gap-3.5 text-[#041e49]">
+        <div className="flex items-center gap-3.5 text-[#041e49] dark:text-slate-100">
           
           {/* Day/Night Mode Toggle selector switch */}
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className="w-10 h-10 rounded-xl relative overflow-hidden flex items-center justify-center bg-white/20 hover:bg-white/35 active:scale-95 transition-all outline-none border-0 cursor-pointer shadow-sm group"
+            className="w-10 h-10 rounded-xl relative overflow-hidden flex items-center justify-center bg-white/20 dark:bg-slate-805 hover:bg-white/35 dark:hover:bg-slate-800 active:scale-95 transition-all outline-none border-0 cursor-pointer shadow-sm group"
             title={isDarkMode ? "Aktifkan Mode Siang" : "Aktifkan Mode Malam"}
             id="theme-switcher-toggle"
           >
@@ -853,7 +965,7 @@ export default function App() {
               setCurrentUser(null);
               triggerNotification("Berhasil keluar dari sesi admin", "warning");
             }}
-            className="px-3 py-1 bg-red-650 hover:bg-red-700 text-white font-extrabold text-[10px] rounded-lg tracking-wide shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 border border-red-800"
+            className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 dark:bg-rose-700 dark:hover:bg-rose-800 text-white font-extrabold text-[11px] rounded-lg tracking-wide shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 border border-red-700 dark:border-rose-900"
           >
             <span>LOGOUT</span>
           </button>
@@ -865,18 +977,18 @@ export default function App() {
         
         {/* Navigation Sidebar (Desktop view) */}
         <aside 
-          className={`${sidebarCollapsed ? "w-16" : "w-60"} bg-[#f0f4f9] border-r border-[#dee4ec] flex flex-col p-0 shrink-0 hidden md:flex transition-all duration-300 overflow-hidden shadow-sm`} 
+          className={`${sidebarCollapsed ? "w-16" : "w-60"} bg-[#f0f4f9] dark:bg-[#0b0d1a] border-r border-[#dee4ec] dark:border-slate-800 flex flex-col p-0 shrink-0 hidden md:flex transition-all duration-300 overflow-hidden shadow-sm`} 
           id="desktop-sidebar"
         >
           {/* Header area of Sidebar with Hamburger Toggle Button ☰ */}
-          <div className={`p-3 bg-[#e9eef6]/50 flex ${sidebarCollapsed ? "justify-center" : "justify-end px-5"} border-b border-[#dee4ec]/60 shrink-0`}>
+          <div className={`p-3 bg-[#e9eef6]/50 dark:bg-[#0e1222]/85 flex ${sidebarCollapsed ? "justify-center" : "justify-end px-5"} border-b border-[#dee4ec]/60 dark:border-slate-800 shrink-0`}>
             <button
               onClick={() => {
                 const nextVal = !sidebarCollapsed;
                 setSidebarCollapsed(nextVal);
                 localStorage.setItem("sidebar_collapsed", String(nextVal));
               }}
-              className="p-1.5 bg-white border border-[#dee4ec] shadow-sm rounded-lg hover:bg-[#e1e9f5] text-[#041e49] transition-all cursor-pointer w-8 h-8 flex items-center justify-center select-none"
+              className="p-1.5 bg-white dark:bg-[#1a233d] border border-[#dee4ec] dark:border-slate-800 shadow-sm rounded-lg hover:bg-[#e1e9f5] dark:hover:bg-[#151930] text-[#041e49] dark:text-slate-100 transition-all cursor-pointer w-8 h-8 flex items-center justify-center select-none"
               title={sidebarCollapsed ? "Buka Sidebar" : "Sembunyikan Sidebar"}
             >
               <span className="text-sm font-black">☰</span>
@@ -886,18 +998,18 @@ export default function App() {
           {/* Navigation links - Akkhor custom layout with chevrons on right */}
           <nav className="flex-1 py-3 text-xs select-none">
             {!sidebarCollapsed && (
-              <div className="text-[10px] font-black text-[#5f6368] uppercase tracking-widest my-2 px-6">Menu Utama</div>
+              <div className="text-[10px] font-black text-[#5f6368] dark:text-slate-400 uppercase tracking-widest my-2 px-6">Menu Utama</div>
             )}
             <div className="flex flex-col">
               {[
                 { id: "dashboard", label: "Dasbor Ringkasan", icon: LayoutDashboard },
                 { id: "list", label: "Database Santri", icon: TableProperties },
                 { id: "perizinan", label: "Perizinan Santri", icon: UserCheck },
-                { id: "presensi_sholat", label: "Presensi Sholat", icon: ClipboardList },
-                { id: "presensi_doa_malam", label: "Presensi Doa Malam", icon: Moon },
-                { id: "presensi_makan", label: "Presensi Makan", icon: Utensils },
+                { id: "absensi", label: "Absensi Santri", icon: ClipboardList },
+                { id: "manajemen_sesi", label: "Manajemen Sesi", icon: Clock },
                 { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", icon: UserPlus },
                 { id: "management", label: "Plotting Siswa", icon: Sliders },
+                { id: "nfc", label: "Registrasi NFC", icon: Fingerprint },
                 { id: "setup", label: "Koneksi & Panduan", icon: Database },
               ].map((tab) => {
                 const TabIcon = tab.icon;
@@ -912,17 +1024,17 @@ export default function App() {
                       title={sidebarCollapsed ? tab.label : undefined}
                       className={`w-full flex items-center transition-all ${
                         sidebarCollapsed 
-                          ? "justify-center py-4 px-0 border-b border-[#dee4ec]/40" 
-                          : "justify-between px-6 py-3.5 border-b border-[#dee4ec]/40"
+                          ? "justify-center py-4 px-0 border-b border-[#dee4ec]/40 dark:border-slate-800" 
+                          : "justify-between px-6 py-3.5 border-b border-[#dee4ec]/40 dark:border-slate-850"
                       } ${
                         isActive
-                          ? "bg-[#c2e7ff] text-[#001d35] font-bold"
-                          : "text-[#444746] hover:bg-[#e1e9f5]/60 hover:text-slate-900"
+                          ? "bg-[#c2e7ff] dark:bg-[#1a233d] text-[#001d35] dark:text-[#38bdf8] font-bold"
+                          : "text-[#444746] dark:text-slate-400 hover:bg-[#e1e9f5]/60 dark:hover:bg-[#151930] hover:text-slate-900 dark:hover:text-white"
                       }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
                         <TabIcon className={`w-4 h-4 shrink-0 transition-colors ${
-                          isActive ? "text-[#001d35] font-bold" : "text-slate-500"
+                          isActive ? "text-[#001d35] dark:text-[#38bdf8] font-bold" : "text-slate-500 dark:text-slate-400"
                         }`} />
                         {!sidebarCollapsed && <span className="truncate tracking-wide text-xs">{tab.label}</span>}
                       </div>
@@ -930,7 +1042,7 @@ export default function App() {
                       {/* Akkhor-style chevron on non-collapsed tabs */}
                       {!sidebarCollapsed && (
                         <ChevronRight className={`w-3.5 h-3.5 transition-all ${
-                          isActive ? "text-[#001d35] translate-x-0.5" : "text-slate-400 opacity-60"
+                          isActive ? "text-[#001d35] dark:text-[#38bdf8] translate-x-0.5" : "text-slate-400 dark:text-slate-650 opacity-60"
                         }`} />
                       )}
                     </button>
@@ -941,14 +1053,14 @@ export default function App() {
           </nav>
 
           {/* Bottom section with sync status inside Akkhor-style container */}
-          <div className="p-4 border-t border-[#dee4ec] shrink-0">
+          <div className="p-4 border-t border-[#dee4ec] dark:border-slate-850 shrink-0">
             {!sidebarCollapsed ? (
-              <div className="p-3 bg-white/60 border border-slate-200/85 rounded-2xl shadow-sm">
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <div className="p-3 bg-white/60 dark:bg-[#151930]/65 border border-slate-200/85 dark:border-slate-800 rounded-2xl shadow-sm">
+                <div className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${dbStatus === "connected" ? "bg-emerald-500" : "bg-amber-400 animate-pulse"}`}></span>
                   SINKRONISASI
                 </div>
-                <div className="text-[10px] font-semibold font-mono text-[#444746] leading-tight select-all">
+                <div className="text-[10px] font-semibold font-mono text-[#444746] dark:text-slate-350 leading-tight select-all">
                   {dbStatus === "connected" ? "live_supabase_active" : "local_persisted_storage"}
                 </div>
               </div>
@@ -957,7 +1069,7 @@ export default function App() {
                 className="flex justify-center" 
                 title={dbStatus === "connected" ? "DB Status: Terhubung Online" : "DB Status: Lokal Backup"}
               >
-                <span className={`w-3 h-3 rounded-full border-2 border-white shadow-sm ${dbStatus === "connected" ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`}></span>
+                <span className={`w-3 h-3 rounded-full border-2 border-white dark:border-slate-800 shadow-sm ${dbStatus === "connected" ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`}></span>
               </div>
             )}
           </div>
@@ -994,6 +1106,8 @@ export default function App() {
                   setActiveTab("form");
                 }}
                 onNavigateToList={() => setActiveTab("list")}
+                isDarkMode={isDarkMode}
+                setIsDarkMode={setIsDarkMode}
               />
             )}
 
@@ -1035,21 +1149,15 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "presensi_sholat" && (
+            {activeTab === "absensi" && (
               <div className="w-full">
-                <PresensiPanel students={students} activeMenu="sholat" />
+                <PresensiPanel students={students} />
               </div>
             )}
 
-            {activeTab === "presensi_doa_malam" && (
+            {activeTab === "manajemen_sesi" && (
               <div className="w-full">
-                <PresensiPanel students={students} activeMenu="doa_malam" />
-              </div>
-            )}
-
-            {activeTab === "presensi_makan" && (
-              <div className="w-full">
-                <PresensiPanel students={students} activeMenu="makan" />
+                <ManajemenSesiPanel />
               </div>
             )}
 
@@ -1065,6 +1173,17 @@ export default function App() {
                   setSchoolClasses={setSchoolClasses}
                   metadataMap={metadataMap}
                   onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "nfc" && (
+              <div className="w-full">
+                <NfcRegisterPanel
+                  students={students}
+                  rooms={rooms}
+                  onUpdateNfc={handleUpdateStudentNfc}
+                  isDarkMode={isDarkMode}
                 />
               </div>
             )}
@@ -1086,16 +1205,16 @@ export default function App() {
         </section>
 
         {/* Navigation Bar (Mobile view) */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t border-slate-200 text-slate-600 flex overflow-x-auto whitespace-nowrap gap-1 px-2.5 py-1.5 select-none shadow-[0_-2px_10px_rgba(0,0,0,0.05)] scrollbar-none" id="mobile-navigation">
+        <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-[#111425] border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 flex overflow-x-auto whitespace-nowrap gap-1 px-2.5 py-1.5 select-none shadow-[0_-2px_10px_rgba(0,0,0,0.05)] scrollbar-none" id="mobile-navigation">
           {[
             { id: "dashboard", label: "Dasbor", icon: LayoutDashboard },
             { id: "list", label: "Database", icon: TableProperties },
             { id: "perizinan", label: "Izin", icon: UserCheck },
-            { id: "presensi_sholat", label: "Sholat", icon: ClipboardList },
-            { id: "presensi_doa_malam", label: "Doa", icon: Moon },
-            { id: "presensi_makan", label: "Makan", icon: Utensils },
+            { id: "absensi", label: "Absensi", icon: ClipboardList },
+            { id: "manajemen_sesi", label: "Sesi", icon: Clock },
             { id: "form", label: editingStudent ? "Edit" : "Daftar", icon: UserPlus },
             { id: "management", label: "Plotting", icon: Sliders },
+            { id: "nfc", label: "NFC", icon: Fingerprint },
             { id: "setup", label: "Cloud", icon: Database },
           ].map((tab) => {
             const TabIcon = tab.icon;
@@ -1108,7 +1227,7 @@ export default function App() {
                   setActiveTab(tab.id as any);
                 }}
                 className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[9px] font-bold tracking-tight transition-all shrink-0 min-w-[54px] ${
-                  isActive ? "text-sky-600 bg-sky-50 font-black font-extrabold" : "text-slate-500 hover:text-slate-900"
+                  isActive ? "text-sky-600 dark:text-[#38bdf8] bg-sky-50 dark:bg-[#1a233d] font-black font-extrabold" : "text-slate-500 dark:text-slate-450 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <TabIcon className="w-3.5 h-3.5" />
@@ -1121,6 +1240,74 @@ export default function App() {
 
 
 
+    </div>
+  );
+}
+
+// Gorgeous decorative mesh and tilted pill overlay layers for high-aesthetic light and dark modes
+function BackgroundDecorations({ isDarkMode }: { isDarkMode: boolean }) {
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden select-none z-0 opacity-75 dark:opacity-50">
+      {/* Dynamic gradient meshes based on theme */}
+      {isDarkMode ? (
+        <>
+          <div className="absolute top-[-15%] left-[-15%] w-[65%] h-[65%] rounded-full bg-blue-950/20 blur-[130px]" />
+          <div className="absolute bottom-[-15%] right-[-15%] w-[65%] h-[65%] rounded-full bg-indigo-950/25 blur-[130px]" />
+          <div className="absolute top-[40%] right-[20%] w-[45%] h-[45%] rounded-full bg-purple-950/15 blur-[120px]" />
+        </>
+      ) : (
+        <>
+          <div className="absolute top-[-15%] left-[-15%] w-[65%] h-[65%] rounded-full bg-[#ff7e30]/4 blur-[130px]" />
+          <div className="absolute bottom-[-15%] right-[-15%] w-[65%] h-[65%] rounded-full bg-[#6c8cff]/7 blur-[130px]" />
+          <div className="absolute top-[45%] right-[10%] w-[50%] h-[50%] rounded-full bg-purple-200/15 blur-[120px]" />
+        </>
+      )}
+
+      {/* Tilted capsules exactly matching design specification in the screenshots */}
+      {/* 1. Top left capsule */}
+      <div 
+        className={`absolute top-[12%] left-[8%] w-14 h-44 rounded-full rotate-[25deg] transition-all duration-700 border ${
+          isDarkMode 
+            ? "bg-gradient-to-b from-[#13172e]/20 to-transparent border-[#24294a]/30" 
+            : "bg-gradient-to-b from-white/40 to-transparent border-slate-200/40 shadow-[rgba(108,140,255,0.03)_0px_20px_40px_0px]"
+        }`}
+      />
+
+      {/* 2. Middle-left tilted long capsule */}
+      <div 
+        className={`absolute top-[35%] left-[-8%] w-24 h-80 rounded-full rotate-[15deg] transition-all duration-700 border ${
+          isDarkMode 
+            ? "bg-gradient-to-t from-[#1b1f3c]/15 to-transparent border-[#29305e]/25" 
+            : "bg-gradient-to-t from-[#6c8cff]/4 to-transparent border-[#6c8cff]/10 shadow-[rgba(108,140,255,0.04)_0px_25px_50px_-5px]"
+        }`}
+      />
+
+      {/* 3. Bottom left capsule */}
+      <div 
+        className={`absolute bottom-[10%] left-[10%] w-16 h-48 rounded-full rotate-[25deg] transition-all duration-700 border ${
+          isDarkMode 
+            ? "bg-gradient-to-tr from-[#141830]/25 to-transparent border-[#24294d]/25" 
+            : "bg-gradient-to-tr from-[#ff4b4b]/2 to-transparent border-slate-200/25"
+        }`}
+      />
+
+      {/* 4. Top right capsule */}
+      <div 
+        className={`absolute top-[10%] right-[12%] w-18 h-40 rounded-full rotate-[35deg] transition-all duration-700 border ${
+          isDarkMode 
+            ? "bg-gradient-to-tr from-[#171a36]/20 to-transparent border-[#2a2f5a]/25" 
+            : "bg-gradient-to-tr from-[#ffa42a]/2 to-transparent border-slate-200/25"
+        }`}
+      />
+
+      {/* 5. Bottom right oblique capsule */}
+      <div 
+        className={`absolute bottom-[10%] right-[3%] w-24 h-72 rounded-full rotate-[20deg] transition-all duration-700 border ${
+          isDarkMode 
+            ? "bg-gradient-to-b from-[#111428]/30 to-transparent border-[#1f2444]/25" 
+            : "bg-gradient-to-b from-[#6c8cff]/4 to-[#ff7e30]/2 border-slate-200/25 shadow-[rgba(148,163,184,0.03)_0px_30px_60px_-10px]"
+        }`}
+      />
     </div>
   );
 }
