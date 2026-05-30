@@ -65,3 +65,240 @@ body {
   }
 }
 
+/* --- High-Fidelity Night Mode Override Rules --- */
+.dark body {
+  background-color: #070913 !important;
+  color: #eeeef5 !important;
+}
+
+/* Background overrides */
+.dark .bg-white {
+  background-color: #111425 !important;
+}
+
+.dark #boarding_school_app {
+  background-color: #070913 !important;
+  color: #eeeef5 !important;
+}
+
+.dark header {
+  background-color: #111425 !important;
+  color: #f1f5f9 !important;
+  border-color: #1e233d !important;
+}
+
+.dark header h1, 
+.dark header span, 
+.dark header div {
+  color: #e2e8f0 !important;
+}
+
+.dark aside {
+  background-color: #0b0d1a !important;
+  border-color: #1e233d !important;
+}
+
+.dark aside nav {
+  color: #94a3b8 !important;
+}
+
+.dark aside nav div {
+  color: #94a3b8 !important;
+}
+
+/* Active tab state in aside menu */
+.dark aside button.bg-\[\#c2e7ff\] {
+  background-color: #1a233d !important;
+  color: #38bdf8 !important;
+}
+
+.dark aside button.bg-\[\#c2e7ff\] * {
+  color: #38bdf8 !important;
+}
+
+.dark aside button:hover:not(.bg-\[\#c2e7ff\]) {
+  background-color: #151930 !important;
+  color: #ffffff !important;
+}
+
+.dark aside div.bg-white\/60 {
+  background-color: #151930 !important;
+  border-color: #1e233d !important;
+}
+
+/* Main section background */
+.dark #santri-sub-pages {
+  background-color: #070913 !important;
+}
+
+/* Borders */
+.dark .border,
+.dark .border-t,
+.dark .border-b,
+.dark .border-l,
+.dark .border-r,
+.dark .border-slate-200,
+.dark .border-slate-200\/60,
+.dark .border-slate-100,
+.dark .border-\[\#dee4ec\],
+.dark .border-\[\#dee4ec\]\/60,
+.dark .border-slate-300 {
+  border-color: #1e233d !important;
+}
+
+/* Cards & containers */
+.dark .bg-slate-50,
+.dark .bg-slate-100,
+.dark .bg-slate-100\/60,
+.dark .bg-\[\#f0f4f9\],
+.dark .bg-slate-50\/50,
+.dark .bg-slate-100\/50,
+.dark .bg-slate-50\/30 {
+  background-color: #0b0d1a !important;
+}
+
+.dark .shadow-sm {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Form input, select, textarea elements */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #0a0c16 !important;
+  border-color: #1e233d !important;
+  color: #f1f5f9 !important;
+}
+
+.dark input::placeholder,
+.dark select::placeholder,
+.dark textarea::placeholder {
+  color: #4b5563 !important;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2) !important;
+}
+
+/* Text coloring overrides */
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-slate-950,
+.dark .text-\[\#041e49\],
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .text-slate-400 {
+  color: #64748b !important;
+}
+
+/* Specific component elements inside dark mode */
+.dark .bg-emerald-50, .dark .bg-green-50 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: #34d399 !important;
+}
+
+.dark .text-emerald-800, .dark .text-emerald-900, .dark .text-green-800 {
+  color: #34d399 !important;
+}
+
+.dark .bg-red-50, .dark .bg-rose-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  color: #f87171 !important;
+}
+
+.dark .text-red-800, .dark .text-red-900, .dark .text-rose-800, .dark .text-rose-900 {
+  color: #f87171 !important;
+}
+
+.dark .bg-amber-50, .dark .bg-yellow-50 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+  color: #fbbf24 !important;
+}
+
+.dark .text-amber-800, .dark .text-amber-900, .dark .text-yellow-800 {
+  color: #fbbf25 !important;
+}
+
+.dark .bg-blue-50, .dark .bg-sky-50, .dark .bg-indigo-55, .dark .bg-sky-100 {
+  background-color: rgba(14, 165, 233, 0.1) !important;
+  color: #38bdf8 !important;
+}
+
+.dark .text-blue-850, .dark .text-sky-900, .dark .text-blue-800, .dark .text-indigo-800 {
+  color: #38bdf8 !important;
+}
+
+/* Modals & Popups & Slide-ins */
+.dark #dialog-backdrop,
+.dark .bg-black\/40,
+.dark .bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+}
+
+/* Tables */
+.dark th {
+  background-color: #0b0d1a !important;
+  color: #94a3b8 !important;
+  border-color: #1e233d !important;
+}
+
+.dark tr {
+  border-color: #1e233d !important;
+}
+
+.dark tr:hover td {
+  background-color: #151930/40 !important;
+}
+
+.dark td {
+  border-color: #1e233d !important;
+}
+
+.dark .divide-y > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1e233d !important;
+}
+
+/* Scrollbar adaptation for dark mode */
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(30, 35, 61, 0.8) !important;
+}
+
+.dark *:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+/* Mobile top header and bottom elements */
+.dark #mobile-navigation {
+  background-color: #111425 !important;
+  border-color: #1e233d !important;
+  box-shadow: 0 -2px 15px rgba(0,0,0,0.4) !important;
+}
+
+.dark #mobile-navigation button.text-sky-600 {
+  background-color: #151930 !important;
+  color: #38bdf8 !important;
+}
+
+.dark #mobile-navigation button:not(.text-sky-600) {
+  color: #94a3b8 !important;
+}
+
+.dark .bg-\[\#e9eef6\]\/50 {
+  background-color: #0e1222 !important;
+  border-color: #1e233d !important;
+}
+

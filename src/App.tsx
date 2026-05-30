@@ -114,6 +114,20 @@ export default function App() {
     const saved = localStorage.getItem("admin_user");
     return saved ? JSON.parse(saved) : null;
   });
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem("admin_theme") === "dark";
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("admin_theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("admin_theme", "light");
+    }
+  }, [isDarkMode]);
+
   const [activeTab, setActiveTab] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "presensi_sholat" | "presensi_doa_malam" | "presensi_makan" | "perizinan">("dashboard");
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -806,7 +820,21 @@ export default function App() {
         </div>
 
         {/* Administrator Profile Info & Logout */}
-        <div className="flex items-center gap-4 text-[#041e49]">
+        <div className="flex items-center gap-3.5 text-[#041e49]">
+          
+          {/* Day/Night Mode Toggle selector switch */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="w-10 h-10 rounded-xl relative overflow-hidden flex items-center justify-center bg-white/20 hover:bg-white/35 active:scale-95 transition-all outline-none border-0 cursor-pointer shadow-sm group"
+            title={isDarkMode ? "Aktifkan Mode Siang" : "Aktifkan Mode Malam"}
+            id="theme-switcher-toggle"
+          >
+            <div className="absolute inset-x-0 inset-y-0 transition-all duration-300 transform rounded-xl" />
+            <span className="text-base select-none z-10 transition-transform duration-300 group-hover:rotate-12">
+              {isDarkMode ? "☀️" : "🌙"}
+            </span>
+          </button>
+
           <div className="hidden sm:flex flex-col items-end">
             <span className="text-xs font-extrabold">{currentUser?.name}</span>
             <span className="text-[9px] font-mono tracking-wider opacity-80 uppercase font-black">Admin</span>
