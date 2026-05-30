@@ -44,8 +44,8 @@ function detectSession(timeStr: string, menuType: PresensiType): string {
 
     if (menuType === "sholat") {
       // Sesi Sholat sesuai custom schedule:
-      // Subuh: 04.00 - 05.00 (dialokasikan dari tengah malam s/d 08.15)
-      if (totalMinutes < 8 * 60 + 15) {
+      // Subuh: 04.00 - 10.00 (dialokasikan dari tengah malam s/d 10.00)
+      if (totalMinutes < 10 * 60) {
         return "subuh";
       }
       // Dzuhur: 11.30 - 12.30 (dialokasikan dari 08.15 s/d 13.40)
@@ -182,7 +182,7 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
 
   // Sessions configuration
   const sholatSessions: SessionInfo[] = [
-    { id: "subuh", label: "Subuh", time: "04.00 - 05.00", icon: "🌅" },
+    { id: "subuh", label: "Subuh", time: "04.00 - 10.00", icon: "🌅" },
     { id: "dzuhur", label: "Dzuhur", time: "11.30 - 12.30", icon: "☀️" },
     { id: "asar", label: "Asar", time: "14.50 - 15.30", icon: "🌤️" },
     { id: "maghrib", label: "Maghrib", time: "17.20 - 18.00", icon: "🌇" },
@@ -254,7 +254,7 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
     
     // Exact official sholat schedule limits requested by the user:
     const sessionRanges: { [key: string]: string } = {
-      subuh: "04.00 - 05.00",
+      subuh: "04.00 - 10.00",
       dzuhur: "11.30 - 12.30",
       asar: "14.50 - 15.30",
       maghrib: "17.20 - 18.00",
@@ -349,6 +349,7 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
 
   // State to track if Supabase Sync is active/working for presensi_santri
   const [supabaseSyncStatus, setSupabaseSyncStatus] = useState<"connected" | "error" | "loading" | "disabled">("loading");
+  const [supabaseErrorMsg, setSupabaseErrorMsg] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Synchronize dynamic attendance entries from Supabase
@@ -356,6 +357,7 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
     if (isSyncing) return;
     setIsSyncing(true);
     setSupabaseSyncStatus("loading");
+    setSupabaseErrorMsg(null);
 
     try {
       let fetchedRows: any[] = [];
@@ -366,11 +368,13 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
         const month = parseInt(dateParts[1], 10) - 1;
         const day = parseInt(dateParts[2], 10);
 
-        const localStart = new Date(year, month, day, 0, 0, 0, 0);
-        const localEnd = new Date(year, month, day, 23, 59, 59, 999);
+        // Broaden the ISO search window by 24 hours on both sides to accommodate any client/server timezone offsets,
+        // and filter exact local calendar match inside JS below.
+        const broadStart = new Date(year, month, day - 1, 0, 0, 0, 0);
+        const broadEnd = new Date(year, month, day + 1, 23, 59, 59, 999);
 
-        const startIso = localStart.toISOString();
-        const endIso = localEnd.toISOString();
+        const startIso = broadStart.toISOString();
+        const endIso = broadEnd.toISOString();
 
         const { data, error } = await supabase
           .from("absen_sholat")
@@ -384,19 +388,31 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
             console.info("Table 'absen_sholat' does not exist yet. Using local storage.");
           } else {
             setSupabaseSyncStatus("error");
+            setSupabaseErrorMsg(error.message);
             console.warn("Supabase fetch absen_sholat error:", error.message);
           }
           setIsSyncing(false);
           return;
         }
 
-        fetchedRows = (data || []).map((row: any) => ({
-          nama: row.nama,
-          sesi: row.sholat,
-          status: row.kehadiran === "alpha" ? "alpha" : row.kehadiran === "telat" ? "telat" : row.kehadiran,
-          tanggal: selectedDate,
-          presensi: "sholat"
-        }));
+        // Filter and map rows that match the target selectedDate in local user timezone
+        fetchedRows = (data || [])
+          .filter((row: any) => {
+            if (!row.created_at) return false;
+            const rowDateObj = new Date(row.created_at);
+            const y = rowDateObj.getFullYear();
+            const m = String(rowDateObj.getMonth() + 1).padStart(2, "0");
+            const d = String(rowDateObj.getDate()).padStart(2, "0");
+            const rowDateStr = `${y}-${m}-${d}`;
+            return rowDateStr === selectedDate;
+          })
+          .map((row: any) => ({
+            nama: row.nama,
+            sesi: row.sholat,
+            status: row.kehadiran === "alpha" ? "alpha" : row.kehadiran === "telat" ? "telat" : row.kehadiran,
+            tanggal: selectedDate,
+            presensi: "sholat"
+          }));
       } else {
         const formattedPresensi = activeMenu === "makan" ? "makan" : "doa_malam";
         const { data, error } = await supabase
@@ -590,8 +606,11 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
         }
       }
       setSupabaseSyncStatus("connected");
+      setSupabaseErrorMsg(null);
     } catch (err: any) {
       console.warn("Supabase Write Sync Fail:", err.message);
+      setSupabaseSyncStatus("error");
+      setSupabaseErrorMsg(err.message);
     }
   };
 
@@ -962,7 +981,7 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
 
       if (menuType === "sholat") {
         const passedIds: string[] = ["subuh"];
-        if (totalMinutes >= 8 * 60 + 15) {
+        if (totalMinutes >= 10 * 60) {
           passedIds.push("dzuhur");
         }
         if (totalMinutes >= 13 * 60 + 40) {
@@ -1103,6 +1122,48 @@ export default function PresensiPanel({ students, activeMenu }: PresensiPanelPro
           </p>
         </div>
       </div>
+
+      {supabaseSyncStatus === "error" && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-3xl p-5 md:p-6 space-y-4 shadow-sm" id="sync_error_alert">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl mt-0.5">⚠️</span>
+            <div className="space-y-1">
+              <h4 className="font-extrabold text-base text-rose-800">
+                Peringatan Sinkronisasi Supabase (Izin RLS Terkunci)
+              </h4>
+              <p className="text-xs text-rose-700 font-medium leading-relaxed">
+                Presensi saat ini tersimpan dengan aman secara <strong className="font-bold">LOKAL (Offline di Browser)</strong>, namun gagal dikirim ke tabel <code className="bg-white px-1.5 py-0.5 rounded border border-rose-100 font-mono text-[11px] font-bold">absen_sholat</code> di Supabase. Hal ini biasanya dikarenakan kebijakan Row Level Security (RLS) di Supabase yang belum dikonfigurasi / belum diizinkan untuk diakses publik.
+              </p>
+              {supabaseErrorMsg && (
+                <div className="mt-2 text-[11px] font-mono bg-[#fff5f5] p-2.5 rounded-xl border border-rose-100 text-rose-600 select-all overflow-x-auto">
+                  Detail Error: {supabaseErrorMsg}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-rose-200/60 pt-4 space-y-3">
+            <p className="text-xs font-bold text-rose-800">
+              💡 Solusi Instan untuk Pemilik Database Supabase:
+            </p>
+            <p className="text-[11px] text-rose-700 leading-relaxed font-semibold">
+              Buka <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="underline text-blue-600 hover:text-blue-800">Supabase Dashboard</a>, pilih proyek Anda, masuk ke menu <strong className="font-bold">SQL Editor</strong> di bilah samping kiri, buat query baru, tempel kode SQL berikut, lalu klik <kbd className="bg-slate-100 px-1 py-0.5 rounded shadow text-slate-800 font-bold">Run</kbd>:
+            </p>
+            <div className="font-mono text-[11px] bg-[#2d3748] text-emerald-400 p-4 rounded-xl shadow-inner select-all whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-56">
+{`-- 1. Pastikan Row Level Security (RLS) aktif pada tabel absen_sholat
+ALTER TABLE absen_sholat ENABLE ROW LEVEL SECURITY;
+
+-- 2. Hapus policy lama jika ada, lalu buat policy akses publik (SELECT, INSERT, UPDATE, DELETE)
+DROP POLICY IF EXISTS "Akses Publik Absen Sholat Seluruh Operasi" ON absen_sholat;
+CREATE POLICY "Akses Publik Absen Sholat Seluruh Operasi" ON absen_sholat 
+    AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);`}
+            </div>
+            <p className="text-[10px] text-slate-500 font-medium">
+              *Setelah tombol Run diklik sukses di Supabase, silakan uji kembali di sini dengan mengisi absensi santri. Data akan otomatis terkirim langsung ke cloud!
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 2. TAB CONTROLS switcher - PRESENSI, REKAP DATA, STATISTIK */}
       <div className="bg-white p-1 border border-slate-200/60 rounded-2xl shadow-sm flex items-center select-none" id="attendance_tab_selector">

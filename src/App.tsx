@@ -3,6 +3,7 @@ import { supabase, SantriData, TABLE_NAME, formatSantriData } from "./supabaseCl
 import RegistrationForm from "./components/RegistrationForm";
 import SantriList from "./components/SantriList";
 import Dashboard from "./components/Dashboard";
+import LoginForm from "./components/LoginForm";
 import DatabaseSetupHelper from "./components/DatabaseSetupHelper";
 import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
@@ -109,6 +110,10 @@ const DEMO_SANTRI: SantriData[] = [
 ];
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<{ username: string; role: string; name: string } | null>(() => {
+    const saved = localStorage.getItem("admin_user");
+    return saved ? JSON.parse(saved) : null;
+  });
   const [activeTab, setActiveTab] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "presensi_sholat" | "presensi_doa_malam" | "presensi_makan" | "perizinan">("dashboard");
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -765,6 +770,10 @@ export default function App() {
     setActiveTab("list");
   };
 
+  if (!currentUser) {
+    return <LoginForm onSuccess={(user) => setCurrentUser(user)} />;
+  }
+
   return (
     <div className="h-screen flex flex-col bg-slate-50 text-slate-900 font-sans overflow-hidden select-none" id="boarding_school_app">
       
@@ -794,6 +803,25 @@ export default function App() {
             <h1 className="text-sm md:text-base font-bold tracking-tight uppercase leading-none text-[#041e49]">Pondok Pesantren Al-Muttaqin</h1>
             <span className="text-[9px] text-[#041e49]/85 tracking-wider font-mono mt-0.5 uppercase leading-none">Kota Madiun</span>
           </div>
+        </div>
+
+        {/* Administrator Profile Info & Logout */}
+        <div className="flex items-center gap-4 text-[#041e49]">
+          <div className="hidden sm:flex flex-col items-end">
+            <span className="text-xs font-extrabold">{currentUser?.name}</span>
+            <span className="text-[9px] font-mono tracking-wider opacity-80 uppercase font-black">Admin</span>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem("admin_token");
+              localStorage.removeItem("admin_user");
+              setCurrentUser(null);
+              triggerNotification("Berhasil keluar dari sesi admin", "warning");
+            }}
+            className="px-3 py-1 bg-red-650 hover:bg-red-700 text-white font-extrabold text-[10px] rounded-lg tracking-wide shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 border border-red-800"
+          >
+            <span>LOGOUT</span>
+          </button>
         </div>
       </header>
 
@@ -943,6 +971,7 @@ export default function App() {
                   rooms={rooms}
                   recitationClasses={recitationClasses}
                   schoolClasses={schoolClasses}
+                  students={students}
                   onCancel={() => {
                     setEditingStudent(null);
                     setActiveTab("list");

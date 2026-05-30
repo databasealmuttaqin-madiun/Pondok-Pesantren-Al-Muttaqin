@@ -11,6 +11,7 @@ interface RegistrationFormProps {
   rooms?: string[];
   recitationClasses?: string[];
   schoolClasses?: string[];
+  students?: SantriData[];
 }
 
 const REGIONS = {
@@ -25,7 +26,8 @@ export default function RegistrationForm({
   onCancel,
   rooms = [],
   recitationClasses = [],
-  schoolClasses = []
+  schoolClasses = [],
+  students = []
 }: RegistrationFormProps) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<SantriData>(() => {
@@ -145,7 +147,8 @@ export default function RegistrationForm({
 
     if (name === "rt" || name === "rw") {
       if (!/^\d+$/.test(value)) return "Harus berupa angka";
-      if (value.length !== 3) return `Harus 3 angka (contoh: 003)`;
+      if (value.length < 1) return "Wajib diisi";
+      if (value.length > 3) return "Maksimal 3 angka";
     }
 
     if (name === "nisn" && (category === "SMP" || category === "SMA")) {
@@ -154,8 +157,8 @@ export default function RegistrationForm({
     }
 
     if (name === "npsn" && category === "Reguler") {
-      if (!value) return "NPSN wajib diisi untuk kategori Reguler";
-      if (!/^\d+$/.test(value)) return "NPSN harus berupa angka";
+      // Automatic generation, no validation on input
+      return "";
     }
 
     return "";
@@ -188,8 +191,15 @@ export default function RegistrationForm({
   const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     const key = name as keyof SantriData;
+    
+    let finalValue = value;
+    if ((key === "rt" || key === "rw") && /^\d+$/.test(value) && value.length > 0) {
+      finalValue = value.padStart(3, "0");
+      setFormData((prev) => ({ ...prev, [key]: finalValue }));
+    }
+
     setTouchStatus((prev) => ({ ...prev, [key]: true }));
-    const fieldError = validateField(key, value, formData.kategori);
+    const fieldError = validateField(key, finalValue, formData.kategori);
     setErrors((prev) => ({ ...prev, [key]: fieldError }));
   };
 
@@ -203,8 +213,6 @@ export default function RegistrationForm({
       const fields: (keyof SantriData)[] = ["kategori", "nama_lengkap", "nama_panggilan", "nik", "tempat_lahir", "tanggal_lahir"];
       if (formData.kategori === "SMP" || formData.kategori === "SMA") {
         fields.push("nisn");
-      } else {
-        fields.push("npsn");
       }
 
       fields.forEach((f) => {
@@ -214,9 +222,23 @@ export default function RegistrationForm({
       });
     } else if (currentStep === 2) {
       // Step 2: Address Data
+      // Auto-pad rt and rw under local vars for validation, and sync state asynchronously
+      const padTarget = (val: string) => (val && /^\d+$/.test(val)) ? val.padStart(3, "0") : val;
+      const paddedRt = padTarget(formData.rt || "");
+      const paddedRw = padTarget(formData.rw || "");
+
+      if (paddedRt !== formData.rt || paddedRw !== formData.rw) {
+        setFormData((prev) => ({
+          ...prev,
+          rt: paddedRt,
+          rw: paddedRw,
+        }));
+      }
+
       const fields: (keyof SantriData)[] = ["alamat", "rt", "rw", "desa_kelurahan", "kecamatan", "kabupaten_kota", "provinsi"];
       fields.forEach((f) => {
-        const err = validateField(f, (formData[f] || "") as string, formData.kategori);
+        const val = f === "rt" ? paddedRt : f === "rw" ? paddedRw : (formData[f] || "") as string;
+        const err = validateField(f, val, formData.kategori);
         if (err) stepErrors[f] = err;
         touchList.push(f);
       });
@@ -254,6 +276,35 @@ export default function RegistrationForm({
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    let finalFormData = { ...formData };
+    
+    // Auto-generate a sequential 10-digit identity number as NPSN for Reguler category
+    if (finalFormData.kategori === "Reguler" && !finalFormData.npsn) {
+      let nextNpsn = 1000000001;
+      
+      const regulerStudents = students.filter(
+        (s) => s.kategori === "Reguler" && s.npsn && /^\d{10}$/.test(s.npsn)
+      );
+
+      if (regulerStudents.length > 0) {
+        const numericNpsns = regulerStudents
+          .map((s) => parseInt(s.npsn || "0", 10))
+          .filter((num) => !isNaN(num));
+        
+        if (numericNpsns.length > 0) {
+          const maxNpsn = Math.max(...numericNpsns);
+          nextNpsn = maxNpsn + 1;
+        }
+      } else {
+        const countReg = students.filter((s) => s.kategori === "Reguler").length;
+        nextNpsn = 1000000001 + countReg;
+      }
+      
+      finalFormData.npsn = String(nextNpsn);
+      finalFormData.nisn = "";
+    }
+
     if (!validateStep(3)) {
       setStep(3); // Go back to validate parental/connection data
       return;
@@ -271,7 +322,7 @@ export default function RegistrationForm({
       return;
     }
 
-    await onSubmit(formData);
+    await onSubmit(finalFormData);
   };
 
   const steps = [
@@ -575,27 +626,14 @@ export default function RegistrationForm({
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    <label htmlFor="npsn" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                      <span>NPSN <span className="text-red-500">*</span></span>
-                    </label>
-                    <input
-                      type="text"
-                      id="npsn"
-                      name="npsn"
-                      value={formData.npsn || ""}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                      placeholder="20439481"
-                      className={`w-full p-2 text-xs bg-slate-50 border rounded font-mono transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                        errors.npsn && touchStatus.npsn
-                          ? "border-red-300 focus:border-red-500"
-                          : "border-slate-200 focus:border-sky-500"
-                      }`}
-                    />
-                    {errors.npsn && touchStatus.npsn && (
-                      <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.npsn}</p>
-                    )}
+                  <div className="space-y-1 bg-slate-100/60 p-2 text-left rounded-xl border border-slate-200/50 flex flex-col justify-center min-h-[52px]">
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                      Nomor Identitas (NPSN)
+                    </span>
+                    <div className="text-xs font-bold text-sky-700 font-mono mt-0.5 flex flex-wrap items-center gap-1">
+                      <span>✨ Otomatis Digenerate</span>
+                      <span className="text-[9px] text-slate-600 font-medium">(10 digit berurutan)</span>
+                    </div>
                   </div>
                 )}
 
@@ -1129,7 +1167,7 @@ export default function RegistrationForm({
                     ) : (
                       <>
                         <dt className="text-gray-400 font-medium">NPSN</dt>
-                        <dd className="col-span-2 font-mono font-medium">{formData.npsn || "-"}</dd>
+                        <dd className="col-span-2 font-mono font-semibold text-sky-700">{formData.npsn || "(Otomatis Digenerate setelah simpan)"}</dd>
                       </>
                     )}
 
