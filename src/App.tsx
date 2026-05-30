@@ -812,7 +812,14 @@ export default function App() {
       {/* 2. HEADER */}
       <header className="h-14 bg-[#91d1fa] text-[#041e49] flex items-center justify-between px-6 shrink-0 shadow-sm border-b border-[#73baeb]/60 z-40 select-none">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#041e49]/10 rounded flex items-center justify-center font-bold text-sm tracking-tighter text-[#041e49]">PP</div>
+          <div className="w-9 h-9 bg-white/50 dark:bg-black/30 rounded-lg flex items-center justify-center overflow-hidden border border-[#041e49]/15 shadow-sm">
+            <img
+              src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
+              alt="Logo Pondok"
+              className="w-7 h-7 object-contain"
+              referrerPolicy="no-referrer"
+            />
+          </div>
           <div className="flex flex-col">
             <h1 className="text-sm md:text-base font-bold tracking-tight uppercase leading-none text-[#041e49]">Pondok Pesantren Al-Muttaqin</h1>
             <span className="text-[9px] text-[#041e49]/85 tracking-wider font-mono mt-0.5 uppercase leading-none">Kota Madiun</span>
