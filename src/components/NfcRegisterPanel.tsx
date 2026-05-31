@@ -2,6 +2,87 @@ import React, { useState, useEffect, useRef } from "react";
 import { SantriData } from "../supabaseClient";
 import { Fingerprint, Search, User, Home, HelpCircle, Check, AlertTriangle, Trash2, Shield, RefreshCw } from "lucide-react";
 
+/**
+ * Normalizes an NFC token or UID (serial number) to prevent mismatch due to colons, spaces, or casing
+ */
+export function normalizeNfcId(id: string): string {
+  if (!id) return "";
+  return id.replace(/:/g, "").replace(/\s/g, "").trim().toUpperCase();
+}
+
+/**
+ * Resolves scanned code, checks if it is a Google Form URL or has a student name populated
+ */
+export function parseNfcPayload(code: string, students: SantriData[]) {
+  const cleanCode = code.trim();
+  let isUrl = false;
+  let extractedName = "";
+  
+  // Check if it's a URL
+  if (
+    cleanCode.startsWith("http://") || 
+    cleanCode.startsWith("https://") || 
+    cleanCode.includes("docs.google.com") || 
+    cleanCode.includes("form")
+  ) {
+    isUrl = true;
+    try {
+      const decodedUrl = decodeURIComponent(cleanCode);
+      // Attempt to extract from standard google form entry URL queries
+      // e.g., entry.2107021361=SALMAN+FAJRIN+ASABEKT or &entry.2107021361=SALMAN FAJRIN ASABEKT
+      const matches = decodedUrl.match(/entry\.\d+=([^&?]+)/gi);
+      if (matches) {
+        for (const match of matches) {
+          const parts = match.split("=");
+          if (parts.length === 2) {
+            const val = parts[1].replace(/\+/g, " ").trim();
+            if (val && val.length > 3) {
+              // Verify if there is a student that matches this name (case-insensitive)
+              const matchedByName = students.find(
+                (s) =>
+                  s.nama_lengkap.trim().toLowerCase() === val.toLowerCase() ||
+                  s.nama_panggilan.trim().toLowerCase() === val.toLowerCase()
+              );
+              if (matchedByName) {
+                extractedName = val;
+                return {
+                  isUrl: true,
+                  rawCode: cleanCode,
+                  extractedName,
+                  matchedStudent: matchedByName,
+                };
+              } else {
+                // Keep extractedName for reference even if not found in db
+                extractedName = val;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Parsing URL error:", e);
+    }
+  }
+
+  // Exact matching against nfc_id or nik with normalization
+  const cleanCodeNormalized = normalizeNfcId(cleanCode);
+  const matchedStudent = students.find((s) => {
+    const studentNfcNormalized = normalizeNfcId(s.nfc_id || "");
+    const studentNikNormalized = s.nik ? s.nik.trim().toUpperCase() : "";
+    return (
+      (studentNfcNormalized !== "" && studentNfcNormalized === cleanCodeNormalized) ||
+      (studentNikNormalized !== "" && studentNikNormalized === cleanCode.toUpperCase())
+    );
+  });
+
+  return {
+    isUrl,
+    rawCode: cleanCode,
+    extractedName,
+    matchedStudent,
+  };
+}
+
 interface NfcRegisterPanelProps {
   students: SantriData[];
   rooms: string[];
@@ -30,8 +111,62 @@ export default function NfcRegisterPanel({
   // Search filter for Registered Database Tab
   const [dbSearch, setDbSearch] = useState<string>("");
 
+  // Web NFC Support checks
+  const isNfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
+  const [isNfcActive, setIsNfcActive] = useState<boolean>(false);
+  const [webNfcError, setWebNfcError] = useState<string | null>(null);
+
   // Simulated Cards helper list (allows web previewers to simulate cards easily)
   const [simulationCode, setSimulationCode] = useState<string>("");
+
+  // Hook for real device NDEFReader Scanner binding for mobile phones
+  useEffect(() => {
+    if (!isNfcActive || !isNfcSupported) return;
+
+    let ndefReaderInstance: any = null;
+    let isMounted = true;
+
+    const startNfcScanning = async () => {
+      try {
+        setWebNfcError(null);
+        const NDEFReaderClass = (window as any).NDEFReader;
+        ndefReaderInstance = new NDEFReaderClass();
+        await ndefReaderInstance.scan();
+        
+        if (!isMounted) return;
+
+        ndefReaderInstance.onreading = (event: any) => {
+          if (!isMounted) return;
+          const tagSerial = event.serialNumber;
+          if (tagSerial) {
+            // Standardize raw token (colons, uppercase)
+            const uppercaseSerial = String(tagSerial).toUpperCase();
+            processScan(uppercaseSerial);
+            // Vibrate mobile device for haptic feedback
+            if (navigator.vibrate) {
+              navigator.vibrate(100);
+            }
+          }
+        };
+
+        ndefReaderInstance.onreadingerror = () => {
+          if (!isMounted) return;
+          setWebNfcError("Gagal membaca sinyal kartu NFC. Coba dekatkan kartu kembali.");
+        };
+      } catch (err: any) {
+        console.warn("NFC hardware scan permission error or failed initialization:", err);
+        if (isMounted) {
+          setIsNfcActive(false);
+          setWebNfcError(`Gagal mengaktifkan NFC: ${err.message || err}`);
+        }
+      }
+    };
+
+    startNfcScanning();
+    return () => {
+      isMounted = false;
+    };
+  }, [isNfcActive, isNfcSupported]);
 
   // Listening for background keystrokes mimicking an NFC/RFID USB keyboard emulator reader
   useEffect(() => {
@@ -63,14 +198,9 @@ export default function NfcRegisterPanel({
     };
   }, [keyBuffer, isListening, activeSubTab]);
 
-  // Determine matching student based on currently captured NFC ID
-  const matchedStudent = scannedCode
-    ? students.find(
-        (s) =>
-          String(s.nfc_id || "").trim() === scannedCode.trim() ||
-          String(s.nik || "").trim() === scannedCode.trim()
-      )
-    : null;
+  // Determine matching student based on currently captured NFC ID or Google Form payload
+  const parsedResult = scannedCode ? parseNfcPayload(scannedCode, students) : null;
+  const matchedStudent = parsedResult?.matchedStudent || null;
 
   // Process a newly read NFC Serial Card Number
   const processScan = (code: string) => {
@@ -78,15 +208,14 @@ export default function NfcRegisterPanel({
     setScannedCode(cleanCode);
     
     // Auto-prefill assignment form based on existing records if unmatched
-    const found = students.find(
-      (s) =>
-        String(s.nfc_id || "").trim() === cleanCode ||
-        String(s.nik || "").trim() === cleanCode
-    );
+    const res = parseNfcPayload(cleanCode, students);
 
-    if (!found) {
+    if (!res.matchedStudent) {
       setSelectedRoom("");
       setSelectedStudentId("");
+    } else {
+      setSelectedRoom(res.matchedStudent.kamar || "");
+      setSelectedStudentId(String(res.matchedStudent.id));
     }
   };
 
@@ -215,60 +344,122 @@ export default function NfcRegisterPanel({
 
               {/* Physical Scanning Area Ripple Visual */}
               <div 
-                className={`relative h-56 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center overflow-hidden transition-all duration-300 ${
-                  isListening
+                className={`relative h-44 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-4 text-center overflow-hidden transition-all duration-300 ${
+                  isListening || isNfcActive
                     ? "bg-indigo-50/20 border-indigo-200 dark:bg-slate-900/10 dark:border-indigo-800/50 hover:bg-indigo-50/40"
                     : "bg-slate-50 border-slate-200 dark:bg-slate-900/50 dark:border-slate-850"
                 }`}
               >
                 {/* Simulated Radar Wave / Ripple */}
-                {isListening && (
+                {(isListening || isNfcActive) && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <span className="w-36 h-36 border border-indigo-400/25 rounded-full animate-ping absolute"></span>
                     <span className="w-24 h-24 border border-indigo-400/15 rounded-full animate-ping delay-500 absolute"></span>
-                    <span className="w-48 h-48 border border-indigo-400/5 rounded-full animate-ping delay-1000 absolute"></span>
                   </div>
                 )}
 
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner relative z-10 mb-4 transition-colors duration-300 ${
-                  isListening ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-400" : "bg-slate-200 text-slate-400"
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-inner relative z-10 mb-3 transition-colors duration-300 ${
+                  isListening || isNfcActive ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-400" : "bg-slate-200 text-slate-400"
                 }`}>
-                  <Fingerprint className="w-8 h-8" />
+                  <Fingerprint className="w-7 h-7" />
                 </div>
 
-                <p className="text-xs font-extrabold text-slate-700 dark:text-slate-300 relative z-10">
-                  {scannedCode ? `NFC TERDETEKSI: ${scannedCode}` : "Tempelkan Kartu RFID ke Reader"}
+                <p className="text-xs font-extrabold text-slate-700 dark:text-slate-300 relative z-10 break-all px-2">
+                  {scannedCode ? `NFC TERDETEKSI: ${scannedCode}` : "Tempelkan Kartu RFID/NFC ke Reader"}
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 max-w-[240px] leading-relaxed relative z-10">
-                  {isListening 
-                    ? "Sistem siap menerima input hardware emulator. Jangan klik kolom input manapun saat menempelkan kartu." 
-                    : "Aktifkan scanner kembali di bawah untuk memindai kartu."}
+                <p className="text-[9.5px] text-slate-550 dark:text-slate-400 mt-1 max-w-[240px] leading-relaxed relative z-10">
+                  {isNfcActive 
+                    ? "NFC HP Aktif: Tempelkan kartu di belakang body HP Anda." 
+                    : isListening 
+                    ? "Siap membaca ketikan USB Reader (Fokus bebas). Jangan klik kolom input saat nempelkannya." 
+                    : "Sensor scanner paused."}
                 </p>
               </div>
 
-              {/* Controls */}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsListening(!isListening)}
-                  className={`flex-1 py-2.5 rounded-xl text-[10.5px] font-bold uppercase tracking-wider border transition-all duration-150 select-none cursor-pointer ${
-                    isListening
-                      ? "bg-white dark:bg-[#111c44] hover:bg-slate-50 border-slate-250 dark:border-slate-850 text-slate-650 dark:text-slate-400"
-                      : "bg-indigo-600 hover:bg-indigo-700 border-indigo-600 text-white shadow-sm"
-                  }`}
-                >
-                  {isListening ? "Pause Scanner" : "Aktifkan Scanner"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScannedCode("");
-                    setKeyBuffer("");
-                  }}
-                  className="px-4 py-2.5 rounded-xl text-[10.5px] font-bold uppercase tracking-wider border border-slate-250 dark:border-slate-850 bg-white dark:bg-[#111c44] text-slate-500 hover:text-slate-700 dark:text-slate-400 transition-all cursor-pointer"
-                >
-                  Reset
-                </button>
+              {/* WebNFC mobile sensor controls */}
+              {isNfcSupported ? (
+                <div className="bg-indigo-50/40 dark:bg-slate-900/40 border border-indigo-100/40 dark:border-indigo-950 p-3.5 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-[10.5px] font-black uppercase text-indigo-850 dark:text-indigo-400 tracking-wider">
+                        Sensor NFC HP Internal
+                      </h4>
+                      <p className="text-[9.5px] text-indigo-600/70 dark:text-slate-450">
+                        Pindai serial ID langsung menggunakan sensor belakang HP Anda.
+                      </p>
+                    </div>
+                    <span className={`w-2.5 h-2.5 rounded-full ${isNfcActive ? "bg-emerald-500 animate-pulse" : "bg-slate-405"}`}></span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNfcActive(!isNfcActive);
+                      if (!isNfcActive) {
+                        setIsListening(false); // disable keyboard listener while phone sensor is on to avoid layout double-intercept
+                      }
+                    }}
+                    className={`w-full py-2 rounded-xl text-[10.5px] font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+                      isNfcActive
+                        ? "bg-rose-500 hover:bg-rose-600 text-white shadow-sm"
+                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                    }`}
+                  >
+                    {isNfcActive ? "🔴 Matikan Sensor NFC HP" : "🟢 Aktifkan Sensor NFC HP"}
+                  </button>
+
+                  {webNfcError && (
+                    <p className="text-[10px] text-rose-500 font-semibold leading-normal bg-rose-50 dark:bg-rose-950/20 px-2.5 py-1.5 rounded-lg border border-rose-100 dark:border-rose-900">
+                      {webNfcError}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-[#f8fafc] dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-850">
+                  <h4 className="text-[10.5px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                    Sensor NFC HP Internal
+                  </h4>
+                  <p className="text-[9.5px] text-slate-500/80 leading-relaxed mt-1">
+                    Gunakan **Google Chrome di HP Android** untuk scan serial nomor langsung lewat body handphone.
+                  </p>
+                </div>
+              )}
+
+              {/* USB physical hardware Reader controls */}
+              <div className="space-y-2 border-t border-slate-100 dark:border-slate-800/85 pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-400">USB Reader (Keyboard Emulator)</span>
+                  <span className={`w-2.5 h-2.5 rounded-full ${isListening ? "bg-emerald-500" : "bg-slate-400"}`}></span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsListening(!isListening);
+                      if (!isListening) {
+                        setIsNfcActive(false); // shut down mobile sensor if enabling keyboard listener
+                      }
+                    }}
+                    className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all duration-150 select-none cursor-pointer ${
+                      isListening
+                        ? "bg-white dark:bg-[#111c44] hover:bg-slate-50 border-slate-250 dark:border-slate-800 text-slate-650 dark:text-slate-400"
+                        : "bg-slate-700 hover:bg-slate-800 border-slate-700 text-white shadow-sm"
+                    }`}
+                  >
+                    {isListening ? "Pause USB Listener" : "Aktifkan USB Listener"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScannedCode("");
+                      setKeyBuffer("");
+                      setWebNfcError(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-slate-250 dark:border-slate-800 bg-white dark:bg-[#111c44] text-slate-500 hover:text-slate-700 dark:text-slate-400 transition-all cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -346,13 +537,32 @@ export default function NfcRegisterPanel({
                 /* Active State: Card is scanned, perform logic checks */
                 <div className="space-y-6">
                   {/* Card Serial Tag Badge */}
-                  <div className="flex items-center justify-between bg-indigo-50/50 dark:bg-indigo-950/20 px-4 py-3 border border-indigo-100/50 dark:border-indigo-900 rounded-2xl select-all font-mono">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-indigo-50/50 dark:bg-indigo-950/20 px-4 py-3 border border-indigo-100/50 dark:border-indigo-900 rounded-2xl select-all font-mono">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
                       <span className="text-[10px] uppercase font-black tracking-wider text-indigo-755 dark:text-indigo-400">SERIAL ID KARTU TERDETEKSI:</span>
                     </div>
-                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-300">{scannedCode}</span>
+                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-300 break-all" title={scannedCode}>
+                      {scannedCode.length > 40 ? scannedCode.substring(0, 20) + "..." + scannedCode.substring(scannedCode.length - 20) : scannedCode}
+                    </span>
                   </div>
+
+                  {parsedResult?.isUrl && (
+                    <div className="bg-blue-50/60 dark:bg-blue-950/15 border border-blue-100 dark:border-blue-900 rounded-2xl p-4 flex gap-3 text-left">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 font-extrabold text-sm shadow-sm">i</div>
+                      <div className="space-y-1">
+                        <h4 className="text-[11px] font-black uppercase text-blue-800 dark:text-blue-400 tracking-wider">FORMAT PRE-FILL GOOGLE FORM TERDETEKSI</h4>
+                        <p className="text-[10.5px] text-blue-650 dark:text-blue-400 leading-relaxed font-semibold">
+                          Pembaca NFC Anda memindai data tertulis di kartu berupa Link Google Form. 
+                          {parsedResult.extractedName ? (
+                            <> Sistem mendeteksi nama santri <strong className="text-blue-900 dark:text-blue-200">"{parsedResult.extractedName}"</strong> di dalam parameter link tersebut dan otomatis mencocokkannya!</>
+                          ) : (
+                            <> Kami akan menyimpan URL unik ini sebagai identitas kartu NFC santri.</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {matchedStudent ? (
                     /* CASE A: Card is already registered to a student */

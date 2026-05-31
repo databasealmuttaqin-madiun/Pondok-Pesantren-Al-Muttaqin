@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SantriData, supabase } from "../supabaseClient";
+import { parseNfcPayload, normalizeNfcId } from "./NfcRegisterPanel";
 import { 
   Calendar, 
   Search, 
@@ -319,21 +320,29 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
   // Hook 2: Real device NDEFReader Scanner binding
   useEffect(() => {
-    if (!isNfcActive || !isSessionOpen || !isNfcSupported) return;
+    if (!isNfcActive || !isNfcSupported) return;
 
     let ndefReaderInstance: any = null;
+    let isMounted = true;
+
     const startNfcScanning = async () => {
       try {
         const NDEFReaderClass = (window as any).NDEFReader;
         ndefReaderInstance = new NDEFReaderClass();
         await ndefReaderInstance.scan();
         
+        if (!isMounted) return;
+
         ndefReaderInstance.onreading = (event: any) => {
+          if (!isMounted) return;
           const tagSerial = event.serialNumber;
-          executeScan(tagSerial, "nfc");
+          if (tagSerial) {
+            executeScan(String(tagSerial).toUpperCase(), "nfc");
+          }
         };
 
         ndefReaderInstance.onreadingerror = () => {
+          if (!isMounted) return;
           setScanFeedback({
             message: "⚠️ Gagal membaca Kartu NFC. Silakan arahkan kembali kartu Anda.",
             type: "error"
@@ -346,9 +355,9 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
     startNfcScanning();
     return () => {
-      // Automatic cleanup handled dynamically by device stack
+      isMounted = false;
     };
-  }, [isNfcActive, isSessionOpen]);
+  }, [isNfcActive, isNfcSupported]);
 
   // Save DB
   const saveAttendance = (newDb: typeof attendanceDb) => {
@@ -549,13 +558,9 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       return;
     }
 
-    // Process scan matching ID Card or name
-    const foundStudent = students.find((s) => {
-      const dbIdVal = String(s.nik || "").trim();
-      const nfcVal = String(s.nfc_id || "").trim();
-      const scanCodeClean = code.trim();
-      return (dbIdVal === scanCodeClean) || (nfcVal === scanCodeClean);
-    });
+    // Process Google Form NDEF URL parsing or card ID / NIK exact match
+    const scanRes = parseNfcPayload(code, students);
+    const foundStudent = scanRes.matchedStudent || null;
 
     if (!foundStudent) {
       setScanFeedback({
