@@ -600,21 +600,57 @@ export default function App() {
       if (dbStatus === "connected") {
         // Attempt Supabase SQL Insert or Update
         if (editingStudent && editingStudent.id) {
-          const { error } = await supabase
+          let { error } = await supabase
             .from(TABLE_NAME)
             .update(payload)
             .eq("id", editingStudent.id);
+
+          // If the schema cache misses nfc_id, strip and retry
+          if (error && (error.message.includes("nfc_id") || error.message.includes("column"))) {
+            console.warn("PostgREST schema cache mismatch. Stripping nfc_id and retrying update...");
+            const { nfc_id, ...strippedPayload } = payload;
+            const retryRes = await supabase
+              .from(TABLE_NAME)
+              .update(strippedPayload)
+              .eq("id", editingStudent.id);
+            error = retryRes.error;
+          }
 
           if (error) throw error;
           
           triggerNotification(`Berhasil memperbarui data santri ${formattedData.nama_lengkap}!`, "success");
         } else {
-          const { error } = await supabase
+          let { error } = await supabase
             .from(TABLE_NAME)
             .insert([payload]);
 
+          // If the schema cache misses nfc_id, strip and retry
+          if (error && (error.message.includes("nfc_id") || error.message.includes("column"))) {
+            console.warn("PostgREST schema cache mismatch. Stripping nfc_id and retrying insert...");
+            const { nfc_id, ...strippedPayload } = payload;
+            const retryRes = await supabase
+              .from(TABLE_NAME)
+              .insert([strippedPayload]);
+            error = retryRes.error;
+          }
+
           if (error) throw error;
           triggerNotification(`Santri baru ${formattedData.nama_lengkap} berhasil terdaftarkan ke cloud database!`, "success");
+        }
+
+        // Save NFC Mapping to 'nfc' table too if nfc_id is provided
+        if (formattedData.nfc_id && formattedData.nfc_id.trim() !== "") {
+          try {
+            const studentName = formattedData.nama_lengkap.trim();
+            await supabase.from("nfc").delete().eq("nama", studentName);
+            await supabase.from("nfc").delete().eq("serial_number", formattedData.nfc_id.trim());
+            await supabase.from("nfc").insert([{
+              nama: studentName,
+              serial_number: formattedData.nfc_id.trim()
+            }]);
+          } catch (nfcErr) {
+            console.warn("Gagal mensinkronisasikan nfc_id ke tabel nfc:", nfcErr);
+          }
         }
 
         // Upsert / sync status back into "status_siswa" table
@@ -814,16 +850,20 @@ export default function App() {
           }
         }
 
-        // 4. Update the standard 'nfc_id' in 'santri' table
-        const { error } = await supabase
-          .from(TABLE_NAME)
-          .update({ nfc_id: nfcId || "" })
-          .eq("id", studentId);
+        // 4. Update the standard 'nfc_id' in 'santri' table as non-blocking fallback
+        try {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .update({ nfc_id: nfcId || "" })
+            .eq("id", studentId);
 
-        if (error) {
-          triggerNotification(`Gagal menyimpan ke database server: ${error.message}`, "error");
-          return false;
+          if (error) {
+            console.warn("Info: Kolom 'nfc_id' di tabel utama santri belum terdeteksi/terbaca cache. Data kartu berhasil diamankan di tabel relasi NFC.", error.message);
+          }
+        } catch (updateErr: any) {
+          console.warn("Gagal update kolom nfc_id:", updateErr?.message);
         }
+
         triggerNotification(`Berhasil memperbarui data kartu NFC siswa!`, "success");
         return true;
       } catch (e: any) {
