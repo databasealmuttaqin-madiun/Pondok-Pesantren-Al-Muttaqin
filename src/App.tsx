@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase, SantriData, TABLE_NAME, formatSantriData } from "./supabaseClient";
 import RegistrationForm from "./components/RegistrationForm";
 import SantriList from "./components/SantriList";
@@ -550,9 +550,58 @@ export default function App() {
     }
   };
 
-  // Refresh data on load
+  // Refresh data on load and subscribe to Supabase Realtime channel
+  const checkConnectionAndLoadRef = useRef(checkConnectionAndLoad);
+  checkConnectionAndLoadRef.current = checkConnectionAndLoad;
+
   useEffect(() => {
-    checkConnectionAndLoad();
+    // Initial fetch of all tables when component mounts
+    checkConnectionAndLoadRef.current();
+
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debouncedReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log("Mengambil ulang data terbaru dari database cloud (Sync Realtime)...");
+        checkConnectionAndLoadRef.current();
+      }, 500); // 500ms debounce
+    };
+
+    // Subscribing to Supabase Realtime changes on crucial tables
+    const realtimeChannel = supabase
+      .channel("sub-all-tables-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "santri" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "status_siswa" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "kamar" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "kelas_pengajian" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "kelas_sekolah" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "kelas sekolah" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "nfc" }, () => {
+        debouncedReload();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "plotting" }, () => {
+        debouncedReload();
+      })
+      .subscribe((status) => {
+        console.log("Supabase Realtime subscription status:", status);
+      });
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(realtimeChannel);
+    };
   }, []);
 
   // Save or Update a Santri

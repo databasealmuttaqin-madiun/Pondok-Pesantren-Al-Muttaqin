@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SantriData, supabase } from "../supabaseClient";
 import { parseNfcPayload, normalizeNfcId } from "./NfcRegisterPanel";
 import { 
@@ -496,9 +496,33 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     }
   };
 
-  // Refresh on mount/date change/active tab change
+  // Refresh on mount/date change/active tab change and subscribe to realtime absensi changes
+  const fetchAttendanceRef = useRef(fetchAttendanceFromSupabase);
+  fetchAttendanceRef.current = fetchAttendanceFromSupabase;
+
   useEffect(() => {
-    fetchAttendanceFromSupabase();
+    fetchAttendanceRef.current();
+
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debouncedReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log("Realtime update detected for absensi table. Reloading log...");
+        fetchAttendanceRef.current();
+      }, 400); // 400ms debounce
+    };
+
+    const absensiChannel = supabase
+      .channel("sub-absensi-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "absensi" }, () => {
+        debouncedReload();
+      })
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(absensiChannel);
+    };
   }, [selectedDate]);
 
   // Derived Active Session Details

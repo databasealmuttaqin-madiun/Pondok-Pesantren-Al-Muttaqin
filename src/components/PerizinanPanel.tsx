@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SantriData, supabase } from "../supabaseClient";
 import { 
   Home, 
@@ -88,8 +88,33 @@ export default function PerizinanPanel({
     }
   };
 
+  // Synchronize status history in real-time
+  const fetchStatusHistoryRef = useRef(fetchStatusHistory);
+  fetchStatusHistoryRef.current = fetchStatusHistory;
+
   useEffect(() => {
-    fetchStatusHistory();
+    fetchStatusHistoryRef.current();
+
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debouncedReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log("Realtime update detected for status_siswa table. Reloading log...");
+        fetchStatusHistoryRef.current();
+      }, 400);
+    };
+
+    const statusChannel = supabase
+      .channel("sub-status-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "status_siswa" }, () => {
+        debouncedReload();
+      })
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(statusChannel);
+    };
   }, []);
 
   // Students belonging to the chosen Kamar
