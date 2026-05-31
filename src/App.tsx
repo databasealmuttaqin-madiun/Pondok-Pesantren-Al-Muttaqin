@@ -9,7 +9,8 @@ import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint } from "lucide-react";
+import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X } from "lucide-react";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
 
 const DEMO_SANTRI: SantriData[] = [
@@ -130,7 +131,8 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna">("dashboard");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem("sidebar_collapsed");
@@ -976,10 +978,38 @@ export default function App() {
     setActiveTab("list");
   };
 
+  const userRole = currentUser?.role || "admin";
+
+  const allTabs = [
+    { id: "dashboard", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin"] },
+    { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah"] },
+    { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "manajemen_sesi", label: "Manajemen Sesi", shortLabel: "Sesi", icon: Clock, roles: ["admin"] },
+    { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah"] },
+    { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin"] },
+    { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin"] },
+    { id: "pengguna", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
+    { id: "setup", label: "Koneksi & Panduan", shortLabel: "Cloud", icon: Database, roles: ["admin"] },
+  ];
+  
+  const accessibleTabs = allTabs.filter(t => t.roles.includes(userRole));
+
+  useEffect(() => {
+    if (currentUser) {
+      if (!allTabs.find(t => t.id === activeTab)?.roles.includes(userRole)) {
+        setActiveTab("dashboard");
+      }
+    }
+  }, [currentUser, activeTab, userRole]);
+
   if (!currentUser) {
     return (
       <LoginForm 
-        onSuccess={(user) => setCurrentUser(user)} 
+        onSuccess={(user) => {
+          setCurrentUser(user);
+          setActiveTab("dashboard");
+        }} 
         isDarkMode={isDarkMode} 
         setIsDarkMode={setIsDarkMode} 
       />
@@ -1011,19 +1041,31 @@ export default function App() {
       )}
 
       {/* 2. HEADER */}
-      <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex items-center justify-between px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-white/50 dark:bg-black/30 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200/50 dark:border-slate-800 shadow-sm">
+      <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button 
+            className="md:hidden p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg outline-none"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-white/50 dark:bg-black/30 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200/50 dark:border-slate-800 shadow-sm hidden sm:flex">
             <img
               src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
               alt="Logo Pondok"
-              className="w-7 h-7 object-contain"
+              className="w-6 h-6 sm:w-7 sm:h-7 object-contain"
               referrerPolicy="no-referrer"
             />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-sm md:text-base font-bold tracking-tight uppercase leading-none text-slate-800 dark:text-slate-100">Pondok Pesantren Al-Muttaqin</h1>
-            <span className="text-[14px-small] text-slate-500 dark:text-slate-400 font-semibold tracking-wider font-mono mt-0.5 uppercase leading-none text-[9px]">Kota Madiun</span>
+            <h1 className="text-[12px] sm:text-sm md:text-base font-bold tracking-tight uppercase text-slate-800 dark:text-slate-100 leading-tight">
+              <span className="hidden sm:inline">Pondok Pesantren Al-Muttaqin</span>
+              <span className="inline sm:hidden flex flex-col gap-0.5">
+                <span>Pondok Pesantren</span>
+                <span>Al Muttaqin</span>
+              </span>
+            </h1>
+            <span className="text-[14px-small] text-slate-500 dark:text-slate-400 font-semibold tracking-wider font-mono mt-0.5 sm:mt-0.5 uppercase leading-none text-[8px] sm:text-[9px]">Kota Madiun</span>
           </div>
         </div>
 
@@ -1045,19 +1087,10 @@ export default function App() {
 
           <div className="hidden sm:flex flex-col items-end">
             <span className="text-xs font-extrabold">{currentUser?.name}</span>
-            <span className="text-[9px] font-mono tracking-wider opacity-80 uppercase font-black">Admin</span>
+            <span className="text-[9px] font-mono tracking-wider opacity-80 uppercase font-black">
+              {currentUser?.role?.replace('_', ' ')}
+            </span>
           </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem("admin_token");
-              localStorage.removeItem("admin_user");
-              setCurrentUser(null);
-              triggerNotification("Berhasil keluar dari sesi admin", "warning");
-            }}
-            className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 dark:bg-rose-700 dark:hover:bg-rose-800 text-white font-extrabold text-[11px] rounded-lg tracking-wide shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 border border-red-700 dark:border-rose-900"
-          >
-            <span>LOGOUT</span>
-          </button>
         </div>
       </header>
 
@@ -1090,17 +1123,7 @@ export default function App() {
               <div className="text-[10px] font-black text-[#5f6368] dark:text-slate-400 uppercase tracking-widest my-2 px-6">Menu Utama</div>
             )}
             <div className="flex flex-col">
-              {[
-                { id: "dashboard", label: "Dasbor Ringkasan", icon: LayoutDashboard },
-                { id: "list", label: "Database Santri", icon: TableProperties },
-                { id: "perizinan", label: "Perizinan Santri", icon: UserCheck },
-                { id: "absensi", label: "Absensi Santri", icon: ClipboardList },
-                { id: "manajemen_sesi", label: "Manajemen Sesi", icon: Clock },
-                { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", icon: UserPlus },
-                { id: "management", label: "Plotting Siswa", icon: Sliders },
-                { id: "nfc", label: "Registrasi NFC", icon: Fingerprint },
-                { id: "setup", label: "Koneksi & Panduan", icon: Database },
-              ].map((tab) => {
+              {accessibleTabs.map((tab) => {
                 const TabIcon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
@@ -1287,43 +1310,108 @@ export default function App() {
                 />
               </div>
             )}
+
+            {activeTab === "pengguna" && (
+              <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
+                <ManajemenPenggunaPanel />
+              </div>
+            )}
           </div>
           
-          {/* Spasi pengisi di bawah pada mobile agar konten tidak tertutup oleh bottom navigation yang melayang */}
-          <div className="h-24 shrink-0 md:hidden" />
         </section>
-
-        {/* Navigation Bar (Mobile view) */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white dark:bg-[#111425] border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 flex overflow-x-auto whitespace-nowrap gap-1 px-2.5 py-1.5 select-none shadow-[0_-2px_10px_rgba(0,0,0,0.05)] scrollbar-none" id="mobile-navigation">
-          {[
-            { id: "dashboard", label: "Dasbor", icon: LayoutDashboard },
-            { id: "list", label: "Database", icon: TableProperties },
-            { id: "perizinan", label: "Izin", icon: UserCheck },
-            { id: "absensi", label: "Absensi", icon: ClipboardList },
-            { id: "manajemen_sesi", label: "Sesi", icon: Clock },
-            { id: "form", label: editingStudent ? "Edit" : "Daftar", icon: UserPlus },
-            { id: "management", label: "Plotting", icon: Sliders },
-            { id: "nfc", label: "NFC", icon: Fingerprint },
-            { id: "setup", label: "Cloud", icon: Database },
-          ].map((tab) => {
-            const TabIcon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  if (tab.id !== "form") setEditingStudent(null);
-                  setActiveTab(tab.id as any);
-                }}
-                className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-lg text-[9px] font-bold tracking-tight transition-all shrink-0 min-w-[54px] ${
-                  isActive ? "text-sky-600 dark:text-[#38bdf8] bg-sky-50 dark:bg-[#1a233d] font-black font-extrabold" : "text-slate-500 dark:text-slate-450 hover:text-slate-900 dark:hover:text-white"
-                }`}
+        
+        {/* Navigation Sidebar (Mobile view - Off-canvas overlay) */}
+        <div 
+          className={`fixed inset-0 z-50 md:hidden transition-opacity duration-300 ${
+            mobileMenuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          {/* Backdrop */}
+          <div 
+            className={`absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity duration-300 ${
+              mobileMenuOpen ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          
+          {/* Sidebar Panel */}
+          <div 
+            className={`absolute top-0 left-0 bottom-0 w-[260px] bg-[#f0f4f9] dark:bg-[#0b0d1a] shadow-2xl flex flex-col transition-transform duration-300 ${
+              mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
+            <div className="p-4 border-b border-[#dee4ec] dark:border-slate-800 flex items-center justify-between">
+              <span className="font-bold text-sm tracking-wide text-slate-800 dark:text-slate-100">Menu Utama</span>
+              <button 
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1.5 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg outline-none"
               >
-                <TabIcon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
+                <X className="w-5 h-5" />
               </button>
-            );
-          })}
+            </div>
+            
+            <div className="flex-1 overflow-y-auto py-2">
+              <div className="flex flex-col">
+                {accessibleTabs.map((tab) => {
+                  const TabIcon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <div key={tab.id} className="w-full">
+                      <button
+                        onClick={() => {
+                          if (tab.id !== "form") setEditingStudent(null);
+                          setActiveTab(tab.id as any);
+                          setMobileMenuOpen(false); // Close sidebar on selection
+                        }}
+                        className={`w-full flex items-center justify-between px-6 py-4 border-b border-[#dee4ec]/40 dark:border-slate-850 transition-all ${
+                          isActive
+                            ? "bg-[#c2e7ff] dark:bg-[#1a233d] text-[#001d35] dark:text-[#38bdf8] font-bold"
+                            : "text-[#444746] dark:text-slate-400 hover:bg-[#e1e9f5]/60 dark:hover:bg-[#151930] hover:text-slate-900 dark:hover:text-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3.5">
+                          <TabIcon className={`w-5 h-5 transition-colors ${
+                            isActive ? "text-[#001d35] dark:text-[#38bdf8] font-bold" : "text-slate-500 dark:text-slate-400"
+                          }`} />
+                          <span className="tracking-wide text-sm">{tab.label}</span>
+                        </div>
+                        <ChevronRight className={`w-4 h-4 transition-all ${
+                          isActive ? "text-[#001d35] dark:text-[#38bdf8] translate-x-1" : "text-slate-400 dark:text-slate-650 opacity-60"
+                        }`} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mobile Sidebar Footer - User Profile */}
+            <div className="p-4 border-t border-[#dee4ec] dark:border-slate-800 bg-[#e9eef6]/30 dark:bg-[#0e1222]/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-lg overflow-hidden shrink-0">
+                  {currentUser?.name?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{currentUser?.name}</span>
+                  <span className="text-[10px] font-mono tracking-wider text-slate-500 dark:text-slate-400 uppercase font-black truncate">
+                    {currentUser?.role?.replace('_', ' ')}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  localStorage.removeItem("admin_token");
+                  localStorage.removeItem("admin_user");
+                  setCurrentUser(null);
+                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
+                }}
+                className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                LOGOUT
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

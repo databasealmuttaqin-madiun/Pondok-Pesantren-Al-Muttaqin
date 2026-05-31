@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop } from "lucide-react";
+import { supabase } from "../supabaseClient";
 
 interface LoginFormProps {
   onSuccess: (user: { username: string; role: string; name: string }) => void;
@@ -27,7 +28,34 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
     setIsLoading(true);
 
     try {
-      // Fetch request to Express backend API
+      // Check database first!
+      const { data, error } = await supabase
+        .from("pengguna")
+        .select("*")
+        .eq("username", username)
+        .eq("password", password); // Wait, this stores password in plain text. Ideally hash, but user requested custom simplest ID/Password.
+
+      if (data && data.length > 0) {
+        const user = data[0];
+        const dbUserVal = {
+          username: user.username,
+          role: user.role,
+          name: user.nama
+        };
+        
+        setIsSuccess(true);
+        setIsLoading(false);
+        localStorage.setItem("admin_token", "session_token_custom_db");
+        localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
+        setTimeout(() => onSuccess(dbUserVal), 2200);
+        return;
+      }
+    } catch (err: any) {
+      console.warn("DB login check failed", err);
+    }
+
+    // Try express backend API next for backwards compatibility (the old hardcoded API login or fallback)
+    try {
       const response = await fetch("/api/login", {
         method: "POST",
         headers: {
@@ -39,23 +67,18 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          // Success state matching the green button animation in the video
           setIsSuccess(true);
           setIsLoading(false);
           
-          // Save to local storage for persistence
           localStorage.setItem("admin_token", data.token);
           localStorage.setItem("admin_user", JSON.stringify(data.user));
 
-          // Wait for the transition screen to show
           setTimeout(() => {
             onSuccess(data.user);
           }, 2200);
           return;
         } else {
-          setIsLoading(false);
-          setErrorMsg(data.message || "ID Pengguna atau Password salah!");
-          return;
+          // If express auth rejected but maybe client fallback allowed? Let's check below.
         }
       }
     } catch (err: any) {
