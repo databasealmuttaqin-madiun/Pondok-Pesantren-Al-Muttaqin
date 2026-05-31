@@ -40,14 +40,9 @@ export default function ManajemenSesiPanel() {
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
       } else {
-        // Fallback to defaults or local if empty
-        const saved = localStorage.getItem("santri_absensi_sessions");
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (parsed.length > 0) setSessions(parsed);
-          } catch(e) {}
-        }
+        // Table is empty. We respect the empty state.
+        setSessions([]);
+        localStorage.setItem("santri_absensi_sessions", JSON.stringify([]));
       }
     } catch (err: any) {
       console.warn("Gagal mengambil tabel sesi_absensi:", err.message);
@@ -320,12 +315,45 @@ export default function ManajemenSesiPanel() {
         </h3>
 
         {sessions.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 select-none flex flex-col items-center justify-center space-y-2">
+          <div className="py-12 text-center text-slate-400 select-none flex flex-col items-center justify-center space-y-4">
             <div className="text-4xl">🕰️</div>
-            <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">Belum Ada Sesi</h4>
-            <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
-              Daftar sesi absensi kosong. Silakan tambah sesi baru untuk memulainya di menu absensi santri.
-            </p>
+            <div>
+              <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-1">Belum Ada Sesi</h4>
+              <p className="text-[10px] text-slate-400 max-w-xs mx-auto leading-relaxed">
+                Daftar sesi absensi kosong. Silakan tambah sesi baru untuk memulainya di menu absensi santri.
+              </p>
+            </div>
+            
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm("Muat sesi bawaan dari sistem? (Subuh, Dzuhur, Asar, dll)")) return;
+                try {
+                  setIsLoading(true);
+                  const defaultPayloads = [
+                    { sesi: "Subuh", "jam mulai": "04:00", "jam selesai": "10:00", ikon: "🌅" },
+                    { sesi: "Dzuhur", "jam mulai": "11:30", "jam selesai": "12:30", ikon: "☀️" },
+                    { sesi: "Asar", "jam mulai": "14:50", "jam selesai": "15:30", ikon: "🌤️" },
+                    { sesi: "Maghrib", "jam mulai": "17:20", "jam selesai": "18:00", ikon: "🌇" },
+                    { sesi: "Isya", "jam mulai": "18:40", "jam selesai": "19:30", ikon: "🌌" },
+                    { sesi: "Doa Malam", "jam mulai": "03:30", "jam selesai": "04:15", ikon: "🌌" },
+                    { sesi: "Makan Pagi", "jam mulai": "06:00", "jam selesai": "07:15", ikon: "🍳" },
+                    { sesi: "Makan Siang", "jam mulai": "11:00", "jam selesai": "12:00", ikon: "🍛" },
+                    { sesi: "Makan Sore", "jam mulai": "16:30", "jam selesai": "17:15", ikon: "🍲" }
+                  ];
+                  await supabase.from("sesi_absensi").insert(defaultPayloads);
+                  await fetchSessions();
+                } catch (err: any) {
+                  alert("Gagal menambahkan sesi bawaan: " + err.message);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading}
+              className={`mt-2 px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 transition-all flex items-center justify-center gap-2 ${isLoading ? 'opacity-50' : 'cursor-pointer active:scale-95'}`}
+            >
+              ✨ Muat Sesi Bawaan Sistem
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="sessions_grid">

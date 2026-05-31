@@ -146,6 +146,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     try {
       const { data, error } = await supabase.from("sesi_absensi").select("*").order("jam mulai", { ascending: true });
       if (error) throw error;
+      
       if (data && data.length > 0) {
         const loadedSessions = data.map((d: any) => ({
           id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
@@ -155,6 +156,10 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         }));
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
+      } else {
+        // Table is empty. We respect the empty state.
+        setSessions([]);
+        localStorage.setItem("santri_absensi_sessions", JSON.stringify([]));
       }
     } catch (err: any) {
       console.warn("Failed to load sessions from DB:", err);
