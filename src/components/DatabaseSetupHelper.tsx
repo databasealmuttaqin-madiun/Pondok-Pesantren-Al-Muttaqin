@@ -194,7 +194,8 @@ CREATE TABLE IF NOT EXISTS sesi_absensi (
     sesi TEXT NOT NULL,
     "jam mulai" TEXT NOT NULL,
     "jam selesai" TEXT NOT NULL,
-    ikon TEXT DEFAULT '⏰'
+    ikon TEXT DEFAULT '⏰',
+    presensi TEXT
 );
 
 ALTER TABLE sesi_absensi ENABLE ROW LEVEL SECURITY;
@@ -292,9 +293,11 @@ CREATE TABLE IF NOT EXISTS sesi_absensi (
     sesi TEXT NOT NULL,
     "jam mulai" TEXT NOT NULL,
     "jam selesai" TEXT NOT NULL,
-    ikon TEXT DEFAULT '⏰'
+    ikon TEXT DEFAULT '⏰',
+    presensi TEXT
 );
 ALTER TABLE sesi_absensi ADD COLUMN IF NOT EXISTS ikon TEXT DEFAULT '⏰';
+ALTER TABLE sesi_absensi ADD COLUMN IF NOT EXISTS presensi TEXT;
 ALTER TABLE sesi_absensi ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Akses Publik Sesi Absensi Seluruh Operasi" ON sesi_absensi;
 CREATE POLICY "Akses Publik Sesi Absensi Seluruh Operasi" ON sesi_absensi 

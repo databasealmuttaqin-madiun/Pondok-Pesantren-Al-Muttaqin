@@ -7,6 +7,7 @@ export interface SessionInfo {
   label: string;
   time: string;
   icon?: string;
+  presensi?: string;
 }
 
 export default function ManajemenSesiPanel() {
@@ -19,6 +20,7 @@ export default function ManajemenSesiPanel() {
   const [jamMulai, setJamMulai] = useState("08:00");
   const [jamSelesai, setJamSelesai] = useState("09:00");
   const [ikonSesi, setIkonSesi] = useState("⏰");
+  const [jenisPresensi, setJenisPresensi] = useState("ngaji"); // default value
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -35,7 +37,8 @@ export default function ManajemenSesiPanel() {
           id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
           label: d.sesi,
           time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
-          icon: d.ikon || "⏰"
+          icon: d.ikon || "⏰",
+          presensi: d.presensi || "ngaji"
         }));
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
@@ -76,6 +79,7 @@ export default function ManajemenSesiPanel() {
     setJamMulai("08:00");
     setJamSelesai("09:00");
     setIkonSesi("⏰");
+    setJenisPresensi("ngaji");
     setIsFormOpen(true);
   };
 
@@ -98,6 +102,7 @@ export default function ManajemenSesiPanel() {
     }
     
     setIkonSesi(sess.icon || "⏰");
+    setJenisPresensi(sess.presensi || "ngaji");
     setIsFormOpen(true);
   };
 
@@ -145,7 +150,8 @@ export default function ManajemenSesiPanel() {
           sesi: namaSesi.trim(),
           "jam mulai": jamMulai,
           "jam selesai": jamSelesai,
-          ikon: ikonSesi
+          ikon: ikonSesi,
+          presensi: jenisPresensi
         };
 
         let supabaseErr;
@@ -165,7 +171,8 @@ export default function ManajemenSesiPanel() {
           sesi: namaSesi.trim(),
           "jam mulai": jamMulai,
           "jam selesai": jamSelesai,
-          ikon: ikonSesi
+          ikon: ikonSesi,
+          presensi: jenisPresensi
         };
 
         const { error } = await supabase.from("sesi_absensi").insert([payload]);
@@ -290,6 +297,23 @@ export default function ManajemenSesiPanel() {
                 className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white transition-all shadow-inner"
               />
             </div>
+
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Jenis Presensi
+              </label>
+              <select
+                value={jenisPresensi}
+                onChange={(e) => setJenisPresensi(e.target.value)}
+                className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white transition-all shadow-inner"
+              >
+                <option value="makan">Makan</option>
+                <option value="sholat">Sholat</option>
+                <option value="ngaji">Ngaji</option>
+                <option value="doa malam">Doa Malam</option>
+                <option value="sekolah">Sekolah</option>
+              </select>
+            </div>
           </div>
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-850 flex justify-end">
@@ -331,15 +355,15 @@ export default function ManajemenSesiPanel() {
                 try {
                   setIsLoading(true);
                   const defaultPayloads = [
-                    { sesi: "Subuh", "jam mulai": "04:00", "jam selesai": "10:00", ikon: "🌅" },
-                    { sesi: "Dzuhur", "jam mulai": "11:30", "jam selesai": "12:30", ikon: "☀️" },
-                    { sesi: "Asar", "jam mulai": "14:50", "jam selesai": "15:30", ikon: "🌤️" },
-                    { sesi: "Maghrib", "jam mulai": "17:20", "jam selesai": "18:00", ikon: "🌇" },
-                    { sesi: "Isya", "jam mulai": "18:40", "jam selesai": "19:30", ikon: "🌌" },
-                    { sesi: "Doa Malam", "jam mulai": "03:30", "jam selesai": "04:15", ikon: "🌌" },
-                    { sesi: "Makan Pagi", "jam mulai": "06:00", "jam selesai": "07:15", ikon: "🍳" },
-                    { sesi: "Makan Siang", "jam mulai": "11:00", "jam selesai": "12:00", ikon: "🍛" },
-                    { sesi: "Makan Sore", "jam mulai": "16:30", "jam selesai": "17:15", ikon: "🍲" }
+                    { sesi: "Subuh", "jam mulai": "04:00", "jam selesai": "10:00", ikon: "🌅", presensi: "sholat" },
+                    { sesi: "Dzuhur", "jam mulai": "11:30", "jam selesai": "12:30", ikon: "☀️", presensi: "sholat" },
+                    { sesi: "Asar", "jam mulai": "14:50", "jam selesai": "15:30", ikon: "🌤️", presensi: "sholat" },
+                    { sesi: "Maghrib", "jam mulai": "17:20", "jam selesai": "18:00", ikon: "🌇", presensi: "sholat" },
+                    { sesi: "Isya", "jam mulai": "18:40", "jam selesai": "19:30", ikon: "🌌", presensi: "sholat" },
+                    { sesi: "Doa Malam", "jam mulai": "03:30", "jam selesai": "04:15", ikon: "🌌", presensi: "doa malam" },
+                    { sesi: "Makan Pagi", "jam mulai": "06:00", "jam selesai": "07:15", ikon: "🍳", presensi: "makan" },
+                    { sesi: "Makan Siang", "jam mulai": "11:00", "jam selesai": "12:00", ikon: "🍛", presensi: "makan" },
+                    { sesi: "Makan Sore", "jam mulai": "16:30", "jam selesai": "17:15", ikon: "🍲", presensi: "makan" }
                   ];
                   await supabase.from("sesi_absensi").insert(defaultPayloads);
                   await fetchSessions();
@@ -371,8 +395,14 @@ export default function ManajemenSesiPanel() {
                       {sess.label}
                     </h4>
                     <span className="text-[10px] font-black text-slate-400 dark:text-slate-450 tracking-wider block mt-1 uppercase flex items-center gap-1">
-                      <Clock className="w-3 w-3 stroke-[2.5]" />
+                      <Clock className="w-3 h-3 stroke-[2.5]" />
                       <span>{sess.time} WIB</span>
+                      {sess.presensi && (
+                        <>
+                          <span className="mx-1">•</span>
+                          <span className="text-indigo-500 font-bold">{sess.presensi}</span>
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>

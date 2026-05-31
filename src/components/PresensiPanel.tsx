@@ -31,6 +31,7 @@ export interface SessionInfo {
   label: string;
   time: string;
   icon: string;
+  presensi?: string;
 }
 
 function detectSession(timeStr: string, sessions: SessionInfo[]): string {
@@ -60,7 +61,16 @@ function detectSession(timeStr: string, sessions: SessionInfo[]): string {
 }
 
 // Map local session ID (e.g. "makan_pagi", "subuh") to supabase "sesi" and "presensi" columns
-function mapLocalSessionToDbSession(sessionId: string): { sesi: string; presensi: string } {
+function mapLocalSessionToDbSession(sessionId: string, sessions: SessionInfo[]): { sesi: string; presensi: string } {
+  const sess = sessions.find(s => s.id === sessionId);
+  if (sess) {
+    return {
+      sesi: sess.label,
+      presensi: sess.presensi || "ngaji"
+    };
+  }
+
+  // Fallback if not found in state
   const idLower = (sessionId || "").toLowerCase();
   
   // Determine "presensi" column value (e.g., sholat, makan)
@@ -87,7 +97,14 @@ function mapLocalSessionToDbSession(sessionId: string): { sesi: string; presensi
 }
 
 // Map supabase database "sesi" and "presensi" columns back to local session ID
-function mapDbSessionToLocalSession(dbSesi: string, dbPresensi?: string): string {
+function mapDbSessionToLocalSession(dbSesi: string, dbPresensi: string | undefined, sessions: SessionInfo[]): string {
+  const sess = sessions.find(s => s.label === dbSesi && s.presensi === dbPresensi);
+  if (sess) return sess.id;
+  
+  // Also try to find just by label if presensi was omitted or null in older records
+  const sessByLabel = sessions.find(s => s.label === dbSesi);
+  if (sessByLabel) return sessByLabel.id;
+
   const sesiLower = (dbSesi || "").toLowerCase();
   const presensiLower = (dbPresensi || "").toLowerCase();
 
@@ -152,7 +169,8 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
           label: d.sesi,
           time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
-          icon: d.ikon || "⏰"
+          icon: d.ikon || "⏰",
+          presensi: d.presensi || "ngaji"
         }));
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
@@ -458,7 +476,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
           if (matchedStudent) {
             const studentId = String(matchedStudent.id);
-            const mappedLocalSess = mapDbSessionToLocalSession(row.sesi || "", row.presensi || "");
+            const mappedLocalSess = mapDbSessionToLocalSession(row.sesi || "", row.presensi || "", sessions);
             const key = `${row.tanggal || selectedDate}_absensi_${mappedLocalSess}`;
             
             let localStatus: AttendanceStatus = "unmarked";
@@ -492,7 +510,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     const student = students.find(s => String(s.id) === studentId);
     if (!student) return;
 
-    const { sesi: dbSesi, presensi: dbPresensi } = mapLocalSessionToDbSession(activeSession);
+    const { sesi: dbSesi, presensi: dbPresensi } = mapLocalSessionToDbSession(activeSession, sessions);
     const formattedStatus = status === "terlambat" ? "telat" : status === "alpa" ? "alpha" : status;
     const studentKamar = student.kamar || "Belum Set";
 
