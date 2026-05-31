@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit3, Clock, AlertCircle, CheckCircle2, CalendarDays } from "lucide-react";
+import { supabase } from "../supabaseClient";
 
 export interface SessionInfo {
   id: string;
@@ -19,38 +20,60 @@ export default function ManajemenSesiPanel() {
   const [jamSelesai, setJamSelesai] = useState("09:00");
   const [ikonSesi, setIkonSesi] = useState("⏰");
 
-  // Load from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("santri_absensi_sessions");
-    if (saved) {
-      try {
-        setSessions(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load from Supabase (or fallback to local)
+  const fetchSessions = async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase.from("sesi_absensi").select("*").order("jam mulai", { ascending: true });
+      
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const loadedSessions = data.map((d: any) => ({
+          id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
+          label: d.sesi,
+          time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
+          icon: d.ikon || "⏰"
+        }));
+        setSessions(loadedSessions);
+        localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
+      } else {
+        // Fallback to defaults or local if empty
+        const saved = localStorage.getItem("santri_absensi_sessions");
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (parsed.length > 0) setSessions(parsed);
+          } catch(e) {}
+        }
       }
-    } else {
-      // Default unified sessions as specified before
-      const defaults: SessionInfo[] = [
-        { id: "subuh", label: "Subuh", time: "04.00 - 10.00", icon: "🌅" },
-        { id: "dzuhur", label: "Dzuhur", time: "11.30 - 12.30", icon: "☀️" },
-        { id: "asar", label: "Asar", time: "14.50 - 15.30", icon: "🌤️" },
-        { id: "maghrib", label: "Maghrib", time: "17.20 - 18.00", icon: "🌇" },
-        { id: "isya", label: "Isya", time: "18.40 - 19.30", icon: "🌌" },
-        { id: "doa_malam_sesi", label: "Doa Malam", time: "03.30 - 04.15", icon: "🌌" },
-        { id: "makan_pagi", label: "Makan Pagi", time: "06.00 - 07.15", icon: "🍳" },
-        { id: "makan_siang", label: "Makan Siang", time: "11.00 - 12.00", icon: "🍛" },
-        { id: "makan_sore", label: "Makan Sore", time: "16.30 - 17.15", icon: "🍲" }
-      ];
-      localStorage.setItem("santri_absensi_sessions", JSON.stringify(defaults));
-      setSessions(defaults);
+    } catch (err: any) {
+      console.warn("Gagal mengambil tabel sesi_absensi:", err.message);
+      // Fallback
+      const saved = localStorage.getItem("santri_absensi_sessions");
+      if (saved) {
+        try { setSessions(JSON.parse(saved)); } catch(e) {}
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessions();
+
+    const channel = supabase.channel('sesi-absensi-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sesi_absensi' }, () => {
+        fetchSessions();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     }
   }, []);
-
-  // Save to localStorage
-  const saveSessions = (updated: SessionInfo[]) => {
-    setSessions(updated);
-    localStorage.setItem("santri_absensi_sessions", JSON.stringify(updated));
-  };
 
   const handleOpenAdd = () => {
     setEditingSessionId(null);
@@ -83,50 +106,84 @@ export default function ManajemenSesiPanel() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm("Apakah Anda yakin ingin menghapus sesi ini? Semua presensi terkait sesi ini di masa depan mungkin memerlukan konfigurasi ulang.")) {
-      const updated = sessions.filter(s => s.id !== id);
-      saveSessions(updated);
+  const handleDelete = async (id: string, label: string) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus sesi "${label}"?`)) {
+      try {
+        setIsLoading(true);
+        // Supabase DB modification
+        // If id is numeric it means it comes from DB, but we pass toString() 
+        // We actually map "sesi" to identify because user uses id.toString()
+        const isNumeric = !isNaN(Number(id)) && String(id).trim() !== "";
+        if (isNumeric) {
+          const { error } = await supabase.from('sesi_absensi').delete().eq('id', Number(id));
+          if (error) throw error;
+        } else {
+          // If it was fallback local session id, try delete by 'sesi' label
+          const { error } = await supabase.from('sesi_absensi').delete().eq('sesi', label);
+          if (error) throw error;
+        }
+
+        const updated = sessions.filter(s => s.id !== id);
+        setSessions(updated);
+        localStorage.setItem("santri_absensi_sessions", JSON.stringify(updated));
+      } catch (err) {
+        console.warn(err);
+        alert("Gagal menghapus sesi. Pastikan izin database diatur dengan benar.");
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!namaSesi.trim()) return;
 
-    // Format: "04:00 - 06:00" -> replace ":" with "." to maintain app's standard representation is nice, or keep standard hours:
-    // Standard throughout PresensiPanel.tsx is dot format for hours, but we accept both easily. Let's write "HH.mm - HH.mm" or match formatting:
-    const formattedStart = jamMulai.replace(":", ".");
-    const formattedEnd = jamSelesai.replace(":", ".");
-    const timeRangeStr = `${formattedStart} - ${formattedEnd}`;
+    // Use standard format 'HH:mm' for database for jam mulai and jam selesai!
+    // We already have jamMulai and jamSelesai in HH:mm from input type="time"
+    try {
+      setIsLoading(true);
+      if (editingSessionId) {
+        // Edit Mode
+        const isNumeric = !isNaN(Number(editingSessionId)) && String(editingSessionId).trim() !== "";
+        const payload = {
+          sesi: namaSesi.trim(),
+          "jam mulai": jamMulai,
+          "jam selesai": jamSelesai,
+          ikon: ikonSesi
+        };
 
-    if (editingSessionId) {
-      // Edit
-      const updated = sessions.map(s => {
-        if (s.id === editingSessionId) {
-          return {
-            ...s,
-            label: namaSesi.trim(),
-            time: timeRangeStr,
-            icon: ikonSesi
-          };
+        let supabaseErr;
+        if (isNumeric) {
+          const { error } = await supabase.from("sesi_absensi").update(payload).eq("id", Number(editingSessionId));
+          supabaseErr = error;
+        } else {
+          const { error } = await supabase.from("sesi_absensi").update(payload).eq("sesi", namaSesi.trim()); // Fallback best effort
+          supabaseErr = error;
         }
-        return s;
-      });
-      saveSessions(updated);
-    } else {
-      // Add
-      const newId = namaSesi.toLowerCase().replace(/[^a-z0-9]/g, "_") + "_" + Date.now();
-      const newSession: SessionInfo = {
-        id: newId,
-        label: namaSesi.trim(),
-        time: timeRangeStr,
-        icon: ikonSesi
-      };
-      saveSessions([...sessions, newSession]);
-    }
+        
+        if (supabaseErr) throw supabaseErr;
+        await fetchSessions(); // refresh completely
+      } else {
+        // Add Mode
+        const payload = {
+          sesi: namaSesi.trim(),
+          "jam mulai": jamMulai,
+          "jam selesai": jamSelesai,
+          ikon: ikonSesi
+        };
 
-    setIsFormOpen(false);
+        const { error } = await supabase.from("sesi_absensi").insert([payload]);
+        if (error) throw error;
+        await fetchSessions();
+      }
+      setIsFormOpen(false);
+    } catch (error: any) {
+      console.warn(error);
+      alert("Gagal menyimpan ke database cloud: " + error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const emojis = ["🌅", "🌞", "☀️", "🌤️", "🌇", "🌌", "🌙", "🍽️", "🍳", "🍛", "🍲", "⏰", "📖", "🕌", "🧕", "👳", "💬", "✏️", "🎒"];
@@ -243,10 +300,11 @@ export default function ManajemenSesiPanel() {
           <div className="pt-2 border-t border-slate-100 dark:border-slate-850 flex justify-end">
             <button
               type="submit"
-              className="bg-[#22c55e] hover:bg-green-600 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-2xl flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+              disabled={isLoading}
+              className={`bg-[#22c55e] hover:bg-green-600 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-2xl flex items-center gap-1.5 shadow-md cursor-pointer transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Simpan Sesi</span>
+              <span>{isLoading ? "Menyimpan..." : "Simpan Sesi"}</span>
             </button>
           </div>
         </form>
@@ -300,7 +358,7 @@ export default function ManajemenSesiPanel() {
                     <Edit3 className="w-4 h-4 stroke-[2.2]" />
                   </button>
                   <button
-                    onClick={() => handleDelete(sess.id)}
+                    onClick={() => handleDelete(sess.id, sess.label)}
                     className="p-2 text-slate-500 hover:text-rose-650 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950 border border-slate-200 dark:border-slate-700 hover:border-rose-200 rounded-xl transition-all cursor-pointer"
                     title="Hapus Sesi"
                   >

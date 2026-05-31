@@ -117,7 +117,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     return `${year}-${month}-${day}`;
   });
 
-  // Dynamic Sessions State from localStorage
+  // Dynamic Sessions State from Supabase
   const [sessions, setSessions] = useState<SessionInfo[]>(() => {
     const saved = localStorage.getItem("santri_absensi_sessions");
     if (saved) {
@@ -139,12 +139,47 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       { id: "makan_siang", label: "Makan Siang", time: "11.00 - 12.00", icon: "🍛" },
       { id: "makan_sore", label: "Makan Sore", time: "16.30 - 17.15", icon: "🍲" }
     ];
-    localStorage.setItem("santri_absensi_sessions", JSON.stringify(defaults));
     return defaults;
   });
 
+  const fetchSessionsFromDb = async () => {
+    try {
+      const { data, error } = await supabase.from("sesi_absensi").select("*").order("jam mulai", { ascending: true });
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const loadedSessions = data.map((d: any) => ({
+          id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
+          label: d.sesi,
+          time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
+          icon: d.ikon || "⏰"
+        }));
+        setSessions(loadedSessions);
+        localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
+      }
+    } catch (err: any) {
+      console.warn("Failed to load sessions from DB:", err);
+    }
+  };
+
   // Keep state synced in case they added new ones
   useEffect(() => {
+    fetchSessionsFromDb();
+
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debouncedReloadSesi = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchSessionsFromDb();
+      }, 500);
+    };
+
+    const sesiChannel = supabase
+      .channel("sub-sesi-absensi-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sesi_absensi" }, () => {
+        debouncedReloadSesi();
+      })
+      .subscribe();
+
     const handleStorageChange = () => {
       const saved = localStorage.getItem("santri_absensi_sessions");
       if (saved) {
@@ -159,6 +194,8 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(sesiChannel);
     };
   }, []);
 
