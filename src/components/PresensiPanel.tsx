@@ -1374,21 +1374,30 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
               </div>
             </div>
 
-            {/* 7. LATE ARRIVALS CARD */}
+            {/* 7. LATE ARRIVALS CARD & STATUS MONITOR */}
             <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-2.5 select-none animate-fade-in">
               <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block pb-1">
-                LATE ARRIVALS MONITOR
+                {isSholatActive ? "LATE ARRIVALS MONITOR" : "STATUS MONITOR PRESENSI"}
               </span>
               <div className="flex items-baseline gap-2">
-                <span className={`text-4xl font-extrabold italic ${isIqomahActive ? "text-[#ff2c55]" : "text-slate-400"}`}>
-                  {isIqomahActive ? "Aktif" : "Nonaktif"}
+                <span className={`text-4xl font-extrabold italic ${isSholatActive ? (isIqomahActive ? "text-[#ff2c55]" : "text-slate-400") : "text-indigo-500"}`}>
+                  {isSholatActive ? (isIqomahActive ? "Aktif" : "Nonaktif") : "Berjalan"}
                 </span>
               </div>
               <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 pt-1">
                 Monitoring Sesi {activeSessionObj?.label}
               </h4>
               <p className="text-[10px] text-slate-400 leading-normal">
-                Santri yang absen setelah iqomah tercatat otomatis sebagai terlambat.
+                {isSholatActive 
+                  ? "Santri yang absen setelah iqomah tercatat otomatis sebagai terlambat."
+                  : (() => {
+                      const pType = mapLocalSessionToDbSession(activeSessionObj?.id || "", sessions).presensi;
+                      if (pType === "makan") return "Pemindaian akan mencatat status pengambilan makan santri pada sesi ini.";
+                      if (pType === "ngaji") return "Pemindaian akan mencatat kehadiran ngaji santri pada sesi ini.";
+                      if (pType === "sekolah") return "Pemindaian akan mencatat kehadiran sekolah santri pada sesi ini.";
+                      return `Pemindaian akan otomatis mencatat kehadiran santri untuk sesi ${activeSessionObj?.label}.`;
+                    })()
+                }
               </p>
             </div>
           </div>

@@ -4,7 +4,7 @@ import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop } fro
 import { supabase } from "../supabaseClient";
 
 interface LoginFormProps {
-  onSuccess: (user: { username: string; role: string; name: string }) => void;
+  onSuccess: (user: { username: string; role: string; name: string; gender?: string }) => void;
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
 }
@@ -40,7 +40,8 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
         const dbUserVal = {
           username: user.username,
           role: user.role,
-          name: user.nama
+          name: user.nama,
+          gender: user.gender || 'Semua'
         };
         
         setIsSuccess(true);

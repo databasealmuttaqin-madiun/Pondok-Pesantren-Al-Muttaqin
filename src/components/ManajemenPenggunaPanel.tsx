@@ -7,6 +7,7 @@ interface PenggunaData {
   username: string;
   nama: string;
   role: string;
+  gender?: string;
 }
 
 export default function ManajemenPenggunaPanel() {
@@ -22,6 +23,7 @@ export default function ManajemenPenggunaPanel() {
   const [password, setPassword] = useState("");
   const [nama, setNama] = useState("");
   const [role, setRole] = useState("guru_pondok");
+  const [gender, setGender] = useState("Semua");
 
   const roles = [
     { id: "admin", label: "Admin (Akses Penuh)" },
@@ -34,7 +36,7 @@ export default function ManajemenPenggunaPanel() {
     try {
       setIsLoading(true);
       setErrorMessage(null);
-      const { data, error } = await supabase.from("pengguna").select("id, username, nama, role").order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("pengguna").select("id, username, nama, role, gender").order("created_at", { ascending: false });
       if (error) throw error;
       setUsers(data || []);
     } catch (err: any) {
@@ -59,12 +61,14 @@ export default function ManajemenPenggunaPanel() {
       setPassword(""); // Don't fetch password, require new one if editing
       setNama(user.nama);
       setRole(user.role);
+      setGender(user.gender || "Semua");
     } else {
       setEditingId(null);
       setUsername("");
       setPassword("");
       setNama("");
       setRole("guru_pondok");
+      setGender("Semua");
     }
     setIsFormOpen(true);
   };
@@ -90,7 +94,8 @@ export default function ManajemenPenggunaPanel() {
       const payload: any = {
         username: username.trim(),
         nama: nama.trim(),
-        role: role
+        role: role,
+        gender: gender
       };
 
       if (password.trim()) {
@@ -216,6 +221,19 @@ export default function ManajemenPenggunaPanel() {
                 </select>
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Batasi Akses Santri (Gender)</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
+                >
+                  <option value="Semua">Semua Santri (Bisa akses L & P)</option>
+                  <option value="L">Khusus Santri Putra (Laki-laki)</option>
+                  <option value="P">Khusus Santri Putri (Perempuan)</option>
+                </select>
+              </div>
+
               <div className="pt-4 flex justify-end gap-3">
                 <button type="button" onClick={closeForm} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
                   Batal
@@ -278,8 +296,15 @@ export default function ManajemenPenggunaPanel() {
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3">
-                  <div className="text-[10px] font-black px-2 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-md uppercase tracking-wider">
-                    {roles.find(r => r.id === user.role)?.label || user.role}
+                  <div className="flex gap-2">
+                    <div className="text-[10px] font-black px-2 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-md uppercase tracking-wider">
+                      {roles.find(r => r.id === user.role)?.label || user.role}
+                    </div>
+                    {user.gender && user.gender !== 'Semua' && (
+                      <div className="text-[10px] font-black px-2 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 rounded-md uppercase tracking-wider">
+                        {user.gender === 'L' ? 'Laki-Laki' : 'Perempuan'}
+                      </div>
+                    )}
                   </div>
                   <div className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
                     <Key className="w-3 h-3" />

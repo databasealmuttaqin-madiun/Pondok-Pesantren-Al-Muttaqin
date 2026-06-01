@@ -113,7 +113,7 @@ const DEMO_SANTRI: SantriData[] = [
 ];
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<{ username: string; role: string; name: string } | null>(() => {
+  const [currentUser, setCurrentUser] = useState<{ username: string; role: string; name: string; gender?: string } | null>(() => {
     const saved = localStorage.getItem("admin_user");
     return saved ? JSON.parse(saved) : null;
   });
@@ -979,6 +979,8 @@ export default function App() {
   };
 
   const userRole = currentUser?.role || "admin";
+  const userGenderAccess = currentUser?.gender || "Semua";
+  const displayedStudents = userGenderAccess !== "Semua" ? students.filter(s => s.jenis_kelamin === userGenderAccess) : students;
 
   const allTabs = [
     { id: "dashboard", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
@@ -1088,7 +1090,7 @@ export default function App() {
           <div className="hidden sm:flex flex-col items-end">
             <span className="text-xs font-extrabold">{currentUser?.name}</span>
             <span className="text-[9px] font-mono tracking-wider opacity-80 uppercase font-black">
-              {currentUser?.role?.replace('_', ' ')}
+              {currentUser?.role?.replace('_', ' ')} {currentUser?.gender && currentUser.gender !== 'Semua' ? `(${currentUser.gender})` : ''}
             </span>
           </div>
         </div>
@@ -1174,7 +1176,7 @@ export default function App() {
                 <div className="flex flex-col flex-1 min-w-0">
                   <span className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{currentUser?.name}</span>
                   <span className="text-[9px] font-mono tracking-wider text-slate-500 dark:text-slate-400 uppercase font-black truncate">
-                    {currentUser?.role?.replace('_', ' ')}
+                    {currentUser?.role?.replace('_', ' ')} {currentUser?.gender && currentUser.gender !== 'Semua' ? `(${currentUser.gender})` : ''}
                   </span>
                 </div>
               </div>
@@ -1218,7 +1220,7 @@ export default function App() {
           <div className="flex-1 w-full max-w-7xl mx-auto flex flex-col">
             {activeTab === "dashboard" && (
               <Dashboard
-                students={students}
+                students={displayedStudents}
                 onNavigateToForm={() => {
                   setEditingStudent(null);
                   setActiveTab("form");
@@ -1238,7 +1240,7 @@ export default function App() {
                   rooms={rooms}
                   recitationClasses={recitationClasses}
                   schoolClasses={schoolClasses}
-                  students={students}
+                  students={displayedStudents}
                   onCancel={() => {
                     setEditingStudent(null);
                     setActiveTab("list");
@@ -1249,7 +1251,7 @@ export default function App() {
 
             {activeTab === "list" && (
               <SantriList
-                students={students}
+                students={displayedStudents}
                 onEdit={handleTriggerEdit}
                 onDelete={handleDeleteStudent}
                 onUpdateStatus={handleUpdateStudentStatus}
@@ -1259,7 +1261,7 @@ export default function App() {
             {activeTab === "perizinan" && (
               <div className="w-full">
                 <PerizinanPanel
-                  students={students}
+                  students={displayedStudents}
                   rooms={rooms}
                   onRefreshAll={checkConnectionAndLoad}
                   onTriggerNotification={triggerNotification}
@@ -1269,7 +1271,7 @@ export default function App() {
 
             {activeTab === "absensi" && (
               <div className="w-full">
-                <PresensiPanel students={students} />
+                <PresensiPanel students={displayedStudents} />
               </div>
             )}
 
@@ -1282,7 +1284,7 @@ export default function App() {
             {activeTab === "management" && (
               <div className="w-full">
                 <ManagementPanel
-                  students={students}
+                  students={displayedStudents}
                   rooms={rooms}
                   setRooms={setRooms}
                   recitationClasses={recitationClasses}
@@ -1298,7 +1300,7 @@ export default function App() {
             {activeTab === "nfc" && (
               <div className="w-full">
                 <NfcRegisterPanel
-                  students={students}
+                  students={displayedStudents}
                   rooms={rooms}
                   onUpdateNfc={handleUpdateStudentNfc}
                   isDarkMode={isDarkMode}
@@ -1400,7 +1402,7 @@ export default function App() {
                 <div className="flex flex-col flex-1 min-w-0">
                   <span className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{currentUser?.name}</span>
                   <span className="text-[10px] font-mono tracking-wider text-slate-500 dark:text-slate-400 uppercase font-black truncate">
-                    {currentUser?.role?.replace('_', ' ')}
+                    {currentUser?.role?.replace('_', ' ')} {currentUser?.gender && currentUser.gender !== 'Semua' ? `(${currentUser.gender})` : ''}
                   </span>
                 </div>
               </div>

@@ -209,8 +209,10 @@ CREATE TABLE IF NOT EXISTS pengguna (
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     nama TEXT NOT NULL,
-    role TEXT NOT NULL
+    role TEXT NOT NULL,
+    gender TEXT DEFAULT 'Semua'
 );
+ALTER TABLE pengguna ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'Semua';
 
 ALTER TABLE pengguna ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Akses Publik Pengguna Seluruh Operasi" ON pengguna 
@@ -324,8 +326,10 @@ CREATE TABLE IF NOT EXISTS pengguna (
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     nama TEXT NOT NULL,
-    role TEXT NOT NULL
+    role TEXT NOT NULL,
+    gender TEXT DEFAULT 'Semua'
 );
+ALTER TABLE pengguna ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'Semua';
 ALTER TABLE pengguna ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Akses Publik Pengguna Seluruh Operasi" ON pengguna;
 CREATE POLICY "Akses Publik Pengguna Seluruh Operasi" ON pengguna 
