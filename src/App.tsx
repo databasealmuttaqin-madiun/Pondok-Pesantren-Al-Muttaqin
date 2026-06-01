@@ -1059,7 +1059,7 @@ export default function App() {
           </div>
           <div className="flex flex-col">
             <h1 className="text-[12px] sm:text-sm md:text-base font-bold tracking-tight uppercase text-slate-800 dark:text-slate-100 leading-tight">
-              <span className="hidden sm:inline">Pondok Pesantren Al-Muttaqin</span>
+              <span className="hidden sm:inline">Pondok Pesantren Al Muttaqin</span>
               <span className="inline sm:hidden flex flex-col gap-0.5">
                 <span>Pondok Pesantren</span>
                 <span>Al Muttaqin</span>
@@ -1164,27 +1164,33 @@ export default function App() {
             </div>
           </nav>
 
-          {/* Bottom section with sync status inside Akkhor-style container */}
-          <div className="p-4 border-t border-[#dee4ec] dark:border-slate-850 shrink-0">
-            {!sidebarCollapsed ? (
-              <div className="p-3 bg-white/60 dark:bg-[#151930]/65 border border-slate-200/85 dark:border-slate-800 rounded-2xl shadow-sm">
-                <div className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${dbStatus === "connected" ? "bg-emerald-500" : "bg-amber-400 animate-pulse"}`}></span>
-                  SINKRONISASI
+
+          {!sidebarCollapsed && (
+            <div className="p-4 border-t border-[#dee4ec] dark:border-slate-850 bg-[#e9eef6]/30 dark:bg-[#0e1222]/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-sm overflow-hidden shrink-0">
+                  {currentUser?.name?.charAt(0).toUpperCase() || "U"}
                 </div>
-                <div className="text-[10px] font-semibold font-mono text-[#444746] dark:text-slate-350 leading-tight select-all">
-                  {dbStatus === "connected" ? "live_supabase_active" : "local_persisted_storage"}
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{currentUser?.name}</span>
+                  <span className="text-[9px] font-mono tracking-wider text-slate-500 dark:text-slate-400 uppercase font-black truncate">
+                    {currentUser?.role?.replace('_', ' ')}
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div 
-                className="flex justify-center" 
-                title={dbStatus === "connected" ? "DB Status: Terhubung Online" : "DB Status: Lokal Backup"}
+              <button
+                onClick={() => {
+                  localStorage.removeItem("admin_token");
+                  localStorage.removeItem("admin_user");
+                  setCurrentUser(null);
+                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
+                }}
+                className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] rounded-lg transition-colors flex items-center justify-center gap-2"
               >
-                <span className={`w-3 h-3 rounded-full border-2 border-white dark:border-slate-800 shadow-sm ${dbStatus === "connected" ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`}></span>
-              </div>
-            )}
-          </div>
+                LOGOUT
+              </button>
+            </div>
+          )}
         </aside>
 
         {/* Content Area */}

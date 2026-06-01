@@ -251,6 +251,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   const [showNfcErrorModal, setShowNfcErrorModal] = useState(false);
   const [isManualDate, setIsManualDate] = useState(false);
   const [rekapTimeframe, setRekapTimeframe] = useState<"harian" | "mingguan" | "bulanan">("harian");
+  const [rekapPresensiType, setRekapPresensiType] = useState<string>("sholat");
   const [attendancePopup, setAttendancePopup] = useState<{
     isOpen: boolean;
     type: "success" | "error";
@@ -868,13 +869,18 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     let hadir = 0;
     let terlambat = 0;
     let alpa = 0;
+    let sessionsData: Record<string, Record<string, string>> = {};
 
     if (rekapTimeframe === "harian") {
+      sessionsData[selectedDate] = {};
       const passedSessionIds = getPassedSessions(selectedDate);
       sessions.forEach(sess => {
         if (!passedSessionIds.includes(sess.id)) return;
+        const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
+        if (mappedPresensi !== rekapPresensiType) return;
         const key = `${selectedDate}_absensi_${sess.id}`;
         const status = attendanceDb[key]?.[sId] || "unmarked";
+        sessionsData[selectedDate][sess.id] = status;
         if (status === "hadir") hadir++;
         else if (status === "terlambat") terlambat++;
         else if (status === "alpa" || status === "unmarked") alpa++;
@@ -888,13 +894,17 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         const m = String(d.getMonth() + 1).padStart(2, "0");
         const day = String(d.getDate()).padStart(2, "0");
         const dateStr = `${y}-${m}-${day}`;
+        sessionsData[dateStr] = {};
 
         const passedSessionIds = getPassedSessions(dateStr);
 
         sessions.forEach(sess => {
           if (!passedSessionIds.includes(sess.id)) return;
+          const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
+          if (mappedPresensi !== rekapPresensiType) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           const status = attendanceDb[key]?.[sId] || "unmarked";
+          sessionsData[dateStr][sess.id] = status;
           if (status === "hadir") hadir++;
           else if (status === "terlambat") terlambat++;
           else if (status === "alpa" || status === "unmarked") alpa++;
@@ -908,12 +918,16 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
       for (let day = 1; day <= days; day++) {
         const dateStr = `${y}-${mStr}-${String(day).padStart(2, "0")}`;
+        sessionsData[dateStr] = {};
         const passedSessionIds = getPassedSessions(dateStr);
 
         sessions.forEach(sess => {
           if (!passedSessionIds.includes(sess.id)) return;
+          const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
+          if (mappedPresensi !== rekapPresensiType) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           const status = attendanceDb[key]?.[sId] || "unmarked";
+          sessionsData[dateStr][sess.id] = status;
           if (status === "hadir") hadir++;
           else if (status === "terlambat") terlambat++;
           else if (status === "alpa" || status === "unmarked") alpa++;
@@ -921,7 +935,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       }
     }
 
-    return { hadir, terlambat, alpa };
+    return { hadir, terlambat, alpa, sessionsData };
   };
 
   return (
@@ -1322,17 +1336,19 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
               </div>
 
               {/* Red Tactile Button */}
-              <button
-                type="button"
-                onClick={toggleIqomah}
-                className={`w-full py-4 rounded-2xl text-center text-white text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-md select-none ${
-                  isIqomahActive 
-                    ? "bg-[#ef4444] hover:bg-rose-600 animate-pulse ring-4 ring-rose-100 dark:ring-rose-950/40" 
-                    : "bg-[#ff2c55] hover:bg-[#e02047]"
-                }`}
-              >
-                🔥 {isIqomahActive ? "STATUS: IQOMAH TELAH BERKUMANDANG" : "TOMBOL IQOMAH"}
-              </button>
+              {isSholatActive && (
+                <button
+                  type="button"
+                  onClick={toggleIqomah}
+                  className={`w-full py-4 rounded-2xl text-center text-white text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-md select-none ${
+                    isIqomahActive 
+                      ? "bg-[#ef4444] hover:bg-rose-600 animate-pulse ring-4 ring-rose-100 dark:ring-rose-950/40" 
+                      : "bg-[#ff2c55] hover:bg-[#e02047]"
+                  }`}
+                >
+                  🔥 {isIqomahActive ? "STATUS: IQOMAH TELAH BERKUMANDANG" : "TOMBOL IQOMAH"}
+                </button>
+              )}
 
             </div>
           </div>
@@ -1426,37 +1442,36 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                 </span>
               </h3>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 mb-3">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Jenis Rekapitulasi</label>
+                  <select
+                    value={rekapPresensiType}
+                    onChange={(e) => setRekapPresensiType(e.target.value)}
+                    className="w-full text-xs font-bold px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                  >
+                    <option value="sholat">🕌 Presensi Sholat</option>
+                    <option value="makan">🍽️ Presensi Makan</option>
+                    <option value="ngaji">📖 Presensi Ngaji</option>
+                    <option value="sekolah">🎒 Presensi Sekolah</option>
+                  </select>
+                </div>
+              </div>
+
               {rekapTimeframe === "harian" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Saring Tanggal Rekap</label>
-                    <input 
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setSelectedDate(e.target.value);
-                          setIsManualDate(true);
-                        }
-                      }}
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Sesi Absensi Aktif</label>
-                    <select
-                      value={activeSession}
-                      onChange={(e) => {
-                        setActiveSession(e.target.value);
-                        setScanFeedback(null);
-                      }}
-                      className="w-full text-xs font-bold px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                    >
-                      {sessions.map(s => (
-                        <option key={s.id} value={s.id}>{s.icon} {s.label} ({s.time})</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Saring Tanggal Rekap</label>
+                  <input 
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedDate(e.target.value);
+                        setIsManualDate(true);
+                      }
+                    }}
+                    className="w-full max-w-sm text-xs font-bold leading-normal px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                  />
                 </div>
               )}
 
@@ -1531,60 +1546,125 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
             {/* Scrollable list of Rekap */}
             <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[550px] overflow-y-auto pr-1">
-              {(rekapTimeframe === "harian" ? rekapFilteredStudents : filteredStudents).length > 0 ? (
-                (rekapTimeframe === "harian" ? rekapFilteredStudents : filteredStudents).map((student) => {
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((student) => {
                   const isFemale = student.jenis_kelamin === "P";
                   const pPeriodStats = getStudentPeriodStats(student.id);
 
-                  return (
-                    <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
-                      
-                      {/* Left Block: Photo & basic student Info */}
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
-                          {student.foto ? (
-                            <img src={student.foto} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-lg select-none">
-                              {isFemale ? "🧕" : "👳"}
+                  if (rekapPresensiType === "makan") {
+                    if (rekapTimeframe === "harian") {
+                      const sessionsTodayData = pPeriodStats.sessionsData[selectedDate] || {};
+                      const getSessionStatus = (keyword: string) => {
+                          const s = sessions.find(sess => mapLocalSessionToDbSession(sess.id, sessions).presensi === "makan" && sess.label.toLowerCase().includes(keyword));
+                          if (!s) return "unmarked";
+                          return sessionsTodayData[s.id] || "unmarked";
+                      };
+                      const pagi = getSessionStatus("pagi");
+                      const siang = getSessionStatus("siang");
+                      const sore = getSessionStatus("sore");
+                      const countMakan = (pagi==="hadir"?1:0) + (siang==="hadir"?1:0) + (sore==="hadir"?1:0);
+
+                      return (
+                        <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
+                              {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
                             </div>
-                          )}
+                            <div className="min-w-0">
+                              <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 select-none self-end md:self-auto">
+                            <div className="flex flex-col items-center px-3 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-3xs">
+                              <span className="text-slate-400 text-[9px] font-extrabold uppercase">Pagi</span>
+                              <span className="text-sm">{pagi === "hadir" ? "✅" : "❌"}</span>
+                            </div>
+                            <div className="flex flex-col items-center px-3 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-3xs">
+                              <span className="text-slate-400 text-[9px] font-extrabold uppercase">Siang</span>
+                              <span className="text-sm">{siang === "hadir" ? "✅" : "❌"}</span>
+                            </div>
+                            <div className="flex flex-col items-center px-3 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-3xs">
+                              <span className="text-slate-400 text-[9px] font-extrabold uppercase">Sore</span>
+                              <span className="text-sm">{sore === "hadir" ? "✅" : "❌"}</span>
+                            </div>
+                            <div className="flex flex-col items-center px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-xl shadow-3xs ml-2">
+                              <span className="text-indigo-600 dark:text-indigo-400 text-[9px] font-extrabold uppercase">Rekap</span>
+                              <strong className="text-indigo-800 dark:text-indigo-300 font-black text-sm">{countMakan}x</strong>
+                            </div>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5 animate-fade-in">
-                            KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong> • <span className="text-indigo-600 bg-indigo-50 dark:bg-slate-900 border dark:border-slate-800 px-1 rounded-sm text-[8px] font-black">{student.kategori || "Reguler"}</span>
-                          </span>
+                      );
+                    } else {
+                      const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa;
+                      const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
+                      return (
+                        <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
+                              {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 select-none self-end md:self-auto">
+                            <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl">
+                              <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir/Makan</span>
+                              <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir + pPeriodStats.terlambat}</strong>
+                            </div>
+                            <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl">
+                              <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Tidak Makan</span>
+                              <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
+                            </div>
+                            <div className="flex items-center justify-center px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-[#3e46ca] dark:text-indigo-400 font-mono text-sm ml-2 w-16 text-center">
+                              {persentase}%
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  } else {
+                    // Default / Sholat logic
+                    const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa;
+                    const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
+                    return (
+                      <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
+                            {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 select-none self-end md:self-auto">
+                          <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs">
+                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir</span>
+                            <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
+                          </div>
+                          <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-250/60 dark:border-amber-900/40 rounded-xl shadow-3xs">
+                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Telat</span>
+                            <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
+                          </div>
+                          <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl shadow-3xs">
+                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Alfa</span>
+                            <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
+                          </div>
+                          <div className="flex flex-col items-center justify-center px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl ml-2 w-16 text-center">
+                            <span className="text-slate-500 dark:text-slate-400 text-[8px] font-extrabold uppercase mb-0.5 leading-none">Rasio</span>
+                            <strong className="text-[#3e46ca] dark:text-indigo-400 font-mono text-sm leading-none">{persentase}%</strong>
+                          </div>
                         </div>
                       </div>
-
-                      {/* Right Block: Clean counters for Hadir, Telat, and Alfa */}
-                      <div className="flex items-center gap-2 select-none self-end md:self-auto">
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-2xl shadow-3xs animate-fade-in">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          <span className="text-slate-500 dark:text-slate-400 text-[10px] font-extrabold uppercase">Hadir:</span>
-                          <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-250/60 dark:border-amber-900/40 rounded-2xl shadow-3xs animate-fade-in">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                          <span className="text-slate-500 dark:text-slate-400 text-[10px] font-extrabold uppercase">Telat:</span>
-                          <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-2xl shadow-3xs animate-fade-in">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                          <span className="text-slate-500 dark:text-slate-400 text-[10px] font-extrabold uppercase">Alfa:</span>
-                          <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
-                        </div>
-                      </div>
-
-                    </div>
-                  );
+                    );
+                  }
                 })
               ) : (
                 <div className="py-12 text-center text-slate-400 bg-slate-50 dark:bg-slate-900 border dark:border-slate-800 rounded-2xl text-xs font-bold leading-normal">
-                  Tidak ada data kehadiran yang cocok dengan saringan saat ini.
+                  Tidak ada data yang cocok.
                 </div>
               )}
             </div>
