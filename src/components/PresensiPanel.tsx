@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+const MySwal = withReactContent(Swal);
 import { SantriData, supabase } from "../supabaseClient";
 import { parseNfcPayload, normalizeNfcId } from "./NfcRegisterPanel";
 import { 
@@ -257,6 +260,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     type: "success" | "error";
     studentName?: string;
     studentPhoto?: string;
+    studentKamar?: string;
     isFemale?: boolean;
     reason?: "already_scanned" | "unregistered_card" | "custom_error";
     cardCode?: string;
@@ -421,9 +425,14 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   }, [isNfcActive, isNfcSupported]);
 
   // Save DB
-  const saveAttendance = (newDb: typeof attendanceDb) => {
-    setAttendanceDb(newDb);
-    localStorage.setItem("santri_attendance_db", JSON.stringify(newDb));
+  const updateLocalAttendance = (key: string, studentId: string, status: AttendanceStatus) => {
+    setAttendanceDb((prev) => {
+      const dayDb = { ...(prev[key] || {}) };
+      dayDb[studentId] = status;
+      const newDb = { ...prev, [key]: dayDb };
+      localStorage.setItem("santri_attendance_db", JSON.stringify(newDb));
+      return newDb;
+    });
   };
 
   // State to track if Supabase Sync is active/working for absensi
@@ -461,43 +470,45 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       setSupabaseSyncStatus("connected");
 
       if (data) {
-        const updatedDb = { ...attendanceDb };
+        setAttendanceDb(prevDb => {
+          const updatedDb = { ...prevDb };
 
-        // Wipe current date keys for a fresh sync
-        sessions.forEach((sess) => {
-          const key = `${selectedDate}_absensi_${sess.id}`;
-          updatedDb[key] = {};
-        });
+          // Wipe current date keys for a fresh sync
+          sessions.forEach((sess) => {
+            const key = `${selectedDate}_absensi_${sess.id}`;
+            updatedDb[key] = {};
+          });
 
-        // Populate from Supabase records
-        data.forEach((row: any) => {
-          const matchedStudent = students.find(
-            (s) => s.nama_lengkap.toLowerCase() === (row.nama || "").toLowerCase()
-          );
+          // Populate from Supabase records
+          data.forEach((row: any) => {
+            const matchedStudent = students.find(
+              (s) => s.nama_lengkap.toLowerCase() === (row.nama || "").toLowerCase()
+            );
 
-          if (matchedStudent) {
-            const studentId = String(matchedStudent.id);
-            const mappedLocalSess = mapDbSessionToLocalSession(row.sesi || "", row.presensi || "", sessions);
-            const key = `${row.tanggal || selectedDate}_absensi_${mappedLocalSess}`;
-            
-            let localStatus: AttendanceStatus = "unmarked";
-            if (row.status === "telat") localStatus = "terlambat";
-            else if (row.status === "alpha") localStatus = "alpa";
-            else if (["hadir", "sakit", "izin", "alpa", "terlambat"].includes(row.status)) {
-              localStatus = row.status as AttendanceStatus;
-            } else if (row.status && row.status !== "unmarked") {
-              localStatus = "hadir";
+            if (matchedStudent) {
+              const studentId = String(matchedStudent.id);
+              const mappedLocalSess = mapDbSessionToLocalSession(row.sesi || "", row.presensi || "", sessions);
+              const key = `${row.tanggal || selectedDate}_absensi_${mappedLocalSess}`;
+              
+              let localStatus: AttendanceStatus = "unmarked";
+              if (row.status === "telat") localStatus = "terlambat";
+              else if (row.status === "alpha") localStatus = "alpa";
+              else if (["hadir", "sakit", "izin", "alpa", "terlambat"].includes(row.status)) {
+                localStatus = row.status as AttendanceStatus;
+              } else if (row.status && row.status !== "unmarked") {
+                localStatus = "hadir";
+              }
+
+              if (!updatedDb[key]) {
+                updatedDb[key] = {};
+              }
+              updatedDb[key][studentId] = localStatus;
             }
+          });
 
-            if (!updatedDb[key]) {
-              updatedDb[key] = {};
-            }
-            updatedDb[key][studentId] = localStatus;
-          }
+          localStorage.setItem("santri_attendance_db", JSON.stringify(updatedDb));
+          return updatedDb;
         });
-
-        setAttendanceDb(updatedDb);
-        localStorage.setItem("santri_attendance_db", JSON.stringify(updatedDb));
       }
     } catch (e: any) {
       setSupabaseSyncStatus("error");
@@ -628,6 +639,20 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
   // Execute NFC / Barcode Logic
   const executeScan = (code: string, medium: string) => {
+    if (activeSession === "none") {
+      MySwal.fire({
+        icon: 'error',
+        title: 'MAAF TIDAK ADA SESI YANG AKTIF',
+        text: 'Silakan tunggu atau pilih sesi absensi terlebih dahulu.',
+        confirmButtonText: 'Try Again',
+        confirmButtonColor: '#f87171',
+        customClass: {
+          popup: 'rounded-[2rem]',
+        }
+      });
+      return;
+    }
+
     if (!isSessionOpen) {
       const cleanTime = activeTimeStr.replace(".", ":");
       setScanFeedback({
@@ -685,10 +710,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     const determinedStatus: AttendanceStatus = isIqomahActive ? "terlambat" : "hadir";
     
     // Save locally
-    const dayDb = { ...(attendanceDb[key] || {}) };
-    dayDb[sId] = determinedStatus;
-    const updatedDb = { ...attendanceDb, [key]: dayDb };
-    saveAttendance(updatedDb);
+    updateLocalAttendance(key, sId, determinedStatus);
 
     // Save remote Sync
     syncStudentStatusToSupabase(sId, determinedStatus);
@@ -703,6 +725,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       type: "success",
       studentName: foundStudent.nama_lengkap,
       studentPhoto: foundStudent.foto,
+      studentKamar: foundStudent.kamar || "Belum Update",
       isFemale: foundStudent.jenis_kelamin === "P"
     });
   };
@@ -717,11 +740,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     const sId = String(studentId);
     const key = `${selectedDate}_absensi_${activeSession}`;
     
-    const dayDb = { ...(attendanceDb[key] || {}) };
-    dayDb[sId] = nextStatus;
-    
-    const updatedDb = { ...attendanceDb, [key]: dayDb };
-    saveAttendance(updatedDb);
+    updateLocalAttendance(key, sId, nextStatus);
 
     // Sync cloud Database
     await syncStudentStatusToSupabase(sId, nextStatus);
@@ -765,7 +784,13 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
   // Statistics Calculation
   const getStats = () => {
-    const total = filteredStudents.length;
+    const statsStudents = hydratedStudentsList.filter((s) => {
+      const matchCategory = categoryFilter === "All" || s.kategori === categoryFilter;
+      const matchRoom = roomFilter === "All" || s.kamar === roomFilter;
+      return matchCategory && matchRoom;
+    });
+
+    const total = statsStudents.length;
     let hadir = 0;
     let terlambat = 0;
     let sakit = 0;
@@ -773,7 +798,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     let alpa = 0;
     let unmarked = 0;
 
-    filteredStudents.forEach((s) => {
+    statsStudents.forEach((s) => {
       if (s.currentStatus === "hadir") hadir++;
       else if (s.currentStatus === "terlambat") terlambat++;
       else if (s.currentStatus === "sakit") sakit++;
@@ -791,6 +816,20 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   const stats = getStats();
 
   const handleToggleRowAttendance = (studentId: string | number) => {
+    if (activeSession === "none") {
+      MySwal.fire({
+        icon: 'error',
+        title: 'MAAF TIDAK ADA SESI YANG AKTIF',
+        text: 'Silakan tunggu atau set sesi absensi terlebih dahulu.',
+        confirmButtonText: 'Try Again',
+        confirmButtonColor: '#f87171',
+        customClass: {
+          popup: 'rounded-[2rem]',
+        }
+      });
+      return;
+    }
+
     const current = getStatus(studentId);
     if (current === "unmarked" || current === "alpa") {
       updateStudentStatus(studentId, isIqomahActive ? "terlambat" : "hadir");
@@ -1090,6 +1129,19 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
               type="button"
               onClick={() => {
                 const nextState = !isNfcActive;
+                if (nextState && activeSession === "none") {
+                  MySwal.fire({
+                    icon: 'error',
+                    title: 'MAAF TIDAK ADA SESI YANG AKTIF',
+                    text: 'Silakan tunggu atau set sesi absensi terlebih dahulu.',
+                    confirmButtonText: 'Tutup',
+                    confirmButtonColor: '#f87171',
+                    customClass: {
+                      popup: 'rounded-[2rem]',
+                    }
+                  });
+                  return;
+                }
                 setIsNfcActive(nextState);
                 if (nextState) setIsCameraActive(false);
                 setScanFeedback(null);
@@ -1110,6 +1162,19 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
             type="button"
             onClick={() => {
               const nextState = !isCameraActive;
+              if (nextState && activeSession === "none") {
+                MySwal.fire({
+                  icon: 'error',
+                  title: 'MAAF TIDAK ADA SESI YANG AKTIF',
+                  text: 'Silakan tunggu atau set sesi absensi terlebih dahulu.',
+                  confirmButtonText: 'Tutup',
+                  confirmButtonColor: '#f87171',
+                  customClass: {
+                    popup: 'rounded-[2rem]',
+                  }
+                });
+                return;
+              }
               setIsCameraActive(nextState);
               if (nextState) setIsNfcActive(false);
               setScanFeedback(null);
@@ -1805,7 +1870,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         >
           {attendancePopup.type === "success" ? (
             <div 
-              className="relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-[#10b981] p-8 max-w-[320px] w-full shadow-2xl text-center pt-10 pb-6 animate-scale-up" 
+              className="relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-[#10b981] p-8 max-w-[320px] w-full shadow-2xl text-center pt-8 pb-6 animate-scale-up" 
               id="absensi-success-card"
               onClick={(e) => e.stopPropagation()}
             >
@@ -1813,49 +1878,38 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                 <Check className="w-5 h-5 stroke-[3]" />
               </div>
 
-              <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-green-950/20 border border-emerald-100 dark:border-green-900 flex items-center justify-center mx-auto mb-4">
-                <div className="w-12 h-12 rounded-full bg-emerald-505 bg-emerald-500 flex items-center justify-center text-white shadow-sm">
-                  <Check className="w-6 h-6 stroke-[3]" />
-                </div>
-              </div>
-
-              <div className="space-y-1 mb-4">
-                <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight leading-none uppercase">
-                  Berhasil
-                </h3>
-                <p className="text-[10px] text-slate-405 font-extrabold uppercase tracking-widest">
-                  Absensi Tercatat!
-                </p>
-              </div>
-
               <div className="w-24 h-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl mx-auto overflow-hidden relative shadow-sm mb-4">
                 {attendancePopup.studentPhoto ? (
                   <img src={attendancePopup.studentPhoto} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-sky-50 dark:bg-slate-800 text-indigo-955">
-                    <span className="text-4xl filter saturate-100 drop-shadow">
-                      {attendancePopup.isFemale ? "🧕" : "👳"}
-                    </span>
-                  </div>
+                  <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(attendancePopup.studentName || 'Student')}&background=random&size=150`} alt="" className="w-full h-full object-cover bg-slate-100" />
                 )}
-                <div className="absolute inset-x-0 bottom-0 py-0.5 bg-emerald-505 bg-emerald-500 text-[8px] text-white font-black tracking-widest uppercase">
+                <div className="absolute inset-x-0 bottom-0 py-0.5 bg-emerald-500 text-[8px] text-white font-black tracking-widest uppercase">
                   AKTIF
                 </div>
               </div>
 
-              <h4 className="text-sm font-extrabold text-slate-800 dark:text-white leading-snug px-2 truncate mb-6" title={attendancePopup.studentName}>
-                {attendancePopup.studentName}
-              </h4>
+              <div className="space-y-1 mb-6">
+                <h3 className="text-2xl font-black text-[#10b981] tracking-tight leading-none uppercase">
+                  BERHASIL
+                </h3>
+                <h4 className="text-lg font-bold text-slate-800 dark:text-white leading-snug px-2 truncate mt-3" title={attendancePopup.studentName}>
+                  {attendancePopup.studentName}
+                </h4>
+                <p className="text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full w-fit mx-auto mt-2">
+                  Kamar: {attendancePopup.studentKamar}
+                </p>
+              </div>
 
               <button
                 type="button"
                 onClick={() => setAttendancePopup(null)}
-                className="w-full bg-[#10b981] hover:bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all shadow-md hover:shadow-lg cursor-pointer transform active:scale-[0.98]"
+                className="w-full bg-[#10b981] hover:bg-emerald-600 text-white font-extrabold text-sm uppercase tracking-widest py-3.5 rounded-2xl transition-all shadow-md hover:shadow-lg cursor-pointer transform active:scale-[0.98]"
               >
                 Lanjutkan
               </button>
             </div>
-          ) : (
+          ) : attendancePopup.type === "error" && (
             <div 
               className="relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-rose-500 p-8 max-w-[320px] w-full shadow-2xl text-center pt-10 pb-6 animate-scale-up border-rose-500" 
               id="absensi-error-card"

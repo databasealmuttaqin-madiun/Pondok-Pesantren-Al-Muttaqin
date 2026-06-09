@@ -92,8 +92,8 @@ export default function ManajemenSesiPanel() {
       const cleanTime = sess.time.replace(/\./g, ":");
       const [start, end] = cleanTime.replace(/\s/g, "").split("-");
       if (start && end) {
-        setJamMulai(start);
-        setJamSelesai(end);
+        setJamMulai(start.slice(0, 5));
+        setJamSelesai(end.slice(0, 5));
       }
     } catch (e) {
       // Use defaults if format is weird
@@ -104,6 +104,7 @@ export default function ManajemenSesiPanel() {
     setIkonSesi(sess.icon || "⏰");
     setJenisPresensi(sess.presensi || "ngaji");
     setIsFormOpen(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = async (id: string, label: string) => {
@@ -215,118 +216,137 @@ export default function ManajemenSesiPanel() {
         </button>
       </div>
 
+      {/* FORM OVERLAY MODAL */}
       {isFormOpen && (
-        <form 
-          onSubmit={handleSubmit} 
-          className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-lg space-y-5 animate-fade-in relative overflow-hidden"
-          id="session_form"
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm z-[100] transition-all"
+          onClick={() => setIsFormOpen(false)}
         >
-          <div className="absolute top-0 inset-x-0 h-1.5 bg-[#3e46ca]"></div>
-          
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-              <Clock className="w-4 h-4 text-indigo-500" />
-              <span>{editingSessionId ? "Edit Konfigurasi Sesi" : "Tambah Sesi Absensi Baru"}</span>
-            </h3>
-            <button
-              type="button"
-              onClick={() => setIsFormOpen(false)}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-250 font-extrabold text-xs bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-700 cursor-pointer"
+          <div 
+            className="w-full max-w-xl bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-scale-up z-50 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-1.5 bg-[#3e46ca] w-full shrink-0"></div>
+            
+            <form 
+              onSubmit={handleSubmit} 
+              className="p-6 space-y-5 flex-1 overflow-y-auto max-h-[85vh] relative"
+              id="session_form"
             >
-              Batal ✕
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Nama Sesi
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Contoh: Kajian Sore, Ba'da Subuh, dll"
-                value={namaSesi}
-                onChange={(e) => setNamaSesi(e.target.value)}
-                className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white transition-all shadow-inner"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Ikon Sesi
-              </label>
-              <div className="flex flex-wrap gap-1 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2.5 rounded-2xl max-h-[110px] overflow-y-auto">
-                {emojis.map(emoji => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => setIkonSesi(emoji)}
-                    className={`text-lg p-1.5 rounded-lg transition-transform hover:scale-125 cursor-pointer ${
-                      ikonSesi === emoji ? "bg-indigo-100 border border-indigo-200 scale-110" : ""
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-800 dark:text-white flex items-center gap-2">
+                  <span>{editingSessionId ? "Edit Konfigurasi Sesi" : "Tambah Sesi Absensi Baru"}</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsFormOpen(false)}
+                  className="text-slate-400 hover:text-rose-500 font-extrabold text-xs"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Jam Mulai
-              </label>
-              <input
-                type="time"
-                required
-                value={jamMulai}
-                onChange={(e) => setJamMulai(e.target.value)}
-                className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white transition-all shadow-inner"
-              />
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Nama Sesi
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Kajian Sore, Ba'da Subuh, dll"
+                    value={namaSesi}
+                    onChange={(e) => setNamaSesi(e.target.value)}
+                    className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:border-[#3e46ca] text-slate-800 dark:text-white transition-all shadow-inner"
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Jam Selesai
-              </label>
-              <input
-                type="time"
-                required
-                value={jamSelesai}
-                onChange={(e) => setJamSelesai(e.target.value)}
-                className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white transition-all shadow-inner"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Ikon Sesi
+                  </label>
+                  <div className="flex flex-wrap gap-1 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2 rounded-2xl max-h-[90px] overflow-y-auto">
+                    {emojis.map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setIkonSesi(emoji)}
+                        className={`text-lg px-2 rounded-lg transition-transform hover:scale-125 cursor-pointer ${
+                          ikonSesi === emoji ? "bg-indigo-100 dark:bg-indigo-900 border-indigo-200 dark:border-indigo-600 scale-110" : "border border-transparent"
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Jenis Presensi
-              </label>
-              <select
-                value={jenisPresensi}
-                onChange={(e) => setJenisPresensi(e.target.value)}
-                className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white transition-all shadow-inner"
-              >
-                <option value="makan">Makan</option>
-                <option value="sholat">Sholat</option>
-                <option value="ngaji">Ngaji</option>
-                <option value="doa malam">Doa Malam</option>
-                <option value="sekolah">Sekolah</option>
-              </select>
-            </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Jam Mulai
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={jamMulai}
+                    onChange={(e) => setJamMulai(e.target.value)}
+                    className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:border-[#3e46ca] text-slate-800 dark:text-white transition-all shadow-inner"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Jam Selesai
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={jamSelesai}
+                    onChange={(e) => setJamSelesai(e.target.value)}
+                    className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:border-[#3e46ca] text-slate-800 dark:text-white transition-all shadow-inner"
+                  />
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Jenis Presensi
+                  </label>
+                  <select
+                    value={jenisPresensi}
+                    onChange={(e) => setJenisPresensi(e.target.value)}
+                    className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:border-[#3e46ca] text-slate-800 dark:text-white transition-all shadow-inner cursor-pointer"
+                  >
+                    <option value="makan">Makan</option>
+                    <option value="sholat">Sholat</option>
+                    <option value="ngaji">Ngaji</option>
+                    <option value="doa malam">Doa Malam</option>
+                    <option value="sekolah">Sekolah</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsFormOpen(false)}
+                  className="px-5 py-3 text-xs font-extrabold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                >
+                  BATAL
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className={`bg-[#22c55e] hover:bg-green-600 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all w-full sm:w-auto ${isLoading ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isLoading ? "Menyimpan..." : "Simpan Sesi"}</span>
+                </button>
+              </div>
+            </form>
           </div>
-
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-850 flex justify-end">
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={`bg-[#22c55e] hover:bg-green-600 text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-2xl flex items-center gap-1.5 shadow-md cursor-pointer transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{isLoading ? "Menyimpan..." : "Simpan Sesi"}</span>
-            </button>
-          </div>
-        </form>
+        </div>
       )}
 
       {/* SESSIONS LIST */}
@@ -409,6 +429,7 @@ export default function ManajemenSesiPanel() {
 
                 <div className="flex items-center gap-1 shrink-0 select-none opacity-85 group-hover:opacity-100 transition-opacity">
                   <button
+                    type="button"
                     onClick={() => handleOpenEdit(sess)}
                     className="p-2 text-slate-500 hover:text-indigo-650 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950 border border-slate-200 dark:border-slate-700 hover:border-indigo-200 rounded-xl transition-all cursor-pointer"
                     title="Edit Sesi"
@@ -416,6 +437,7 @@ export default function ManajemenSesiPanel() {
                     <Edit3 className="w-4 h-4 stroke-[2.2]" />
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleDelete(sess.id, sess.label)}
                     className="p-2 text-slate-500 hover:text-rose-650 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950 border border-slate-200 dark:border-slate-700 hover:border-rose-200 rounded-xl transition-all cursor-pointer"
                     title="Hapus Sesi"
