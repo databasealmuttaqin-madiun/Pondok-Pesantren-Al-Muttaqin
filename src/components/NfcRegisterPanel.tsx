@@ -106,6 +106,7 @@ export default function NfcRegisterPanel({
   // Assignment states for unregistered cards
   const [selectedRoom, setSelectedRoom] = useState<string>("");
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [assignSearch, setAssignSearch] = useState<string>("");
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
 
   // Search filter for Registered Database Tab
@@ -253,10 +254,12 @@ export default function NfcRegisterPanel({
     }
   };
 
-  // Get student list filtered by the selected room (for assignment form)
-  const filteredStudentsForAssign = selectedRoom
-    ? students.filter((s) => (s.kamar || "").trim() === selectedRoom.trim())
-    : students;
+  // Get student list filtered by the selected room and search text (for assignment form)
+  const filteredStudentsForAssign = students.filter((s) => {
+    const matchRoom = selectedRoom ? (s.kamar || "").trim() === selectedRoom.trim() : true;
+    const matchSearch = assignSearch ? (s.nama_lengkap || "").toLowerCase().includes(assignSearch.toLowerCase()) || (s.kamar || "").toLowerCase().includes(assignSearch.toLowerCase()) : true;
+    return matchRoom && matchSearch;
+  });
 
   // Derive rooms dynamically from students array combined with the standard rooms meta array
   const derivedRooms = Array.from(
@@ -653,27 +656,48 @@ export default function NfcRegisterPanel({
                           ALOKASIKAN KARTU KE SANTRI
                         </h4>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {/* Step 1: Select Room (kamar) */}
-                          <div className="space-y-1">
-                            <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                              1. Pilih Kamar / Rayon
-                            </label>
-                            <select
-                              value={selectedRoom}
-                              onChange={(e) => {
-                                setSelectedRoom(e.target.value);
-                                setSelectedStudentId(""); // reset selected student when room changes
-                              }}
-                              className="w-full text-xs font-semibold px-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 dark:text-white transition-all shadow-inner"
-                            >
-                              <option value="">-- SEMUA KAMAR --</option>
-                              {derivedRooms.map((r) => (
-                                <option key={r} value={r}>
-                                  KAMAR: {r}
-                                </option>
-                              ))}
-                            </select>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Step 1: Select Room (kamar) */}
+                            <div className="space-y-1">
+                              <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                                1. Pilih Kamar / Rayon
+                              </label>
+                              <select
+                                value={selectedRoom}
+                                onChange={(e) => {
+                                  setSelectedRoom(e.target.value);
+                                  setSelectedStudentId(""); // reset selected student when room changes
+                                }}
+                                className="w-full text-xs font-semibold px-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 dark:text-white transition-all shadow-inner"
+                              >
+                                <option value="">-- SEMUA KAMAR --</option>
+                                {derivedRooms.map((r) => (
+                                  <option key={r} value={r}>
+                                    KAMAR: {r}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Search Name */}
+                            <div className="space-y-1">
+                              <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                                Cari Nama Santri
+                              </label>
+                              <div className="relative w-full">
+                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+                                  <Search className="w-3.5 h-3.5" />
+                                </span>
+                                <input 
+                                  type="text" 
+                                  placeholder="Ketik nama santri..."
+                                  value={assignSearch}
+                                  onChange={(e) => setAssignSearch(e.target.value)}
+                                  className="w-full text-xs font-medium pl-9 pr-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-505 focus:bg-white dark:focus:bg-slate-850 text-slate-800 dark:text-white transition-all shadow-inner"
+                                />
+                              </div>
+                            </div>
                           </div>
 
                           {/* Step 2: Select Student */}

@@ -448,28 +448,42 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     setSupabaseErrorMsg(null);
 
     try {
-      // Fetch all logs of selectedDate from absensi
-      const { data, error } = await supabase
-        .from("absensi")
-        .select("*")
-        .eq("tanggal", selectedDate);
+      let allData: any[] = [];
+      let page = 0;
+      let hasMore = true;
 
-      if (error) {
-        if (error.code === "42P01") {
-          setSupabaseSyncStatus("disabled");
-          console.info("Table 'absensi' does not exist yet. Using local storage.");
-        } else {
-          setSupabaseSyncStatus("error");
-          setSupabaseErrorMsg(error.message);
-          console.warn("Supabase fetch error:", error.message);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("absensi")
+          .select("*")
+          .eq("tanggal", selectedDate)
+          .range(page * 1000, (page + 1) * 1000 - 1);
+
+        if (error) {
+          if (error.code === "42P01") {
+            setSupabaseSyncStatus("disabled");
+            console.info("Table 'absensi' does not exist yet. Using local storage.");
+          } else {
+            setSupabaseSyncStatus("error");
+            setSupabaseErrorMsg(error.message);
+            console.warn("Supabase fetch error:", error.message);
+          }
+          setIsSyncing(false);
+          return;
         }
-        setIsSyncing(false);
-        return;
+
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          if (data.length < 1000) hasMore = false;
+          else page++;
+        } else {
+          hasMore = false;
+        }
       }
 
       setSupabaseSyncStatus("connected");
 
-      if (data) {
+      if (allData.length > 0 || page === 0) {
         setAttendanceDb(prevDb => {
           const updatedDb = { ...prevDb };
 
@@ -480,7 +494,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           });
 
           // Populate from Supabase records
-          data.forEach((row: any) => {
+          allData.forEach((row: any) => {
             const matchedStudent = students.find(
               (s) => s.nama_lengkap.toLowerCase() === (row.nama || "").toLowerCase()
             );
@@ -532,20 +546,28 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     const dbWaktu = `${(hourVal || "00").padStart(2, "0")}:${(minVal || "00").padStart(2, "0")}:${secondsVal}`;
 
     try {
-      // 1. Delete previous entry if exists
-      await supabase
-        .from("absensi")
-        .delete()
-        .eq("nama", student.nama_lengkap)
-        .eq("tanggal", selectedDate)
-        .eq("sesi", dbSesi)
-        .eq("presensi", dbPresensi);
-
       if (status === "unmarked") {
+        await supabase
+          .from("absensi")
+          .delete()
+          .eq("nama", student.nama_lengkap)
+          .eq("tanggal", selectedDate)
+          .eq("sesi", dbSesi)
+          .eq("presensi", dbPresensi);
         return;
       }
 
-      // 2. Insert fresh record mapping directly to supabase columns
+      // 1. Check if previous entry exists
+      const { data: existing } = await supabase
+        .from("absensi")
+        .select("id")
+        .eq("nama", student.nama_lengkap)
+        .eq("tanggal", selectedDate)
+        .eq("sesi", dbSesi)
+        .eq("presensi", dbPresensi)
+        .limit(1);
+
+      // 2. Insert or update record mapping directly to supabase columns
       const payload = {
         nama: student.nama_lengkap,
         kamar: studentKamar,
@@ -556,9 +578,19 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         waktu: dbWaktu
       };
 
-      const { error } = await supabase
-        .from("absensi")
-        .insert([payload]);
+      let error;
+      if (existing && existing.length > 0) {
+        const updateRes = await supabase
+          .from("absensi")
+          .update(payload)
+          .eq("id", existing[0].id);
+        error = updateRes.error;
+      } else {
+        const insertRes = await supabase
+          .from("absensi")
+          .insert([payload]);
+        error = insertRes.error;
+      }
 
       if (error) {
         console.warn("Fallback raw insert:", error.message);
@@ -833,6 +865,17 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     const current = getStatus(studentId);
     if (current === "unmarked" || current === "alpa") {
       updateStudentStatus(studentId, isIqomahActive ? "terlambat" : "hadir");
+      const foundStudent = students.find(s => String(s.id) === String(studentId));
+      if (foundStudent) {
+        setAttendancePopup({
+          isOpen: true,
+          type: "success",
+          studentName: foundStudent.nama_lengkap,
+          studentPhoto: foundStudent.foto,
+          studentKamar: foundStudent.kamar || "Belum Update",
+          isFemale: foundStudent.jenis_kelamin === "P"
+        });
+      }
     } else {
       updateStudentStatus(studentId, "unmarked");
     }
