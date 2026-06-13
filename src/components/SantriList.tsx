@@ -7,6 +7,8 @@ interface SantriListProps {
   onEdit: (student: SantriData) => void;
   onDelete: (id: number) => Promise<void>;
   onUpdateStatus: (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang") => Promise<void>;
+  initialFilterCategory?: string;
+  initialFilterStatus?: string;
 }
 
 // Helper to infer gender based on common Indonesian female name keywords for authentic visual parity with the mockup screen
@@ -89,11 +91,18 @@ function getDeterministicStats(name: string, nik: string) {
   };
 }
 
-export default function SantriList({ students, onEdit, onDelete, onUpdateStatus }: SantriListProps) {
+export default function SantriList({ 
+  students, 
+  onEdit, 
+  onDelete, 
+  onUpdateStatus, 
+  initialFilterCategory = "All", 
+  initialFilterStatus = "All" 
+}: SantriListProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterCategory, setFilterCategory] = useState<string>("All");
+  const [filterCategory, setFilterCategory] = useState<string>(initialFilterCategory);
   const [filterDaerah, setFilterDaerah] = useState<string>("All");
-  const [filterStatus, setFilterStatus] = useState<string>("All");
+  const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus);
   const [selectedStudent, setSelectedStudent] = useState<SantriData | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -522,25 +531,38 @@ export default function SantriList({ students, onEdit, onDelete, onUpdateStatus 
                         </div>
                       </td>
 
-                      {/* Status Santri (Static Text Indicator) */}
+                      {/* Status Santri (Interactive Dropdown Indicator) */}
                       <td className="p-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 font-semibold text-xs select-none">
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            (s.status || "Aktif") === "Sakit"
-                              ? "bg-amber-500"
-                              : (s.status || "Aktif") === "Pulang"
-                              ? "bg-rose-500"
-                              : "bg-emerald-500"
-                          }`}></span>
-                          <span className={
-                            (s.status || "Aktif") === "Sakit"
-                              ? "text-amber-600 font-semibold"
-                              : (s.status || "Aktif") === "Pulang"
-                              ? "text-rose-600 font-semibold"
-                              : "text-emerald-600 font-semibold"
-                          }>
-                            {s.status || "Aktif"}
-                          </span>
+                        <div className="relative group/status rounded-full inline-block" title="Ubah status">
+                          <select
+                            value={s.status || "Aktif"}
+                            onChange={(e) => {
+                               if (s.id || s.nik) onUpdateStatus(s.id || s.nik, e.target.value as any);
+                            }}
+                            className={`appearance-none font-extrabold text-[11px] uppercase tracking-wider py-1.5 pl-6 pr-7 rounded-full border outline-none cursor-pointer transition-all shadow-sm ${
+                              (s.status || "Aktif") === "Sakit"
+                                ? "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 focus:ring-2 focus:ring-amber-500/30"
+                                : (s.status || "Aktif") === "Pulang"
+                                ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 focus:ring-2 focus:ring-rose-500/30"
+                                : "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 focus:ring-2 focus:ring-emerald-500/30"
+                            }`}
+                          >
+                            <option value="Aktif" className="font-semibold text-emerald-700 bg-white">Aktif</option>
+                            <option value="Sakit" className="font-semibold text-amber-700 bg-white">Sakit</option>
+                            <option value="Pulang" className="font-semibold text-rose-700 bg-white">Pulang</option>
+                          </select>
+                          
+                          {/* Custom Dot Layer */}
+                          <div className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full shadow-sm pointer-events-none ${
+                            (s.status || "Aktif") === "Sakit" ? "bg-amber-500" : (s.status || "Aktif") === "Pulang" ? "bg-rose-500" : "bg-emerald-500"
+                          }`}></div>
+                          
+                          {/* Dropdown Arrow Indicator */}
+                          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center opacity-70 group-hover/status:opacity-100 transition-opacity">
+                            <svg className={`w-3 h-3 ${
+                              (s.status || "Aktif") === "Sakit" ? "text-amber-500" : (s.status || "Aktif") === "Pulang" ? "text-rose-500" : "text-emerald-500"
+                            }`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+                          </div>
                         </div>
                       </td>
 

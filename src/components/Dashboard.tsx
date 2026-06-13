@@ -5,7 +5,7 @@ import { SantriData } from "../supabaseClient";
 interface DashboardProps {
   students: SantriData[];
   onNavigateToForm: () => void;
-  onNavigateToList: () => void;
+  onNavigateToList: (filters?: { category?: string; status?: string }) => void;
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
 }
@@ -17,10 +17,18 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
   const smaCount = students.filter((s) => s.kategori === "SMA").length;
   const regulerCount = students.filter((s) => s.kategori === "Reguler").length;
 
+  const aktifCount = students.filter((s) => (s.status || "Aktif") === "Aktif").length;
+  const sakitCount = students.filter((s) => (s.status || "Aktif") === "Sakit").length;
+  const pulangCount = students.filter((s) => (s.status || "Aktif") === "Pulang").length;
+
   // Compute percentages
   const smpPercent = totalCount ? Math.round((smpCount / totalCount) * 100) : 0;
   const smaPercent = totalCount ? Math.round((smaCount / totalCount) * 100) : 0;
   const regulerPercent = totalCount ? Math.round((regulerCount / totalCount) * 100) : 0;
+
+  const aktifPercent = totalCount ? Math.round((aktifCount / totalCount) * 100) : 0;
+  const sakitPercent = totalCount ? Math.round((sakitCount / totalCount) * 100) : 0;
+  const pulangPercent = totalCount ? Math.round((pulangCount / totalCount) * 100) : 0;
 
   // Group by daerah
   const daerahCounts = students.reduce((acc, current) => {
@@ -47,7 +55,10 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
       {/* 2. Numerical Metrics Stats Bento-Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="stats-bento-grid">
         {/* STAT 1: TOTAL */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between">
+        <div 
+          onClick={() => onNavigateToList()}
+          className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-sky-300"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Total Santri</span>
             <div className="p-1.5 bg-sky-50 rounded text-sky-700">
@@ -56,12 +67,15 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
           </div>
           <div>
             <span className="text-xl font-bold text-slate-900 tracking-tight block">{totalCount}</span>
-            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Terdaftar Aktif</span>
+            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Terdaftar Database</span>
           </div>
         </div> 
 
         {/* STAT 2: SMP */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between">
+        <div 
+          onClick={() => onNavigateToList({ category: "SMP" })}
+          className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-blue-300"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Jenjang SMP</span>
             <div className="p-1.5 bg-blue-50 rounded text-blue-700">
@@ -78,7 +92,10 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
         </div> 
 
         {/* STAT 3: SMA */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between">
+        <div 
+          onClick={() => onNavigateToList({ category: "SMA" })}
+          className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-indigo-300"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Jenjang SMA</span>
             <div className="p-1.5 bg-indigo-50 rounded text-indigo-700">
@@ -95,7 +112,10 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
         </div> 
 
         {/* STAT 4: REGULER */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between">
+        <div 
+          onClick={() => onNavigateToList({ category: "Reguler" })}
+          className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-amber-300"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider">Kategori Reguler</span>
             <div className="p-1.5 bg-amber-50 rounded text-amber-700">
@@ -111,6 +131,69 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
           </div>
         </div>
       </div> 
+
+      {/* Row 2: Status Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* STAT: AKTIF */}
+        <div 
+          onClick={() => onNavigateToList({ status: "Aktif" })}
+          className="bg-white rounded-xl border border-emerald-100 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-emerald-300"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-emerald-600 uppercase font-black tracking-wider">Status Aktif</span>
+            <div className="p-1.5 bg-emerald-50 rounded text-emerald-600">
+              <span className="w-3 h-3 rounded-full bg-emerald-500 block"></span>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-bold text-slate-900 tracking-tight">{aktifCount}</span>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded font-mono">{aktifPercent}%</span>
+            </div>
+            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider font-sans">Santri Mukim</span>
+          </div>
+        </div>
+        
+        {/* STAT: SAKIT */}
+        <div 
+          onClick={() => onNavigateToList({ status: "Sakit" })}
+          className="bg-white rounded-xl border border-amber-100 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-amber-300"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-amber-600 uppercase font-black tracking-wider">Status Sakit</span>
+            <div className="p-1.5 bg-amber-50 rounded text-amber-500">
+              <span className="w-3 h-3 rounded-full bg-amber-400 block"></span>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-bold text-slate-900 tracking-tight">{sakitCount}</span>
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1 rounded font-mono">{sakitPercent}%</span>
+            </div>
+            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider font-sans">Perawatan / Istirahat</span>
+          </div>
+        </div>
+
+        {/* STAT: PULANG */}
+        <div 
+          onClick={() => onNavigateToList({ status: "Pulang" })}
+          className="bg-white rounded-xl border border-rose-100 p-3.5 shadow-sm space-y-2 hover:translate-y-[-1px] transition-transform duration-150 flex flex-col justify-between cursor-pointer hover:border-rose-300"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-rose-600 uppercase font-black tracking-wider">Status Pulang</span>
+            <div className="p-1.5 bg-rose-50 rounded text-rose-500">
+              <span className="w-3 h-3 rounded-full bg-rose-500 block"></span>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-bold text-slate-900 tracking-tight">{pulangCount}</span>
+              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1 rounded font-mono">{pulangPercent}%</span>
+            </div>
+            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider font-sans">Izin / Kembali</span>
+          </div>
+        </div>
+      </div>
 
       {/* 3. Graphical Breakdown & Recent Submissions Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4" id="dashboard-tables-layout">

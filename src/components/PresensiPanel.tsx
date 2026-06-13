@@ -27,7 +27,7 @@ interface PresensiPanelProps {
   activeMenu?: string; // made optional to support seamless transition to unified absensi menu
 }
 
-type AttendanceStatus = "hadir" | "terlambat" | "sakit" | "izin" | "alpa" | "unmarked";
+type AttendanceStatus = "hadir" | "terlambat" | "sakit" | "izin" | "alpa" | "unmarked" | "pulang";
 
 export interface SessionInfo {
   id: string;
@@ -781,7 +781,11 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   // Sorting & Filtration criteria
   // Only students with unmarked/alpa status show up in pending section
   const hydratedStudentsList = students.map((s) => {
-    const itemStatus = getStatus(s.id || "");
+    let itemStatus = getStatus(s.id || "");
+    if (itemStatus === "unmarked") {
+      if (s.status === "Sakit") itemStatus = "sakit";
+      else if (s.status === "Pulang") itemStatus = "pulang";
+    }
     return {
       ...s,
       currentStatus: itemStatus,
@@ -828,6 +832,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     let sakit = 0;
     let izin = 0;
     let alpa = 0;
+    let pulang = 0;
     let unmarked = 0;
 
     statsStudents.forEach((s) => {
@@ -836,13 +841,14 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       else if (s.currentStatus === "sakit") sakit++;
       else if (s.currentStatus === "izin") izin++;
       else if (s.currentStatus === "alpa") alpa++;
+      else if (s.currentStatus === "pulang") pulang++;
       else unmarked++;
     });
 
     const markedCount = total - unmarked;
     const percentPresent = total > 0 ? Math.round(((hadir + terlambat) / total) * 100) : 0;
 
-    return { total, hadir, terlambat, sakit, izin, alpa, unmarked, markedCount, percentPresent };
+    return { total, hadir, terlambat, sakit, izin, alpa, pulang, unmarked, markedCount, percentPresent };
   };
 
   const stats = getStats();
@@ -948,10 +954,22 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
   const getStudentPeriodStats = (studentId: string | number) => {
     const sId = String(studentId);
+    const student = students.find(s => String(s.id) === sId);
+    const globalStatus = student?.status || "Aktif";
     let hadir = 0;
     let terlambat = 0;
     let alpa = 0;
+    let sakit = 0;
+    let pulang = 0;
     let sessionsData: Record<string, Record<string, string>> = {};
+
+    const resolveStatus = (status: string) => {
+      if (status === "unmarked") {
+        if (globalStatus === "Sakit") return "sakit";
+        if (globalStatus === "Pulang") return "pulang";
+      }
+      return status;
+    };
 
     if (rekapTimeframe === "harian") {
       sessionsData[selectedDate] = {};
@@ -961,10 +979,13 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
         if (mappedPresensi !== rekapPresensiType) return;
         const key = `${selectedDate}_absensi_${sess.id}`;
-        const status = attendanceDb[key]?.[sId] || "unmarked";
+        let status = attendanceDb[key]?.[sId] || "unmarked";
+        status = resolveStatus(status);
         sessionsData[selectedDate][sess.id] = status;
         if (status === "hadir") hadir++;
         else if (status === "terlambat") terlambat++;
+        else if (status === "sakit") sakit++;
+        else if (status === "pulang") pulang++;
         else if (status === "alpa" || status === "unmarked") alpa++;
       });
     } else if (rekapTimeframe === "mingguan") {
@@ -985,10 +1006,13 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
           if (mappedPresensi !== rekapPresensiType) return;
           const key = `${dateStr}_absensi_${sess.id}`;
-          const status = attendanceDb[key]?.[sId] || "unmarked";
+          let status = attendanceDb[key]?.[sId] || "unmarked";
+          status = resolveStatus(status);
           sessionsData[dateStr][sess.id] = status;
           if (status === "hadir") hadir++;
           else if (status === "terlambat") terlambat++;
+          else if (status === "sakit") sakit++;
+          else if (status === "pulang") pulang++;
           else if (status === "alpa" || status === "unmarked") alpa++;
         });
       }
@@ -1008,16 +1032,19 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
           if (mappedPresensi !== rekapPresensiType) return;
           const key = `${dateStr}_absensi_${sess.id}`;
-          const status = attendanceDb[key]?.[sId] || "unmarked";
+          let status = attendanceDb[key]?.[sId] || "unmarked";
+          status = resolveStatus(status);
           sessionsData[dateStr][sess.id] = status;
           if (status === "hadir") hadir++;
           else if (status === "terlambat") terlambat++;
+          else if (status === "sakit") sakit++;
+          else if (status === "pulang") pulang++;
           else if (status === "alpa" || status === "unmarked") alpa++;
         });
       }
     }
 
-    return { hadir, terlambat, alpa, sessionsData };
+    return { hadir, terlambat, alpa, sakit, pulang, sessionsData };
   };
 
   return (
@@ -1713,10 +1740,10 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                         </div>
                       );
                     } else {
-                      const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa;
+                      const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
                       const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
                       return (
-                        <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
+                        <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
                               {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
@@ -1726,10 +1753,14 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 select-none self-end md:self-auto">
+                          <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
                             <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl">
                               <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir/Makan</span>
                               <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir + pPeriodStats.terlambat}</strong>
+                            </div>
+                            <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-250/60 dark:border-sky-900/40 rounded-xl shadow-3xs">
+                              <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Skt/Iz</span>
+                              <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
                             </div>
                             <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl">
                               <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Tidak Makan</span>
@@ -1744,10 +1775,10 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                     }
                   } else {
                     // Default / Sholat logic
-                    const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa;
-                    const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
+                    const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
+                    const persentase = (pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang) > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
                     return (
-                      <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
+                      <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
                             {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
@@ -1757,7 +1788,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 select-none self-end md:self-auto">
+                        <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
                           <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs">
                             <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir</span>
                             <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
@@ -1765,6 +1796,10 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                           <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-250/60 dark:border-amber-900/40 rounded-xl shadow-3xs">
                             <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Telat</span>
                             <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
+                          </div>
+                          <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-250/60 dark:border-sky-900/40 rounded-xl shadow-3xs">
+                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Skt/Iz</span>
+                            <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
                           </div>
                           <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl shadow-3xs">
                             <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Alfa</span>
@@ -1843,6 +1878,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                   { label: "Terlambat", count: stats.terlambat, color: "bg-amber-400 animate-pulse", rawColor: "text-[#854d0e] bg-amber-50 dark:text-amber-400 dark:bg-amber-950/20" },
                   { label: "Sakit", count: stats.sakit, color: "bg-yellow-400", rawColor: "text-yellow-700 bg-yellow-50 dark:text-yellow-450 dark:bg-yellow-950/20" },
                   { label: "Izin", count: stats.izin, color: "bg-blue-400", rawColor: "text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/20" },
+                  { label: "Pulang", count: stats.pulang, color: "bg-fuchsia-400", rawColor: "text-fuchsia-700 bg-fuchsia-50 dark:text-fuchsia-400 dark:bg-fuchsia-950/20" },
                   { label: "Alpa (Tanpa Keterangan)", count: stats.alpa, color: "bg-rose-400", rawColor: "text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-950/20" },
                   { label: "Belum Absen", count: stats.unmarked, color: "bg-slate-300 dark:bg-slate-700", rawColor: "text-slate-500 bg-slate-50 dark:text-slate-400 dark:bg-slate-900" },
                 ].map((item) => {

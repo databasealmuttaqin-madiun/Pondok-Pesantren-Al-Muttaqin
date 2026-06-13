@@ -132,6 +132,7 @@ export default function App() {
   }, [isDarkMode]);
 
   const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna">("dashboard");
+  const [listFilters, setListFilters] = useState<{ category?: string; status?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -1133,6 +1134,7 @@ export default function App() {
                     <button
                       onClick={() => {
                         if (tab.id !== "form") setEditingStudent(null);
+                        if (tab.id === "list") setListFilters({});
                         setActiveTab(tab.id as any);
                       }}
                       title={sidebarCollapsed ? tab.label : undefined}
@@ -1225,7 +1227,10 @@ export default function App() {
                   setEditingStudent(null);
                   setActiveTab("form");
                 }}
-                onNavigateToList={() => setActiveTab("list")}
+                onNavigateToList={(filters) => {
+                  setListFilters(filters || {});
+                  setActiveTab("list");
+                }}
                 isDarkMode={isDarkMode}
                 setIsDarkMode={setIsDarkMode}
               />
@@ -1243,6 +1248,7 @@ export default function App() {
                   students={displayedStudents}
                   onCancel={() => {
                     setEditingStudent(null);
+                    setListFilters({});
                     setActiveTab("list");
                   }}
                 />
@@ -1255,6 +1261,8 @@ export default function App() {
                 onEdit={handleTriggerEdit}
                 onDelete={handleDeleteStudent}
                 onUpdateStatus={handleUpdateStudentStatus}
+                initialFilterCategory={listFilters.category || "All"}
+                initialFilterStatus={listFilters.status || "All"}
               />
             )}
 
@@ -1368,6 +1376,7 @@ export default function App() {
                       <button
                         onClick={() => {
                           if (tab.id !== "form") setEditingStudent(null);
+                          if (tab.id === "list") setListFilters({});
                           setActiveTab(tab.id as any);
                           setMobileMenuOpen(false); // Close sidebar on selection
                         }}
