@@ -780,17 +780,34 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
   // Sorting & Filtration criteria
   // Only students with unmarked/alpa status show up in pending section
-  const hydratedStudentsList = students.map((s) => {
+  const hydratedStudentsList = students.reduce((acc, s) => {
+    const isSholatPresensiView = attendanceSubTab === "input"
+      ? (mapLocalSessionToDbSession(activeSessionObj?.id || "", sessions).presensi === "sholat" || (() => {
+          if (!activeSessionObj || activeSessionObj.id === "none") return false;
+          const id = activeSessionObj.id.toLowerCase();
+          const label = activeSessionObj.label.toLowerCase();
+          const sholatKeywords = ["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya", "sholat", "shalat", "prayer"];
+          return sholatKeywords.some(keyword => id.includes(keyword) || label.includes(keyword));
+        })())
+      : rekapPresensiType === "sholat";
+      
+    // Exclude female students on "Haid" leave from sholat attendance lists
+    if (isSholatPresensiView && s.jenis_kelamin === "P" && s.status === "Haid") {
+      return acc;
+    }
+
     let itemStatus = getStatus(s.id || "");
     if (itemStatus === "unmarked") {
       if (s.status === "Sakit") itemStatus = "sakit";
       else if (s.status === "Pulang") itemStatus = "pulang";
     }
-    return {
+    
+    acc.push({
       ...s,
       currentStatus: itemStatus,
-    };
-  });
+    });
+    return acc;
+  }, [] as any);
 
   const roomsList = Array.from(
     new Set(hydratedStudentsList.map((s) => s.kamar).filter(Boolean))

@@ -782,7 +782,7 @@ export default function App() {
   };
 
   // Update a Santri's status (Aktif/Sakit/Pulang)
-  const handleUpdateStudentStatus = async (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang") => {
+  const handleUpdateStudentStatus = async (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang" | "Haid") => {
     try {
       // 1. Update status map in localStorage
       const savedStatusMap = JSON.parse(localStorage.getItem("santri_status_map") || "{}");

@@ -51,7 +51,7 @@ export interface SantriData {
   kamar?: string;
   kelas_pengajian?: string;
   kelas_sekolah?: string;
-  status?: "Aktif" | "Sakit" | "Pulang";
+  status?: "Aktif" | "Sakit" | "Pulang" | "Haid";
   jenis_kelamin?: "L" | "P";
   nfc_id?: string;
   foto?: string;

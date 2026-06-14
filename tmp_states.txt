@@ -1,0 +1,17 @@
+131:  const [viewMode, setViewMode] = useState<"selection" | "attendance">("attendance");
+132:  const [selectedDate, setSelectedDate] = useState<string>(() => {
+141:  const [sessions, setSessions] = useState<SessionInfo[]>(() => {
+228:  const [activeSession, setActiveSession] = useState<string>(() => {
+237:  const [categoryFilter, setCategoryFilter] = useState<string>("All");
+238:  const [roomFilter, setRoomFilter] = useState<string>("All");
+241:  const [attendanceSubTab, setAttendanceSubTab] = useState<"input" | "rekap" | "statistik">("input");
+244:  const [statusFilter, setStatusFilter] = useState<string>("all");
+256:  const [rekapTimeframe, setRekapTimeframe] = useState<"harian" | "mingguan" | "bulanan">("harian");
+257:  const [rekapPresensiType, setRekapPresensiType] = useState<string>("sholat");
+258:  const [attendancePopup, setAttendancePopup] = useState<{
+269:  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+273:  const [scanFeedback, setScanFeedback] = useState<{
+280:  const [attendanceDb, setAttendanceDb] = useState<{ [key: string]: { [studentId: string]: AttendanceStatus } }>(() => {
+286:  const [iqomahDb, setIqomahDb] = useState<{ [key: string]: boolean }>(() => {
+439:  const [supabaseSyncStatus, setSupabaseSyncStatus] = useState<"connected" | "error" | "loading" | "disabled">("loading");
+440:  const [supabaseErrorMsg, setSupabaseErrorMsg] = useState<string | null>(null);

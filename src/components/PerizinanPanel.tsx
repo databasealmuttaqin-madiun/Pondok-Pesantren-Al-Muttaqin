@@ -39,7 +39,7 @@ export default function PerizinanPanel({
 }: PerizinanPanelProps) {
   const [selectedKamar, setSelectedKamar] = useState<string>("");
   const [selectedStudent, setSelectedStudent] = useState<SantriData | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<"Aktif" | "Sakit" | "Pulang" | "">("");
+  const [selectedStatus, setSelectedStatus] = useState<"Aktif" | "Sakit" | "Pulang" | "Haid" | "">("");
   
   const [searchQuery, setSearchQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -351,33 +351,42 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
       )}
 
       {/* QUICK STATUS OVERVIEW CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 select-none">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 select-none">
         <div className="bg-emerald-50 border border-emerald-100/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
           <div>
-            <span className="text-[10px] uppercase font-black tracking-wider text-emerald-600 block">🟢 AKTIF DI PONDOK</span>
-            <span className="text-2xl font-black text-emerald-900 mt-1 block">
-              {students.filter(s => s.status === "Aktif").length} Santri
+            <span className="text-[10px] uppercase font-black tracking-wider text-emerald-600 block">🟢 AKTIF</span>
+            <span className="text-xl font-black text-emerald-900 mt-1 block">
+              {students.filter(s => s.status === "Aktif").length}
             </span>
           </div>
-          <span className="text-3xl">🏡</span>
+          <span className="text-2xl hidden sm:block">🏡</span>
         </div>
         <div className="bg-amber-50 border border-amber-100/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
           <div>
-            <span className="text-[10px] uppercase font-black tracking-wider text-amber-600 block">🟡 SAKIT / RAWAT</span>
-            <span className="text-2xl font-black text-amber-900 mt-1 block">
-              {students.filter(s => s.status === "Sakit").length} Santri
+            <span className="text-[10px] uppercase font-black tracking-wider text-amber-600 block">🟡 SAKIT</span>
+            <span className="text-xl font-black text-amber-900 mt-1 block">
+              {students.filter(s => s.status === "Sakit").length}
             </span>
           </div>
-          <span className="text-3xl">🤒</span>
+          <span className="text-2xl hidden sm:block">🤒</span>
         </div>
         <div className="bg-rose-50 border border-rose-100/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
           <div>
-            <span className="text-[10px] uppercase font-black tracking-wider text-rose-600 block">🔴 PULANG / IZIN</span>
-            <span className="text-2xl font-black text-rose-900 mt-1 block">
-              {students.filter(s => s.status === "Pulang").length} Santri
+            <span className="text-[10px] uppercase font-black tracking-wider text-rose-600 block">🔴 PULANG</span>
+            <span className="text-xl font-black text-rose-900 mt-1 block">
+              {students.filter(s => s.status === "Pulang").length}
             </span>
           </div>
-          <span className="text-3xl">🎒</span>
+          <span className="text-2xl hidden sm:block">🎒</span>
+        </div>
+        <div className="bg-pink-50 border border-pink-100/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div>
+            <span className="text-[10px] uppercase font-black tracking-wider text-pink-600 block">🩷 HAID</span>
+            <span className="text-xl font-black text-pink-900 mt-1 block">
+              {students.filter(s => s.status === "Haid").length}
+            </span>
+          </div>
+          <span className="text-2xl hidden sm:block">💧</span>
         </div>
       </div>
 
@@ -485,6 +494,7 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                     {filteredStudents.map((student) => {
                       const isSelected = selectedStudent?.nama_lengkap === student.nama_lengkap;
                       const statusColorClass = 
+                        student.status === "Haid" ? "bg-pink-100 text-pink-800" :
                         student.status === "Sakit" ? "bg-amber-100 text-amber-800" :
                         student.status === "Pulang" ? "bg-rose-100 text-rose-800" :
                         "bg-emerald-100 text-emerald-800";
@@ -542,7 +552,7 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                 </label>
 
                 {/* Status Options Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className={`grid grid-cols-1 ${selectedStudent.jenis_kelamin === "P" ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-3`}>
                   {/* AKTIF */}
                   <button
                     type="button"
@@ -581,6 +591,21 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
                   >
                     <span className="text-xs font-bold font-mono">PULANG</span>
                   </button>
+
+                  {/* HAID (Only for Female) */}
+                  {selectedStudent.jenis_kelamin === "P" && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStatus("Haid")}
+                      className={`p-4 rounded-2xl border text-center transition-all cursor-pointer select-none flex flex-col items-center justify-center gap-1.5 ${
+                        selectedStatus === "Haid"
+                          ? "bg-pink-500 text-white border-pink-600 shadow-md font-bold"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-pink-50/20"
+                      }`}
+                    >
+                      <span className="text-xs font-bold font-mono">HAID</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* SUBMIT BUTTON CONTROL */}
@@ -646,6 +671,7 @@ CREATE POLICY "Akses Publik Status Siswa Seluruh Operasi" ON status_siswa
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                 {statusHistory.map((row) => {
                   const sColor = 
+                    row.status === "Haid" ? "bg-pink-50 text-pink-700 border-pink-200" :
                     row.status === "Sakit" ? "bg-amber-50 text-amber-700 border-amber-200" :
                     row.status === "Pulang" ? "bg-rose-50 text-rose-700 border-rose-200" :
                     "bg-emerald-50 text-emerald-700 border-emerald-250";

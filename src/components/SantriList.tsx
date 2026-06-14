@@ -6,7 +6,7 @@ interface SantriListProps {
   students: SantriData[];
   onEdit: (student: SantriData) => void;
   onDelete: (id: number) => Promise<void>;
-  onUpdateStatus: (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang") => Promise<void>;
+  onUpdateStatus: (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang" | "Haid") => Promise<void>;
   initialFilterCategory?: string;
   initialFilterStatus?: string;
 }
@@ -358,6 +358,7 @@ export default function SantriList({
                 <option value="Aktif">🟢 Aktif</option>
                 <option value="Sakit">🟡 Sakit</option>
                 <option value="Pulang">🔴 Pulang</option>
+                <option value="Haid">🩷 Haid</option>
               </select>
             </div>
 
@@ -444,11 +445,14 @@ export default function SantriList({
                   const studentGender = s.jenis_kelamin || inferGender(s.nama_lengkap);
                   const isPulang = (s.status || "Aktif") === "Pulang";
                   const isSakit = (s.status || "Aktif") === "Sakit";
+                  const isHaid = (s.status || "Aktif") === "Haid";
 
                   // Dynamic row bg style matching the mockup's colored rows for different statuses
                   let rowBgClass = "bg-white hover:bg-slate-50/30";
                   if (isPulang) {
                     rowBgClass = "bg-[#FFF5F7] hover:bg-[#FDF2F4] transition-colors duration-150";
+                  } else if (isHaid) {
+                    rowBgClass = "bg-[#FFF0F5] hover:bg-[#FFEBFA] transition-colors duration-150";
                   } else if (isSakit) {
                     rowBgClass = "bg-[#FFFDF5] hover:bg-[#FFFDF0] transition-colors duration-150";
                   }
@@ -540,7 +544,9 @@ export default function SantriList({
                                if (s.id || s.nik) onUpdateStatus(s.id || s.nik, e.target.value as any);
                             }}
                             className={`appearance-none font-extrabold text-[11px] uppercase tracking-wider py-1.5 pl-6 pr-7 rounded-full border outline-none cursor-pointer transition-all shadow-sm ${
-                              (s.status || "Aktif") === "Sakit"
+                              (s.status || "Aktif") === "Haid"
+                                ? "bg-pink-50 text-pink-600 border-pink-200 hover:bg-pink-100 focus:ring-2 focus:ring-pink-500/30"
+                                : (s.status || "Aktif") === "Sakit"
                                 ? "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 focus:ring-2 focus:ring-amber-500/30"
                                 : (s.status || "Aktif") === "Pulang"
                                 ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 focus:ring-2 focus:ring-rose-500/30"
@@ -550,17 +556,18 @@ export default function SantriList({
                             <option value="Aktif" className="font-semibold text-emerald-700 bg-white">Aktif</option>
                             <option value="Sakit" className="font-semibold text-amber-700 bg-white">Sakit</option>
                             <option value="Pulang" className="font-semibold text-rose-700 bg-white">Pulang</option>
+                            {studentGender === "P" && <option value="Haid" className="font-semibold text-pink-700 bg-white">Haid</option>}
                           </select>
                           
                           {/* Custom Dot Layer */}
                           <div className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full shadow-sm pointer-events-none ${
-                            (s.status || "Aktif") === "Sakit" ? "bg-amber-500" : (s.status || "Aktif") === "Pulang" ? "bg-rose-500" : "bg-emerald-500"
+                            (s.status || "Aktif") === "Haid" ? "bg-pink-500" : (s.status || "Aktif") === "Sakit" ? "bg-amber-500" : (s.status || "Aktif") === "Pulang" ? "bg-rose-500" : "bg-emerald-500"
                           }`}></div>
                           
                           {/* Dropdown Arrow Indicator */}
                           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center opacity-70 group-hover/status:opacity-100 transition-opacity">
                             <svg className={`w-3 h-3 ${
-                              (s.status || "Aktif") === "Sakit" ? "text-amber-500" : (s.status || "Aktif") === "Pulang" ? "text-rose-500" : "text-emerald-500"
+                              (s.status || "Aktif") === "Haid" ? "text-pink-500" : (s.status || "Aktif") === "Sakit" ? "text-amber-500" : (s.status || "Aktif") === "Pulang" ? "text-rose-500" : "text-emerald-500"
                             }`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
                           </div>
                         </div>
@@ -951,13 +958,15 @@ export default function SantriList({
                               <div>
                                 <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">Status</span>
                                 <span className={`font-bold text-[10px] px-1.5 py-0.5 rounded border block w-fit mt-0.5 ${
-                                  (selectedStudent.status || "Aktif") === "Sakit"
+                                  (selectedStudent.status || "Aktif") === "Haid"
+                                    ? "bg-pink-50 text-pink-700 border-pink-200"
+                                    : (selectedStudent.status || "Aktif") === "Sakit"
                                     ? "bg-amber-50 text-amber-700 border-amber-200"
                                     : (selectedStudent.status || "Aktif") === "Pulang"
                                     ? "bg-rose-50 text-rose-700 border-rose-200"
                                     : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 }`}>
-                                  {(selectedStudent.status || "Aktif") === "Sakit" ? "🟡 Sakit" : (selectedStudent.status || "Aktif") === "Pulang" ? "🔴 Pulang" : "🟢 Aktif"}
+                                  {(selectedStudent.status || "Aktif") === "Haid" ? "🩷 Haid" : (selectedStudent.status || "Aktif") === "Sakit" ? "🟡 Sakit" : (selectedStudent.status || "Aktif") === "Pulang" ? "🔴 Pulang" : "🟢 Aktif"}
                                 </span>
                               </div>
 
