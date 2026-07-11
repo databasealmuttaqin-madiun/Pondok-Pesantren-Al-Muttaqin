@@ -57,7 +57,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       setHistory(JSON.parse(saved));
     }
     
-    // Load custom school location if configured
+    // Load custom school location if configured locally as fallback
     const savedLocation = localStorage.getItem("absensi_school_location");
     if (savedLocation) {
       try {
@@ -70,9 +70,38 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         console.error("Failed to parse saved school location", e);
       }
     }
+
+    // Fetch globally from Supabase
+    const fetchGlobalLocation = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("pengaturan_sekolah")
+          .select("*")
+          .eq("id", 1)
+          .single();
+        
+        if (data && !error) {
+          const globalLoc = {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            radiusMeters: data.radius_meters
+          };
+          setSchoolLocation(globalLoc);
+          setConfigLat(globalLoc.latitude.toString());
+          setConfigLng(globalLoc.longitude.toString());
+          setConfigRadius(globalLoc.radiusMeters.toString());
+          // Update fallback
+          localStorage.setItem("absensi_school_location", JSON.stringify(globalLoc));
+        }
+      } catch (e) {
+        console.warn("Failed to fetch global school location", e);
+      }
+    };
+    
+    fetchGlobalLocation();
   }, []);
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     const newLocation = {
       latitude: parseFloat(configLat),
       longitude: parseFloat(configLng),
@@ -86,12 +115,33 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       });
       return;
     }
+    
+    // Save locally for fast update
     setSchoolLocation(newLocation);
     localStorage.setItem("absensi_school_location", JSON.stringify(newLocation));
+
+    // Save to global Supabase database
+    try {
+      const { error } = await supabase
+        .from("pengaturan_sekolah")
+        .upsert([{
+          id: 1,
+          latitude: newLocation.latitude,
+          longitude: newLocation.longitude,
+          radius_meters: newLocation.radiusMeters
+        }]);
+        
+      if (error) {
+        console.warn("Failed to save to Supabase. Table might not exist yet.", error.message);
+      }
+    } catch (e) {
+      console.warn("Supabase upsert error:", e);
+    }
+
     MySwal.fire({
       icon: 'success',
       title: 'Konfigurasi Tersimpan',
-      text: 'Lokasi sekolah berhasil diperbarui.',
+      text: 'Lokasi sekolah berhasil diperbarui untuk semua pengguna.',
       timer: 1500,
       showConfirmButton: false
     });
@@ -220,18 +270,23 @@ CREATE TABLE IF NOT EXISTS public.absensi_guru (
     keterangan TEXT
 );
 
+CREATE TABLE IF NOT EXISTS public.pengaturan_sekolah (
+    id INT PRIMARY KEY DEFAULT 1,
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    radius_meters INT NOT NULL
+);
+
 -- RLS (Row Level Security) - Optional
 ALTER TABLE public.absensi_guru ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pengaturan_sekolah ENABLE ROW LEVEL SECURITY;
 
--- Allow insert
-CREATE POLICY "Enable insert for authenticated users only" 
-ON public.absensi_guru FOR INSERT 
-WITH CHECK (true);
+-- Allow insert & select for absensi
+CREATE POLICY "Enable insert for authenticated users only" ON public.absensi_guru FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable read access for all users" ON public.absensi_guru FOR SELECT USING (true);
 
--- Allow select
-CREATE POLICY "Enable read access for all users" 
-ON public.absensi_guru FOR SELECT 
-USING (true);
+-- Allow all for pengaturan_sekolah
+CREATE POLICY "Enable all for pengaturan_sekolah" ON public.pengaturan_sekolah FOR ALL USING (true) WITH CHECK (true);
   `;
 
   return (
