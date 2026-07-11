@@ -987,14 +987,14 @@ export default function App() {
 
   const allTabs = [
     { id: "dashboard", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin"] },
-    { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah"] },
+    { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin", "pengurus"] },
+    { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "absensi_guru", label: "Guru", shortLabel: "Guru", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah"] },
+    { id: "absensi_guru", label: "Guru", shortLabel: "Guru", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "manajemen_sesi", label: "Manajemen Sesi", shortLabel: "Sesi", icon: Clock, roles: ["admin"] },
-    { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah"] },
-    { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin"] },
-    { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin"] },
+    { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin", "pengurus"] },
+    { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin", "pengurus"] },
     { id: "pengguna", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
   ];
   
