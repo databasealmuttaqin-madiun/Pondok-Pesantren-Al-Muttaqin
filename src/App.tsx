@@ -7,7 +7,6 @@ import DashboardGuruSekolah from "./components/DashboardGuruSekolah";
 import DashboardGuruPondok from "./components/DashboardGuruPondok";
 import AbsensiGuruPanel from "./components/AbsensiGuruPanel";
 import LoginForm from "./components/LoginForm";
-import DatabaseSetupHelper from "./components/DatabaseSetupHelper";
 import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
@@ -134,7 +133,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru">("dashboard");
   const [listFilters, setListFilters] = useState<{ category?: string; status?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
@@ -997,7 +996,6 @@ export default function App() {
     { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin"] },
     { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin"] },
     { id: "pengguna", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
-    { id: "setup", label: "Koneksi & Panduan", shortLabel: "Cloud", icon: Database, roles: ["admin"] },
   ];
   
   const accessibleTabs = allTabs.filter(t => t.roles.includes(userRole));
@@ -1247,20 +1245,14 @@ export default function App() {
         <section className={`flex-1 bg-slate-50 overflow-y-auto flex flex-col ${activeTab === 'dashboard' ? '' : 'p-4 pb-20 md:p-6'}`} id="santri-sub-pages">
           
           {/* Offline warning banner */}
-          {dbStatus !== "connected" && activeTab !== "setup" && (
+          {dbStatus !== "connected" && (
             <div className={`mb-4 p-3 bg-amber-50 border border-amber-200/60 rounded-lg text-[11px] text-amber-800 leading-tight flex items-center justify-between gap-4 ${activeTab === 'dashboard' ? 'mx-4 mt-4 md:mx-6 md:mt-6' : ''}`}>
               <div className="flex items-center gap-2">
                 <span>⚠️</span>
                 <span>
-                  <strong>Mode Offline Aktif:</strong> Pendaftaran disimpan lokal di web browser ini. Anda dapat melakukan sinkronisasi di menu <strong>Koneksi Cloud</strong>.
+                  <strong>Mode Offline Aktif:</strong> Data disimpan lokal di web browser ini.
                 </span>
               </div>
-              <button
-                onClick={() => setActiveTab("setup")}
-                className="text-[11px] bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded"
-              >
-                Atur
-              </button>
             </div>
           )}
 
@@ -1423,16 +1415,6 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "setup" && (
-              <div className="w-full max-w-4xl mx-auto">
-                <DatabaseSetupHelper
-                  status={dbStatus}
-                  errorDetails={dbErrorMsg}
-                  onRetry={checkConnectionAndLoad}
-                  onLoadDemo={handleLoadDemoData}
-                />
-              </div>
-            )}
 
             {activeTab === "pengguna" && (
               <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">

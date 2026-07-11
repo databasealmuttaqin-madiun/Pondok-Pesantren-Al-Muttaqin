@@ -256,39 +256,6 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     });
   };
 
-  const sqlCode = `
--- COPY AND PASTE THIS IN YOUR SUPABASE SQL EDITOR --
-
-CREATE TABLE IF NOT EXISTS public.absensi_guru (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    username TEXT NOT NULL,
-    nama_guru TEXT NOT NULL,
-    waktu_absen TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    latitude DOUBLE PRECISION,
-    longitude DOUBLE PRECISION,
-    status_lokasi TEXT,
-    keterangan TEXT
-);
-
-CREATE TABLE IF NOT EXISTS public.pengaturan_sekolah (
-    id INT PRIMARY KEY DEFAULT 1,
-    latitude DOUBLE PRECISION NOT NULL,
-    longitude DOUBLE PRECISION NOT NULL,
-    radius_meters INT NOT NULL
-);
-
--- RLS (Row Level Security) - Optional
-ALTER TABLE public.absensi_guru ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.pengaturan_sekolah ENABLE ROW LEVEL SECURITY;
-
--- Allow insert & select for absensi
-CREATE POLICY "Enable insert for authenticated users only" ON public.absensi_guru FOR INSERT WITH CHECK (true);
-CREATE POLICY "Enable read access for all users" ON public.absensi_guru FOR SELECT USING (true);
-
--- Allow all for pengaturan_sekolah
-CREATE POLICY "Enable all for pengaturan_sekolah" ON public.pengaturan_sekolah FOR ALL USING (true) WITH CHECK (true);
-  `;
-
   return (
     <div className="w-full max-w-3xl mx-auto py-8 px-4 animate-fade-in space-y-6">
       
@@ -465,19 +432,6 @@ CREATE POLICY "Enable all for pengaturan_sekolah" ON public.pengaturan_sekolah F
             </div>
           </div>
         )}
-      </div>
-
-      {/* SQL HELPER INFO */}
-      <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 text-sm">
-        <h3 className="font-bold text-slate-800 mb-2">Instruksi Pengaturan Database Supabase (Untuk Admin)</h3>
-        <p className="text-slate-600 mb-4">
-          Agar data absensi guru tersimpan ke cloud, jalankan SQL query di bawah ini pada SQL Editor di dashboard Supabase Anda.
-        </p>
-        <div className="bg-[#1e1e1e] p-4 rounded-lg overflow-x-auto">
-          <pre className="text-emerald-400 font-mono text-xs">
-            {sqlCode}
-          </pre>
-        </div>
       </div>
 
       {/* HISTORY TABLE (LOKAL) */}
