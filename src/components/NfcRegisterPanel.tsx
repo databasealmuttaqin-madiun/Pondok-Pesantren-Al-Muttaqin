@@ -107,6 +107,7 @@ export default function NfcRegisterPanel({
   const [selectedRoom, setSelectedRoom] = useState<string>("");
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [assignSearch, setAssignSearch] = useState<string>("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
 
   // Search filter for Registered Database Tab
@@ -680,43 +681,56 @@ export default function NfcRegisterPanel({
                               </select>
                             </div>
 
-                            {/* Search Name */}
-                            <div className="space-y-1">
+                            {/* Step 2: Search and Select Student */}
+                            <div className="space-y-1 relative">
                               <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                                Cari Nama Santri
+                                2. Cari & Pilih Santri
                               </label>
                               <div className="relative w-full">
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
                                   <Search className="w-3.5 h-3.5" />
                                 </span>
-                                <input 
-                                  type="text" 
+                                <input
+                                  type="text"
                                   placeholder="Ketik nama santri..."
                                   value={assignSearch}
-                                  onChange={(e) => setAssignSearch(e.target.value)}
-                                  className="w-full text-xs font-medium pl-9 pr-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-505 focus:bg-white dark:focus:bg-slate-850 text-slate-800 dark:text-white transition-all shadow-inner"
+                                  onChange={(e) => {
+                                    setAssignSearch(e.target.value);
+                                    setIsDropdownOpen(true);
+                                    setSelectedStudentId("");
+                                  }}
+                                  onFocus={() => setIsDropdownOpen(true)}
+                                  onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+                                  className="w-full text-xs font-medium pl-9 pr-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 text-slate-800 dark:text-white transition-all shadow-inner"
+                                  required={!selectedStudentId}
                                 />
+                                
+                                {isDropdownOpen && (
+                                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
+                                    {filteredStudentsForAssign.length > 0 ? (
+                                      filteredStudentsForAssign.map((s) => {
+                                        const isSelected = selectedStudentId === s.id;
+                                        return (
+                                          <div
+                                            key={s.id}
+                                            onClick={() => {
+                                              setSelectedStudentId(s.id);
+                                              setAssignSearch(`${s.nama_lengkap} ${s.kamar ? `(Kamar: ${s.kamar})` : ""}`);
+                                              setIsDropdownOpen(false);
+                                            }}
+                                            className={`p-2.5 text-xs font-bold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-50 dark:border-slate-800 last:border-0 ${isSelected ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-slate-700 dark:text-slate-300"}`}
+                                          >
+                                            {s.nama_lengkap} <span className="text-slate-400 dark:text-slate-500 font-medium ml-1">{s.kamar ? `(Kamar: ${s.kamar})` : ""}</span>
+                                          </div>
+                                        );
+                                      })
+                                    ) : (
+                                      <div className="p-3 text-xs text-center text-slate-500 font-medium">Tidak ada nama santri yang cocok</div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          </div>
-
-                          {/* Step 2: Select Student */}
-                          <div className="space-y-1">
-                            <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                              2. Nama Santri / Siswa
-                            </label>
-                            <select
-                              value={selectedStudentId}
-                              onChange={(e) => setSelectedStudentId(e.target.value)}
-                              className="w-full text-xs font-semibold px-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 dark:text-white transition-all shadow-inner"
-                            >
-                              <option value="">-- PILIH SANTRI --</option>
-                              {filteredStudentsForAssign.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.nama_lengkap} {s.kamar ? `(Kamar: ${s.kamar})` : ""}
-                                </option>
-                              ))}
-                            </select>
                           </div>
                         </div>
 

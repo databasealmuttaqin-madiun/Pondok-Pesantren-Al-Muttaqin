@@ -19,7 +19,6 @@ export default function ManajemenSesiPanel() {
   const [namaSesi, setNamaSesi] = useState("");
   const [jamMulai, setJamMulai] = useState("08:00");
   const [jamSelesai, setJamSelesai] = useState("09:00");
-  const [ikonSesi, setIkonSesi] = useState("⏰");
   const [jenisPresensi, setJenisPresensi] = useState("ngaji"); // default value
 
   const [isLoading, setIsLoading] = useState(false);
@@ -78,7 +77,6 @@ export default function ManajemenSesiPanel() {
     setNamaSesi("");
     setJamMulai("08:00");
     setJamSelesai("09:00");
-    setIkonSesi("⏰");
     setJenisPresensi("ngaji");
     setIsFormOpen(true);
   };
@@ -101,7 +99,6 @@ export default function ManajemenSesiPanel() {
       setJamSelesai("09:00");
     }
     
-    setIkonSesi(sess.icon || "⏰");
     setJenisPresensi(sess.presensi || "ngaji");
     setIsFormOpen(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -151,7 +148,7 @@ export default function ManajemenSesiPanel() {
           sesi: namaSesi.trim(),
           "jam mulai": jamMulai,
           "jam selesai": jamSelesai,
-          ikon: ikonSesi,
+          ikon: "⏰",
           presensi: jenisPresensi
         };
 
@@ -172,7 +169,7 @@ export default function ManajemenSesiPanel() {
           sesi: namaSesi.trim(),
           "jam mulai": jamMulai,
           "jam selesai": jamSelesai,
-          ikon: ikonSesi,
+          ikon: "⏰",
           presensi: jenisPresensi
         };
 
@@ -188,8 +185,6 @@ export default function ManajemenSesiPanel() {
       setIsLoading(false);
     }
   };
-
-  const emojis = ["🌅", "🌞", "☀️", "🌤️", "🌇", "🌌", "🌙", "🍽️", "🍳", "🍛", "🍲", "⏰", "📖", "🕌", "🧕", "👳", "💬", "✏️", "🎒"];
 
   return (
     <div className="w-full max-w-7xl mx-auto py-6 px-4 space-y-6 flex flex-col items-stretch" id="session_management_root_container">
@@ -249,7 +244,7 @@ export default function ManajemenSesiPanel() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 md:col-span-2">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Nama Sesi
                   </label>
@@ -261,26 +256,6 @@ export default function ManajemenSesiPanel() {
                     onChange={(e) => setNamaSesi(e.target.value)}
                     className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:border-[#3e46ca] text-slate-800 dark:text-white transition-all shadow-inner"
                   />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Ikon Sesi
-                  </label>
-                  <div className="flex flex-wrap gap-1 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2 rounded-2xl max-h-[90px] overflow-y-auto">
-                    {emojis.map(emoji => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => setIkonSesi(emoji)}
-                        className={`text-lg px-2 rounded-lg transition-transform hover:scale-125 cursor-pointer ${
-                          ikonSesi === emoji ? "bg-indigo-100 dark:bg-indigo-900 border-indigo-200 dark:border-indigo-600 scale-110" : "border border-transparent"
-                        }`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="space-y-1.5">
@@ -407,9 +382,6 @@ export default function ManajemenSesiPanel() {
                 className="bg-slate-50 dark:bg-slate-900 hover:bg-slate-100/50 dark:hover:bg-slate-800_30 border border-slate-150/40 dark:border-slate-800 rounded-2xl p-4.5 flex items-center justify-between gap-3 shadow-3xs transition-all relative overflow-hidden group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-2xl shadow-3xs border border-indigo-100 dark:border-indigo-900 shrink-0">
-                    {sess.icon || "⏰"}
-                  </div>
                   <div>
                     <h4 className="font-extrabold text-slate-800 dark:text-white text-base leading-snug">
                       {sess.label}

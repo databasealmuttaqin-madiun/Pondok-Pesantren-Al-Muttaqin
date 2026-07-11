@@ -6,13 +6,14 @@ interface DashboardProps {
   students: SantriData[];
   onNavigateToForm: () => void;
   onNavigateToList: (filters?: { category?: string; status?: string }) => void;
+  onNavigateToAbsensiGuru?: () => void;
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
   currentUser?: { username: string; role: string; name: string; gender?: string } | null;
   onLogout?: () => void;
 }
 
-export default function Dashboard({ students, onNavigateToForm, onNavigateToList, isDarkMode, setIsDarkMode, currentUser, onLogout }: DashboardProps) {
+export default function DashboardGuruPondok({ students, onNavigateToForm, onNavigateToList, onNavigateToAbsensiGuru, isDarkMode, setIsDarkMode, currentUser, onLogout }: DashboardProps) {
   // Compute basic metrics
   const totalCount = students.length;
   const smpCount = students.filter((s) => s.kategori === "SMP").length;
@@ -67,7 +68,7 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
       <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400 px-6 pt-6 pb-28 md:px-10 md:pt-8 md:pb-32 relative shrink-0">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Dashboard</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Dashboard Guru Pamong</h1>
             <p className="text-blue-50 font-medium text-sm mt-1">{currentDateFormatted}</p>
           </div>
           <button 
@@ -86,6 +87,12 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
             <p className="text-slate-500 mt-0.5 text-xs font-medium">Have a Nice {currentDayEn}!</p>
             
             <div className="flex flex-wrap items-center gap-2 mt-3.5">
+              <button 
+                onClick={onNavigateToAbsensiGuru}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white px-3 py-1.5 rounded font-bold text-[10px] transition-colors shadow-sm"
+              >
+                <Map className="w-3.5 h-3.5" /> Absensi Anda
+              </button>
               <button className="flex items-center gap-1.5 bg-gradient-to-r from-[#0c66e4] to-blue-600 hover:from-blue-700 hover:to-blue-700 text-white px-3 py-1.5 rounded font-bold text-[10px] transition-colors shadow-sm">
                 <Calendar className="w-3.5 h-3.5" /> Pengumuman & Kalender
               </button>

@@ -4,6 +4,7 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 import { SantriData, supabase } from "../supabaseClient";
 import { parseNfcPayload, normalizeNfcId } from "./NfcRegisterPanel";
+import { BrowserQRCodeReader, IScannerControls } from "@zxing/browser";
 import { 
   Calendar, 
   Search, 
@@ -19,7 +20,9 @@ import {
   Undo2,
   AlertTriangle,
   Info,
-  Video
+  Video,
+  Download,
+  X
 } from "lucide-react";
 
 interface PresensiPanelProps {
@@ -255,6 +258,18 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   const [isManualDate, setIsManualDate] = useState(false);
   const [rekapTimeframe, setRekapTimeframe] = useState<"harian" | "mingguan" | "bulanan">("harian");
   const [rekapPresensiType, setRekapPresensiType] = useState<string>("sholat");
+  
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [downloadOptions, setDownloadOptions] = useState<{
+    kamar: string;
+    timeframe: "harian" | "mingguan" | "bulanan";
+    tanggal: string;
+  }>({
+    kamar: "All",
+    timeframe: "harian",
+    tanggal: new Date().toISOString().slice(0, 10),
+  });
+
   const [attendancePopup, setAttendancePopup] = useState<{
     isOpen: boolean;
     type: "success" | "error";
@@ -357,28 +372,39 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
   const isSessionOpen = isInsideTargetWindow(activeTimeStr, activeSession);
 
-  // Hook 1: Professional WebRTC Stream Handler
+  // Use a ref to always access the latest executeScan function without restarting the camera
+  const executeScanRef = useRef<(code: string, medium: string) => void>();
+
+  // Hook 1: Professional WebRTC Stream Handler with ZXing QR Scanner
   useEffect(() => {
-    if (isCameraActive && isSessionOpen) {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => {
-          setVideoStream(stream);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
+    let controls: IScannerControls | null = null;
+    let codeReader: BrowserQRCodeReader | null = null;
+
+    if (isCameraActive && isSessionOpen && videoRef.current) {
+      codeReader = new BrowserQRCodeReader();
+      codeReader.decodeFromVideoDevice(undefined, videoRef.current, (result, error, controlsResult) => {
+        if (controlsResult) {
+          controls = controlsResult;
+          // Trigger a re-render to hide the "Waiting for Camera..." UI if it's connected
+          setVideoStream(new MediaStream()); // Fake stream just for UI loading state
+        }
+        if (result) {
+          const code = result.getText();
+          if (executeScanRef.current) {
+            executeScanRef.current(code, "camera");
           }
-        })
-        .catch((err) => {
-          console.warn("Camera streaming turned off or permission was denied:", err);
-        });
+        }
+        // ignore errors since it will continuously throw 'not found' on every frame
+      }).catch((err) => {
+        console.warn("Camera streaming turned off or permission was denied:", err);
+      });
     } else {
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
-        setVideoStream(null);
-      }
+      setVideoStream(null);
     }
+
     return () => {
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
+      if (controls) {
+        controls.stop();
       }
     };
   }, [isCameraActive, isSessionOpen]);
@@ -810,10 +836,14 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   }, [] as any);
 
   const roomsList = Array.from(
-    new Set(hydratedStudentsList.map((s) => s.kamar).filter(Boolean))
+    new Set(hydratedStudentsList.map((s: any) => s.kamar).filter(Boolean))
   ).sort();
 
-  const filteredStudents = hydratedStudentsList.filter((s) => {
+  const kelasList = Array.from(
+    new Set(students.map(s => s.kelas_sekolah).filter(Boolean))
+  ).sort();
+
+  const filteredStudents = hydratedStudentsList.filter((s: any) => {
     const term = searchQuery.toLowerCase();
     const matchSearch = 
       (s.nama_lengkap || "").toLowerCase().includes(term) ||
@@ -969,7 +999,11 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     }
   };
 
-  const getStudentPeriodStats = (studentId: string | number) => {
+  const getStudentPeriodStats = (studentId: string | number, tfOverride?: string, dateOverride?: string, typeOverride?: string) => {
+    const tf = tfOverride || rekapTimeframe;
+    const date = dateOverride || selectedDate;
+    const type = typeOverride || rekapPresensiType;
+    
     const sId = String(studentId);
     const student = students.find(s => String(s.id) === sId);
     const globalStatus = student?.status || "Aktif";
@@ -988,25 +1022,25 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       return status;
     };
 
-    if (rekapTimeframe === "harian") {
-      sessionsData[selectedDate] = {};
-      const passedSessionIds = getPassedSessions(selectedDate);
+    if (tf === "harian") {
+      sessionsData[date] = {};
+      const passedSessionIds = getPassedSessions(date);
       sessions.forEach(sess => {
         if (!passedSessionIds.includes(sess.id)) return;
         const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
-        if (mappedPresensi !== rekapPresensiType) return;
-        const key = `${selectedDate}_absensi_${sess.id}`;
+        if (mappedPresensi !== type) return;
+        const key = `${date}_absensi_${sess.id}`;
         let status = attendanceDb[key]?.[sId] || "unmarked";
         status = resolveStatus(status);
-        sessionsData[selectedDate][sess.id] = status;
+        sessionsData[date][sess.id] = status;
         if (status === "hadir") hadir++;
         else if (status === "terlambat") terlambat++;
         else if (status === "sakit") sakit++;
         else if (status === "pulang") pulang++;
         else if (status === "alpa" || status === "unmarked") alpa++;
       });
-    } else if (rekapTimeframe === "mingguan") {
-      const { monday } = getWeekRange(selectedDate);
+    } else if (tf === "mingguan") {
+      const { monday } = getWeekRange(date);
       for (let i = 0; i < 7; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
@@ -1021,7 +1055,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         sessions.forEach(sess => {
           if (!passedSessionIds.includes(sess.id)) return;
           const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
-          if (mappedPresensi !== rekapPresensiType) return;
+          if (mappedPresensi !== type) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           let status = attendanceDb[key]?.[sId] || "unmarked";
           status = resolveStatus(status);
@@ -1033,8 +1067,8 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           else if (status === "alpa" || status === "unmarked") alpa++;
         });
       }
-    } else if (rekapTimeframe === "bulanan") {
-      const d = new Date(selectedDate);
+    } else if (tf === "bulanan") {
+      const d = new Date(date);
       const y = d.getFullYear();
       const mStr = String(d.getMonth() + 1).padStart(2, "0");
       const days = new Date(y, d.getMonth() + 1, 0).getDate();
@@ -1047,7 +1081,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         sessions.forEach(sess => {
           if (!passedSessionIds.includes(sess.id)) return;
           const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
-          if (mappedPresensi !== rekapPresensiType) return;
+          if (mappedPresensi !== type) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           let status = attendanceDb[key]?.[sId] || "unmarked";
           status = resolveStatus(status);
@@ -1063,6 +1097,95 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
     return { hadir, terlambat, alpa, sakit, pulang, sessionsData };
   };
+
+  const downloadRekapPDF = () => {
+    import("jspdf").then(({ jsPDF }) => {
+      import("jspdf-autotable").then(({ default: autoTable }) => {
+        const doc = new jsPDF();
+        const tf = downloadOptions.timeframe;
+        const dt = downloadOptions.tanggal;
+        
+        const timeframeLabel = tf === "harian" ? "Harian" : tf === "mingguan" ? "Mingguan" : "Bulanan";
+        let dateLabel = "";
+        if (tf === "harian") {
+          dateLabel = formatIndoDate(dt);
+        } else if (tf === "mingguan") {
+          const { monday, sunday } = getWeekRange(dt);
+          dateLabel = `${formatIndoDate(monday.toISOString().slice(0,10))} - ${formatIndoDate(sunday.toISOString().slice(0,10))}`;
+        } else {
+          dateLabel = formatIndoMonth(dt);
+        }
+        
+        const title = `Rekapitulasi Presensi ${rekapPresensiType === "sholat" ? "Sholat" : rekapPresensiType === "makan" ? "Makan" : "Ngaji"} ${timeframeLabel} - ${downloadOptions.kamar !== "All" ? `Kamar ${downloadOptions.kamar}` : "Semua Kamar"}`;
+        
+        doc.setFontSize(14);
+        doc.text(title, 14, 15);
+        doc.setFontSize(10);
+        doc.text(`Periode: ${dateLabel}`, 14, 22);
+        
+        let tableData: any[][] = [];
+        let head: string[][] = [];
+
+        const pdfStudents = hydratedStudentsList.filter((s: any) => 
+          downloadOptions.kamar === "All" || s.kamar === downloadOptions.kamar
+        );
+        
+        if (rekapPresensiType === "makan" && tf === "harian") {
+          head = [["No", "Nama Santri", "Kamar", "Pagi", "Siang", "Sore", "Total"]];
+          tableData = pdfStudents.map((student: any, idx: number) => {
+            const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
+            const sessionsTodayData = pPeriodStats.sessionsData[dt] || {};
+            const getSessionStatus = (keyword: string) => {
+                const s = sessions.find(sess => mapLocalSessionToDbSession(sess.id, sessions).presensi === "makan" && sess.label.toLowerCase().includes(keyword));
+                if (!s) return "unmarked";
+                return sessionsTodayData[s.id] || "unmarked";
+            };
+            const pagi = getSessionStatus("pagi");
+            const siang = getSessionStatus("siang");
+            const sore = getSessionStatus("sore");
+            const countMakan = (pagi==="hadir"?1:0) + (siang==="hadir"?1:0) + (sore==="hadir"?1:0);
+            return [
+              idx + 1,
+              student.nama_lengkap,
+              student.kamar || "-",
+              pagi === "hadir" ? "V" : "X",
+              siang === "hadir" ? "V" : "X",
+              sore === "hadir" ? "V" : "X",
+              countMakan
+            ];
+          });
+        } else {
+          head = [["No", "Nama Santri", "Kamar", "Hadir/Makan", "Sakit/Izin", "Tidak/Alpa", "Persentase"]];
+          tableData = pdfStudents.map((student: any, idx: number) => {
+            const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
+            const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
+            const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
+            return [
+              idx + 1,
+              student.nama_lengkap,
+              student.kamar || "-",
+              pPeriodStats.hadir + pPeriodStats.terlambat,
+              pPeriodStats.sakit + pPeriodStats.pulang,
+              pPeriodStats.alpa,
+              `${persentase}%`
+            ];
+          });
+        }
+
+        autoTable(doc, {
+          startY: 28,
+          head: head,
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [62, 70, 202] }
+        });
+
+        doc.save(`Rekap_${rekapPresensiType}_${timeframeLabel}_${dateLabel.replace(/\s+/g, '_')}.pdf`);
+        setIsDownloadModalOpen(false);
+      });
+    });
+  };
+  executeScanRef.current = executeScan;
 
   return (
     <div className="w-full max-w-7xl mx-auto py-4 px-2 space-y-6 flex flex-col items-stretch" id="attendance_menu_root">
@@ -1184,7 +1307,6 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
             <div className="text-2xl font-black text-[#1e1b4b] dark:text-white leading-none tracking-tight flex items-center gap-2 flex-wrap sm:flex-nowrap">
               {activeSession !== "none" ? (
                 <>
-                  <span className="text-2xl shrink-0">{activeSessionObj.icon}</span>
                   <span>{activeSessionObj.label}</span>
                   <span className="text-xs uppercase font-extrabold px-2.5 py-1 rounded-xl font-mono bg-indigo-50/60 dark:bg-purple-950/30 border border-indigo-100/50 dark:border-slate-800 text-[#3e46ca] dark:text-indigo-300 ml-1.5 shadow-xs">
                     {activeSessionObj.time}
@@ -1273,7 +1395,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
             }`}
           >
             <Video className="w-4 h-4" />
-            <span>BARCODE: {isCameraActive ? "AKTIF" : "NONAKTIF"}</span>
+            <span>QR CODE SCANNER: {isCameraActive ? "AKTIF" : "NONAKTIF"}</span>
           </button>
 
           {/* Iqomah Status Pill Row Block */}
@@ -1693,16 +1815,25 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
               </div>
             )}
 
-            {/* Filter text input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-              <input 
-                type="text"
-                placeholder="Pencarian nama atau kamar santri..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-[11px] font-medium pl-8.5 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-              />
+            {/* Filter and Download row */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                <input 
+                  type="text"
+                  placeholder="Pencarian nama atau kamar santri..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full text-[11px] font-medium pl-8.5 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                />
+              </div>
+              <button
+                onClick={() => setIsDownloadModalOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-2 shrink-0 shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh Laporan PDF</span>
+              </button>
             </div>
 
             {/* Scrollable list of Rekap */}
@@ -2076,6 +2207,100 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Download Modal */}
+      {isDownloadModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-indigo-600 p-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-black uppercase tracking-wider text-sm">Unduh PDF</h3>
+                <p className="text-indigo-200 text-[10px] font-bold">Atur parameter laporan sebelum mengunduh</p>
+              </div>
+              <button 
+                onClick={() => setIsDownloadModalOpen(false)}
+                className="text-white hover:text-indigo-200 bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Pilih Kamar</label>
+                <select
+                  value={downloadOptions.kamar}
+                  onChange={(e) => setDownloadOptions({...downloadOptions, kamar: e.target.value})}
+                  className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                >
+                  <option value="All">Semua Kamar</option>
+                  {roomsList.map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Rentang Waktu</label>
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700">
+                  {[
+                    { id: "harian", label: "Harian" },
+                    { id: "mingguan", label: "Mingguan" },
+                    { id: "bulanan", label: "Bulanan" }
+                  ].map((tf) => (
+                    <button
+                      key={tf.id}
+                      onClick={() => setDownloadOptions({...downloadOptions, timeframe: tf.id as "harian" | "mingguan" | "bulanan"})}
+                      className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                        downloadOptions.timeframe === tf.id 
+                          ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      {tf.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+                  {downloadOptions.timeframe === "harian" ? "Tanggal" : downloadOptions.timeframe === "mingguan" ? "Tanggal dalam Minggu" : "Bulan"}
+                </label>
+                <input
+                  type={downloadOptions.timeframe === "bulanan" ? "month" : "date"}
+                  value={downloadOptions.timeframe === "bulanan" ? downloadOptions.tanggal.slice(0, 7) : downloadOptions.tanggal}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setDownloadOptions({
+                        ...downloadOptions,
+                        tanggal: downloadOptions.timeframe === "bulanan" ? `${e.target.value}-01` : e.target.value
+                      });
+                    }
+                  }}
+                  className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+              <button 
+                onClick={() => setIsDownloadModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={downloadRekapPDF}
+                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Unduh PDF
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

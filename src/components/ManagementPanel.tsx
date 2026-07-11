@@ -56,6 +56,10 @@ export default function ManagementPanel({
   // Plotting selection inputs
   const [selectedNik, setSelectedNik] = useState("");
   const [selectedTarget, setSelectedTarget] = useState("");
+  
+  // Custom search selection
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Feedback notifications
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -634,27 +638,54 @@ export default function ManagementPanel({
           <form onSubmit={handleSavePlot} className="space-y-4">
             
             {/* Step 1: Select Student */}
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 relative">
               <label className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
-                Langkah 1: Pilih Siswa / Santri
+                Langkah 1: Cari & Pilih Siswa
               </label>
-              <select
-                required
-                value={selectedNik}
-                onChange={(e) => setSelectedNik(e.target.value)}
-                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 bg-white"
-              >
-                <option value="">-- PILIH NAMA SISWA --</option>
-                {students.map((student) => {
-                  const currentPlotted = getStudentCurrentPlot(student, activeMode);
-                  const suffix = currentPlotted ? `(${currentPlotted})` : "(Belum di-plot)";
-                  return (
-                    <option key={student.nik} value={student.nik}>
-                      {student.nama_lengkap} {suffix}
-                    </option>
-                  );
-                })}
-              </select>
+              
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ketik nama siswa..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setIsDropdownOpen(true);
+                    setSelectedNik(""); // Clear selection if typing
+                  }}
+                  onFocus={() => setIsDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 bg-white"
+                  required={!selectedNik} // Only require if nothing is actually selected
+                />
+                
+                {isDropdownOpen && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
+                    {students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 ? (
+                      students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).map((student) => {
+                        const currentPlotted = getStudentCurrentPlot(student, activeMode);
+                        const suffix = currentPlotted ? `(${currentPlotted})` : "(Belum di-plot)";
+                        const isSelected = selectedNik === student.nik;
+                        return (
+                          <div
+                            key={student.nik}
+                            onClick={() => {
+                              setSelectedNik(student.nik);
+                              setSearchQuery(`${student.nama_lengkap} ${suffix}`);
+                              setIsDropdownOpen(false);
+                            }}
+                            className={`p-2.5 text-xs font-bold cursor-pointer hover:bg-slate-50 border-b border-slate-50 last:border-0 ${isSelected ? "bg-indigo-50 text-indigo-700" : "text-slate-700"}`}
+                          >
+                            {student.nama_lengkap} <span className="text-slate-400 font-medium ml-1">{suffix}</span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="p-3 text-xs text-center text-slate-500 font-medium">Tidak ada nama siswa yang cocok</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Step 2: Select Designation */}

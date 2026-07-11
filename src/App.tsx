@@ -3,6 +3,9 @@ import { supabase, SantriData, TABLE_NAME, formatSantriData } from "./supabaseCl
 import RegistrationForm from "./components/RegistrationForm";
 import SantriList from "./components/SantriList";
 import Dashboard from "./components/Dashboard";
+import DashboardGuruSekolah from "./components/DashboardGuruSekolah";
+import DashboardGuruPondok from "./components/DashboardGuruPondok";
+import AbsensiGuruPanel from "./components/AbsensiGuruPanel";
 import LoginForm from "./components/LoginForm";
 import DatabaseSetupHelper from "./components/DatabaseSetupHelper";
 import ManagementPanel from "./components/ManagementPanel";
@@ -10,7 +13,7 @@ import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X } from "lucide-react";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin } from "lucide-react";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
 
 const DEMO_SANTRI: SantriData[] = [
@@ -131,7 +134,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "setup" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru">("dashboard");
   const [listFilters, setListFilters] = useState<{ category?: string; status?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
@@ -988,6 +991,7 @@ export default function App() {
     { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin"] },
     { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah"] },
     { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "absensi_guru", label: "Absensi Guru (Lokasi)", shortLabel: "Absen Guru", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah"] },
     { id: "manajemen_sesi", label: "Manajemen Sesi", shortLabel: "Sesi", icon: Clock, roles: ["admin"] },
     { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah"] },
     { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin"] },
@@ -1044,7 +1048,7 @@ export default function App() {
       )}
 
       {/* 2. HEADER */}
-      <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
+      <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex md:hidden items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
         <div className="flex items-center gap-2 sm:gap-3">
           <button 
             className="md:hidden p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg outline-none"
@@ -1102,35 +1106,75 @@ export default function App() {
         
         {/* Navigation Sidebar (Desktop view) */}
         <aside 
-          className={`${sidebarCollapsed ? "w-16" : "w-60"} bg-[#f0f4f9] dark:bg-[#0b0d1a] border-r border-[#dee4ec] dark:border-slate-800 flex flex-col p-0 shrink-0 hidden md:flex transition-all duration-300 overflow-hidden shadow-sm`} 
+          className={`${sidebarCollapsed ? "w-[72px]" : "w-64"} bg-[#002b6b] border-r border-[#001d4a] flex flex-col p-0 shrink-0 hidden md:flex transition-all duration-300 overflow-hidden shadow-xl text-white z-20`} 
           id="desktop-sidebar"
         >
-          {/* Header area of Sidebar with Hamburger Toggle Button ☰ */}
-          <div className={`p-3 bg-[#e9eef6]/50 dark:bg-[#0e1222]/85 flex ${sidebarCollapsed ? "justify-center" : "justify-end px-5"} border-b border-[#dee4ec]/60 dark:border-slate-800 shrink-0`}>
+          {/* Top section with Logo and Toggle */}
+          <div className={`pt-4 pb-2 relative flex flex-col items-center shrink-0`}>
+            {/* Toggle Button */}
             <button
               onClick={() => {
                 const nextVal = !sidebarCollapsed;
                 setSidebarCollapsed(nextVal);
                 localStorage.setItem("sidebar_collapsed", String(nextVal));
               }}
-              className="p-1.5 bg-white dark:bg-[#1a233d] border border-[#dee4ec] dark:border-slate-800 shadow-sm rounded-lg hover:bg-[#e1e9f5] dark:hover:bg-[#151930] text-[#041e49] dark:text-slate-100 transition-all cursor-pointer w-8 h-8 flex items-center justify-center select-none"
+              className={`absolute top-4 ${sidebarCollapsed ? "relative top-0 mb-4" : "right-4"} p-1 text-white hover:text-yellow-400 transition-colors focus:outline-none`}
               title={sidebarCollapsed ? "Buka Sidebar" : "Sembunyikan Sidebar"}
             >
-              <span className="text-sm font-black">☰</span>
+              {sidebarCollapsed ? (
+                <ChevronsRight className="w-5 h-5" />
+              ) : (
+                <ChevronsLeft className="w-5 h-5" />
+              )}
             </button>
+
+            {/* Logo Area */}
+            <div className={`flex flex-col items-center justify-center transition-all duration-300 ${sidebarCollapsed ? "w-10 h-10 mb-2" : "w-16 h-16 mb-2"} rounded-full p-1`}>
+              <img
+                src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
+                alt="Logo Pondok"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            {!sidebarCollapsed && (
+              <div className="text-center px-4 mb-5">
+                <div className="text-[10px] font-bold tracking-tight uppercase text-white leading-tight">
+                  AL MUTTAQIN
+                </div>
+              </div>
+            )}
+
+            {/* Search Input Area */}
+            {!sidebarCollapsed ? (
+              <div className="w-full px-4 mb-2">
+                <div className="flex items-center bg-[#1a4079] rounded-lg px-3 py-2 border border-[#2b5390]">
+                  <Search className="w-4 h-4 text-white shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Cari Menu..."
+                    className="bg-transparent border-none outline-none text-xs font-bold text-white placeholder-slate-300 ml-2 w-full"
+                  />
+                  <div className="bg-[#2b5390] text-slate-200 text-[10px] px-1.5 py-0.5 rounded ml-1 shrink-0 font-mono">/</div>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full flex justify-center mb-4 mt-2">
+                 <button className="p-2 text-white hover:text-yellow-400" title="Cari Menu">
+                   <Search className="w-5 h-5" />
+                 </button>
+              </div>
+            )}
           </div>
 
-          {/* Navigation links - Akkhor custom layout with chevrons on right */}
-          <nav className="flex-1 py-3 text-xs select-none">
-            {!sidebarCollapsed && (
-              <div className="text-[10px] font-black text-[#5f6368] dark:text-slate-400 uppercase tracking-widest my-2 px-6">Menu Utama</div>
-            )}
-            <div className="flex flex-col">
+          {/* Navigation links */}
+          <nav className="flex-1 py-2 text-xs select-none overflow-y-auto custom-scrollbar">
+            <div className="flex flex-col space-y-1">
               {accessibleTabs.map((tab) => {
                 const TabIcon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
-                  <div key={tab.id} className="w-full">
+                  <div key={tab.id} className="w-full px-3">
                     <button
                       onClick={() => {
                         if (tab.id !== "form") setEditingStudent(null);
@@ -1138,71 +1182,73 @@ export default function App() {
                         setActiveTab(tab.id as any);
                       }}
                       title={sidebarCollapsed ? tab.label : undefined}
-                      className={`w-full flex items-center transition-all ${
+                      className={`w-full flex items-center transition-all rounded-lg ${
                         sidebarCollapsed 
-                          ? "justify-center py-4 px-0 border-b border-[#dee4ec]/40 dark:border-slate-800" 
-                          : "justify-between px-6 py-3.5 border-b border-[#dee4ec]/40 dark:border-slate-850"
+                          ? "justify-center py-3" 
+                          : "justify-between px-3 py-3"
                       } ${
                         isActive
-                          ? "bg-[#c2e7ff] dark:bg-[#1a233d] text-[#001d35] dark:text-[#38bdf8] font-bold"
-                          : "text-[#444746] dark:text-slate-400 hover:bg-[#e1e9f5]/60 dark:hover:bg-[#151930] hover:text-slate-900 dark:hover:text-white"
+                          ? "bg-transparent text-yellow-400 font-bold"
+                          : "text-white hover:bg-white/10"
                       }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        <TabIcon className={`w-4 h-4 shrink-0 transition-colors ${
-                          isActive ? "text-[#001d35] dark:text-[#38bdf8] font-bold" : "text-slate-500 dark:text-slate-400"
+                        <TabIcon className={`w-5 h-5 shrink-0 transition-colors ${
+                          isActive ? "text-yellow-400" : "text-white"
                         }`} />
-                        {!sidebarCollapsed && <span className="truncate tracking-wide text-xs">{tab.label}</span>}
+                        {!sidebarCollapsed && <span className="truncate tracking-wide text-[13px]">{tab.label}</span>}
                       </div>
-                      
-                      {/* Akkhor-style chevron on non-collapsed tabs */}
-                      {!sidebarCollapsed && (
-                        <ChevronRight className={`w-3.5 h-3.5 transition-all ${
-                          isActive ? "text-[#001d35] dark:text-[#38bdf8] translate-x-0.5" : "text-slate-400 dark:text-slate-650 opacity-60"
-                        }`} />
-                      )}
                     </button>
                   </div>
                 );
               })}
             </div>
           </nav>
-
-
-          {!sidebarCollapsed && (
-            <div className="p-4 border-t border-[#dee4ec] dark:border-slate-850 bg-[#e9eef6]/30 dark:bg-[#0e1222]/50 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-sm overflow-hidden shrink-0">
-                  {currentUser?.name?.charAt(0).toUpperCase() || "U"}
-                </div>
-                <div className="flex flex-col flex-1 min-w-0">
-                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{currentUser?.name}</span>
-                  <span className="text-[9px] font-mono tracking-wider text-slate-500 dark:text-slate-400 uppercase font-black truncate">
-                    {currentUser?.role?.replace('_', ' ')} {currentUser?.gender && currentUser.gender !== 'Semua' ? `(${currentUser.gender})` : ''}
-                  </span>
-                </div>
+          
+          <div className="flex flex-col gap-2 p-3 mt-auto shrink-0 border-t border-[#001d4a]">
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className={`w-full flex items-center transition-all rounded-lg ${
+                sidebarCollapsed ? "justify-center py-3" : "justify-start px-3 py-3"
+              } text-white hover:bg-white/10`}
+              title={isDarkMode ? "Aktifkan Mode Siang" : "Aktifkan Mode Malam"}
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <span className="text-base select-none w-5 h-5 flex items-center justify-center">
+                  {isDarkMode ? "☀️" : "🌙"}
+                </span>
+                {!sidebarCollapsed && <span className="truncate tracking-wide text-[13px]">{isDarkMode ? "Mode Siang" : "Mode Malam"}</span>}
               </div>
-              <button
-                onClick={() => {
-                  localStorage.removeItem("admin_token");
-                  localStorage.removeItem("admin_user");
-                  setCurrentUser(null);
-                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
-                }}
-                className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                LOGOUT
-              </button>
-            </div>
-          )}
+            </button>
+
+            {/* Logout */}
+            <button
+              onClick={() => {
+                localStorage.removeItem("admin_token");
+                localStorage.removeItem("admin_user");
+                setCurrentUser(null);
+                triggerNotification("Berhasil keluar dari sesi admin", "warning");
+              }}
+              className={`w-full flex items-center transition-all rounded-lg ${
+                sidebarCollapsed ? "justify-center py-3" : "justify-start px-3 py-3"
+              } text-white hover:bg-white/10 hover:text-red-400`}
+              title="Logout"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <LogOut className="w-5 h-5 shrink-0 transition-colors" />
+                {!sidebarCollapsed && <span className="truncate tracking-wide text-[13px]">Keluar Sesi</span>}
+              </div>
+            </button>
+          </div>
         </aside>
 
         {/* Content Area */}
-        <section className="flex-1 bg-slate-50 overflow-y-auto flex flex-col p-4 pb-20 md:p-6" id="santri-sub-pages">
+        <section className={`flex-1 bg-slate-50 overflow-y-auto flex flex-col ${activeTab === 'dashboard' ? '' : 'p-4 pb-20 md:p-6'}`} id="santri-sub-pages">
           
           {/* Offline warning banner */}
           {dbStatus !== "connected" && activeTab !== "setup" && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200/60 rounded-lg text-[11px] text-amber-800 leading-tight flex items-center justify-between gap-4">
+            <div className={`mb-4 p-3 bg-amber-50 border border-amber-200/60 rounded-lg text-[11px] text-amber-800 leading-tight flex items-center justify-between gap-4 ${activeTab === 'dashboard' ? 'mx-4 mt-4 md:mx-6 md:mt-6' : ''}`}>
               <div className="flex items-center gap-2">
                 <span>⚠️</span>
                 <span>
@@ -1220,7 +1266,55 @@ export default function App() {
 
           {/* Current Router Outlet */}
           <div className="flex-1 w-full max-w-7xl mx-auto flex flex-col">
-            {activeTab === "dashboard" && (
+            {activeTab === "dashboard" && userRole === "guru_sekolah" && (
+              <DashboardGuruSekolah
+                students={displayedStudents}
+                onNavigateToForm={() => {
+                  setEditingStudent(null);
+                  setActiveTab("form");
+                }}
+                onNavigateToList={(filters) => {
+                  setListFilters(filters || {});
+                  setActiveTab("list");
+                }}
+                onNavigateToAbsensiGuru={() => setActiveTab("absensi_guru")}
+                isDarkMode={isDarkMode}
+                setIsDarkMode={setIsDarkMode}
+                currentUser={currentUser}
+                onLogout={() => {
+                  localStorage.removeItem("admin_token");
+                  localStorage.removeItem("admin_user");
+                  setCurrentUser(null);
+                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
+                }}
+              />
+            )}
+
+            {activeTab === "dashboard" && userRole === "guru_pondok" && (
+              <DashboardGuruPondok
+                students={displayedStudents}
+                onNavigateToForm={() => {
+                  setEditingStudent(null);
+                  setActiveTab("form");
+                }}
+                onNavigateToList={(filters) => {
+                  setListFilters(filters || {});
+                  setActiveTab("list");
+                }}
+                onNavigateToAbsensiGuru={() => setActiveTab("absensi_guru")}
+                isDarkMode={isDarkMode}
+                setIsDarkMode={setIsDarkMode}
+                currentUser={currentUser}
+                onLogout={() => {
+                  localStorage.removeItem("admin_token");
+                  localStorage.removeItem("admin_user");
+                  setCurrentUser(null);
+                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
+                }}
+              />
+            )}
+
+            {activeTab === "dashboard" && (userRole === "admin" || userRole === "pengurus") && (
               <Dashboard
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -1233,6 +1327,13 @@ export default function App() {
                 }}
                 isDarkMode={isDarkMode}
                 setIsDarkMode={setIsDarkMode}
+                currentUser={currentUser}
+                onLogout={() => {
+                  localStorage.removeItem("admin_token");
+                  localStorage.removeItem("admin_user");
+                  setCurrentUser(null);
+                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
+                }}
               />
             )}
 
@@ -1280,6 +1381,12 @@ export default function App() {
             {activeTab === "absensi" && (
               <div className="w-full">
                 <PresensiPanel students={displayedStudents} />
+              </div>
+            )}
+
+            {activeTab === "absensi_guru" && (
+              <div className="w-full">
+                <AbsensiGuruPanel currentUser={currentUser} />
               </div>
             )}
 
@@ -1392,9 +1499,6 @@ export default function App() {
                           }`} />
                           <span className="tracking-wide text-sm">{tab.label}</span>
                         </div>
-                        <ChevronRight className={`w-4 h-4 transition-all ${
-                          isActive ? "text-[#001d35] dark:text-[#38bdf8] translate-x-1" : "text-slate-400 dark:text-slate-650 opacity-60"
-                        }`} />
                       </button>
                     </div>
                   );
@@ -1402,19 +1506,25 @@ export default function App() {
               </div>
             </div>
 
-            {/* Mobile Sidebar Footer - User Profile */}
-            <div className="p-4 border-t border-[#dee4ec] dark:border-slate-800 bg-[#e9eef6]/30 dark:bg-[#0e1222]/50 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-lg overflow-hidden shrink-0">
-                  {currentUser?.name?.charAt(0).toUpperCase() || "U"}
-                </div>
-                <div className="flex flex-col flex-1 min-w-0">
-                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{currentUser?.name}</span>
-                  <span className="text-[10px] font-mono tracking-wider text-slate-500 dark:text-slate-400 uppercase font-black truncate">
-                    {currentUser?.role?.replace('_', ' ')} {currentUser?.gender && currentUser.gender !== 'Semua' ? `(${currentUser.gender})` : ''}
+            {/* Mobile Sidebar Footer */}
+            <div className="flex flex-col gap-1 p-3 mt-auto shrink-0 border-t border-[#dee4ec] dark:border-slate-800">
+              {/* Theme Toggle */}
+              <button
+                onClick={() => {
+                  setIsDarkMode(!isDarkMode);
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center px-4 py-3 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-all`}
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <span className="text-base select-none w-5 h-5 flex items-center justify-center">
+                    {isDarkMode ? "☀️" : "🌙"}
                   </span>
+                  <span className="tracking-wide text-sm">{isDarkMode ? "Mode Siang" : "Mode Malam"}</span>
                 </div>
-              </div>
+              </button>
+
+              {/* Logout */}
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -1423,9 +1533,12 @@ export default function App() {
                   setCurrentUser(null);
                   triggerNotification("Berhasil keluar dari sesi admin", "warning");
                 }}
-                className="mt-4 w-full py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-2"
+                className={`w-full flex items-center px-4 py-3 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all`}
               >
-                LOGOUT
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <LogOut className="w-5 h-5 shrink-0" />
+                  <span className="tracking-wide text-sm font-bold">Keluar Sesi</span>
+                </div>
               </button>
             </div>
           </div>
