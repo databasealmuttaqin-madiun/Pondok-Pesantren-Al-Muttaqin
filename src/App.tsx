@@ -991,7 +991,7 @@ export default function App() {
     { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin"] },
     { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah"] },
     { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "absensi_guru", label: "Absensi Guru (Lokasi)", shortLabel: "Absen Guru", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah"] },
+    { id: "absensi_guru", label: "Guru", shortLabel: "Guru", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah"] },
     { id: "manajemen_sesi", label: "Manajemen Sesi", shortLabel: "Sesi", icon: Clock, roles: ["admin"] },
     { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah"] },
     { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin"] },
