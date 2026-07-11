@@ -56,6 +56,31 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     if (saved) {
       setHistory(JSON.parse(saved));
     }
+
+    // Fetch history from Supabase
+    const fetchHistory = async () => {
+      try {
+        let query = supabase
+          .from("absensi_guru")
+          .select("*")
+          .order("waktu_absen", { ascending: false });
+        
+        // If not admin, only show their own history
+        if (currentUser?.role !== 'admin') {
+          query = query.eq("username", currentUser?.username || "");
+        }
+        
+        const { data, error } = await query;
+        if (data && !error) {
+          setHistory(data);
+          // Update local cache
+          localStorage.setItem("absensi_guru_history", JSON.stringify(data));
+        }
+      } catch (e) {
+        console.warn("Failed to fetch history from Supabase", e);
+      }
+    };
+    fetchHistory();
     
     // Load custom school location if configured locally as fallback
     const savedLocation = localStorage.getItem("absensi_school_location");
@@ -239,9 +264,23 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         
       if (error) {
         console.warn("Supabase insert failed. Table might not exist yet:", error.message);
+        MySwal.fire({
+          icon: 'error',
+          title: 'Gagal Menyimpan di Server',
+          text: 'Data absen gagal terkirim ke server database (Supabase). ' + error.message,
+        });
+        setIsSaving(false);
+        return;
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Supabase error:", e);
+      MySwal.fire({
+        icon: 'error',
+        title: 'Gagal Terkoneksi',
+        text: 'Tidak dapat menghubungi server. Periksa koneksi internet Anda.',
+      });
+      setIsSaving(false);
+      return;
     }
     
     setIsSaving(false);
@@ -254,6 +293,14 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       timer: 2000,
       showConfirmButton: false
     });
+    
+    // Refresh history
+    let query = supabase.from('absensi_guru').select('*').order('waktu_absen', { ascending: false });
+    if (currentUser?.role !== 'admin') {
+      query = query.eq("username", currentUser?.username || "");
+    }
+    const { data } = await query;
+    if (data) setHistory(data);
   };
 
   return (
@@ -434,9 +481,9 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         )}
       </div>
 
-      {/* HISTORY TABLE (LOKAL) */}
+      {/* HISTORY TABLE */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-        <h3 className="font-bold text-slate-800 mb-4">Riwayat Absensi Anda (Perangkat Ini)</h3>
+        <h3 className="font-bold text-slate-800 mb-4">{currentUser?.role === 'admin' ? "Semua Riwayat Absensi" : "Riwayat Absensi Anda"}</h3>
         {history.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
