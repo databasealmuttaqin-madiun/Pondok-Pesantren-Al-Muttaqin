@@ -1188,7 +1188,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   executeScanRef.current = executeScan;
 
   return (
-    <div className="w-full max-w-7xl mx-auto py-4 px-2 space-y-6 flex flex-col items-stretch" id="attendance_menu_root">
+    <div className="w-full py-4 px-2 space-y-6 flex flex-col items-stretch" id="attendance_menu_root">
       
       {/* 1. HEADER BRANDING */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 select-none pt-2" id="attendance_brand_header">

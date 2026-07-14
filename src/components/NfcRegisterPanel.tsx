@@ -66,7 +66,7 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
 
   // Exact matching against nfc_id or nik with normalization
   const cleanCodeNormalized = normalizeNfcId(cleanCode);
-  const matchedStudent = students.find((s) => {
+  let matchedStudent = students.find((s) => {
     const studentNfcNormalized = normalizeNfcId(s.nfc_id || "");
     const studentNikNormalized = s.nik ? s.nik.trim().toUpperCase() : "";
     return (
@@ -74,6 +74,23 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
       (studentNikNormalized !== "" && studentNikNormalized === cleanCode.toUpperCase())
     );
   });
+
+  // FALLBACK: If not matched by card ID / NIK, match directly against student name or nickname (e.g., from custom text QR Code)
+  if (!matchedStudent && cleanCode.length > 2) {
+    const cleanAndNormalizeString = (str: string) => {
+      return str.trim().toLowerCase().replace(/\s+/g, " ");
+    };
+    const scanNormalized = cleanAndNormalizeString(cleanCode);
+    
+    matchedStudent = students.find((s) => {
+      const studentNameNormalized = cleanAndNormalizeString(s.nama_lengkap);
+      const studentNickNormalized = s.nama_panggilan ? cleanAndNormalizeString(s.nama_panggilan) : "";
+      return (
+        studentNameNormalized === scanNormalized ||
+        studentNickNormalized === scanNormalized
+      );
+    });
+  }
 
   return {
     isUrl,

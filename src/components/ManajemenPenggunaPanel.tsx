@@ -134,7 +134,7 @@ export default function ManajemenPenggunaPanel() {
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto pb-24 lg:pb-8 animate-in fade-in zoom-in-95 duration-500">
+    <div className="w-full pb-24 lg:pb-8 animate-in fade-in zoom-in-95 duration-500">
       
       {/* Header */}
       <div className="bg-white dark:bg-[#111322] border-b border-slate-200 dark:border-slate-800 px-6 py-6 rounded-t-3xl sm:rounded-3xl sm:shadow-sm sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors">

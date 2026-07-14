@@ -187,7 +187,7 @@ export default function ManajemenSesiPanel() {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto py-6 px-4 space-y-6 flex flex-col items-stretch" id="session_management_root_container">
+    <div className="w-full py-6 px-4 space-y-6 flex flex-col items-stretch" id="session_management_root_container">
       
       {/* HEADER COHESIVE BRANDING */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 select-none border-b border-slate-100 dark:border-slate-800 pb-4" id="session_mgr_header">
