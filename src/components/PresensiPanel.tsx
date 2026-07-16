@@ -22,7 +22,10 @@ import {
   Info,
   Video,
   Download,
-  X
+  X,
+  MessageSquare,
+  Trash2,
+  Send
 } from "lucide-react";
 
 interface PresensiPanelProps {
@@ -241,8 +244,58 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   const [roomFilter, setRoomFilter] = useState<string>("All");
 
   // Sub-tabs
-  const [attendanceSubTab, setAttendanceSubTab] = useState<"input" | "rekap" | "statistik">("input");
+  const [attendanceSubTab, setAttendanceSubTab] = useState<"input" | "rekap" | "statistik" | "whatsapp">("input");
   
+  // WhatsApp notification configuration & logs
+  const [waGatewayType, setWaGatewayType] = useState<"manual" | "fonnte" | "custom">(() => {
+    return (localStorage.getItem("wa_gateway_type") as "manual" | "fonnte" | "custom") || "manual";
+  });
+  const [waApiKey, setWaApiKey] = useState<string>(() => {
+    return localStorage.getItem("wa_api_key") || "";
+  });
+  const [waCustomUrl, setWaCustomUrl] = useState<string>(() => {
+    return localStorage.getItem("wa_custom_url") || "";
+  });
+  const [waTemplate, setWaTemplate] = useState<string>(() => {
+    return localStorage.getItem("wa_template") || 
+      `*LAPORAN KEHADIRAN SANTRI*\n\nAssalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali dari *{nama}*,\n\nMenginfokan bahwa santri tersebut telah tercatat mengikuti presensi:\n\n- *Sesi*: {sesi}\n- *Kegiatan*: {tipe}\n- *Waktu*: {waktu} WIB\n- *Tanggal*: {tanggal}\n- *Status Kehadiran*: *{status}*\n\nTerima kasih atas perhatian dan dukungannya.\n\n_Pondok Pesantren Al Muttaqin Madiun_`;
+  });
+  const [isWaAutoSendEnabled, setIsWaAutoSendEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("wa_auto_send") !== "false"; // default true
+  });
+  const [waLogs, setWaLogs] = useState<Array<{
+    id: string;
+    studentName: string;
+    phone: string;
+    status: "success" | "failed" | "manual";
+    timestamp: string;
+    message: string;
+    errorMsg?: string;
+  }>>(() => {
+    const saved = localStorage.getItem("wa_logs");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Persist WhatsApp Settings to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("wa_gateway_type", waGatewayType);
+  }, [waGatewayType]);
+  useEffect(() => {
+    localStorage.setItem("wa_api_key", waApiKey);
+  }, [waApiKey]);
+  useEffect(() => {
+    localStorage.setItem("wa_custom_url", waCustomUrl);
+  }, [waCustomUrl]);
+  useEffect(() => {
+    localStorage.setItem("wa_template", waTemplate);
+  }, [waTemplate]);
+  useEffect(() => {
+    localStorage.setItem("wa_auto_send", String(isWaAutoSendEnabled));
+  }, [isWaAutoSendEnabled]);
+  useEffect(() => {
+    localStorage.setItem("wa_logs", JSON.stringify(waLogs));
+  }, [waLogs]);
+
   // Rekap sub-filter
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -302,6 +355,260 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     const saved = localStorage.getItem("santri_iqomah_db");
     return saved ? JSON.parse(saved) : {};
   });
+
+  // Helper to normalize phone numbers to international WA standard (e.g., 628xxxxxx)
+  const normalizePhoneNumber = (phone: string): string => {
+    if (!phone) return "";
+    let clean = phone.replace(/\D/g, ""); // remove non-digits
+    if (clean.startsWith("00")) {
+      clean = clean.slice(2);
+    }
+    if (clean.startsWith("620")) {
+      clean = "62" + clean.slice(3);
+    }
+    if (clean.startsWith("0")) {
+      clean = "62" + clean.slice(1);
+    } else if (clean.startsWith("8")) {
+      clean = "62" + clean;
+    }
+    return clean;
+  };
+
+  // Helper to construct template message
+  const formatNotificationMessage = (
+    student: SantriData,
+    status: string,
+    sessionLabel: string,
+    sessionType: string,
+    time: string,
+    date: string
+  ): string => {
+    let msg = waTemplate;
+    msg = msg.replace(/{nama}/g, student.nama_lengkap || "");
+    msg = msg.replace(/{panggilan}/g, student.nama_panggilan || student.nama_lengkap || "");
+    msg = msg.replace(/{sesi}/g, sessionLabel);
+    msg = msg.replace(/{tipe}/g, sessionType.toUpperCase());
+    msg = msg.replace(/{waktu}/g, time);
+    msg = msg.replace(/{tanggal}/g, date);
+    msg = msg.replace(/{status}/g, status.toUpperCase());
+    return msg;
+  };
+
+  // Core WhatsApp Sender function
+  const triggerWaNotification = async (
+    student: SantriData,
+    status: string,
+    isManualClick = false
+  ) => {
+    const parentPhone = student.no_hp_ortu ? student.no_hp_ortu.trim() : "";
+    if (!parentPhone) {
+      if (isManualClick) {
+        MySwal.fire({
+          icon: "error",
+          title: "Gagal Mengirim",
+          text: `Santri ${student.nama_lengkap} belum memiliki nomor WhatsApp Orang Tua terdaftar. Silakan edit data santri untuk menambahkannya.`
+        });
+      }
+      return "";
+    }
+
+    const cleanPhone = normalizePhoneNumber(parentPhone);
+    const sessionLabel = activeSessionObj?.label || "Harian";
+    const sessionType = mapLocalSessionToDbSession(activeSessionObj?.id || "", sessions).presensi || "Lainnya";
+    
+    // Format Date & Time
+    const todayStr = new Date(selectedDate).toLocaleDateString('id-ID', { 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+    
+    const timeStr = isSimulatingTime ? simulatedTimeVal.replace(".", ":") : new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + " WIB";
+
+    const messageText = formatNotificationMessage(
+      student,
+      status === "hadir" ? "Hadir Tepat Waktu" : status === "terlambat" ? "Terlambat" : status,
+      sessionLabel,
+      sessionType,
+      timeStr,
+      todayStr
+    );
+
+    const logId = Math.random().toString(36).substring(2, 11);
+    const timestampStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ", " + new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+
+    // 1. MANUAL REDIRECTION MODE
+    if (waGatewayType === "manual") {
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`;
+      
+      // Save log
+      setWaLogs(prev => [
+        {
+          id: logId,
+          studentName: student.nama_lengkap,
+          phone: parentPhone,
+          status: "manual",
+          timestamp: timestampStr,
+          message: messageText
+        },
+        ...prev.slice(0, 49) // Keep last 50 logs
+      ]);
+
+      if (isManualClick) {
+        window.open(waUrl, "_blank");
+      }
+      return waUrl; // Return the URL so popup can trigger it
+    }
+
+    // 2. AUTOMATIC FONNTE MODE
+    if (waGatewayType === "fonnte") {
+      if (!waApiKey) {
+        if (isManualClick) {
+          MySwal.fire({
+            icon: "warning",
+            title: "API Token Belum Diset",
+            text: "Silakan masukkan Token API Fonnte Anda terlebih dahulu di tab WhatsApp."
+          });
+        }
+        return "";
+      }
+
+      try {
+        const formDataPayload = new FormData();
+        formDataPayload.append("target", cleanPhone);
+        formDataPayload.append("message", messageText);
+        formDataPayload.append("countryCode", "62"); // default ID country code
+
+        const response = await fetch("https://api.fonnte.com/send", {
+          method: "POST",
+          headers: {
+            "Authorization": waApiKey
+          },
+          body: formDataPayload
+        });
+
+        const resData = await response.json();
+        
+        if (resData.status || resData.status === true) {
+          setWaLogs(prev => [
+            {
+              id: logId,
+              studentName: student.nama_lengkap,
+              phone: parentPhone,
+              status: "success",
+              timestamp: timestampStr,
+              message: messageText
+            },
+            ...prev.slice(0, 49)
+          ]);
+          if (isManualClick) {
+            MySwal.fire({
+              icon: "success",
+              title: "Terkirim",
+              text: `Notifikasi WhatsApp otomatis berhasil dikirim ke orang tua ${student.nama_lengkap}!`
+            });
+          }
+        } else {
+          throw new Error(resData.reason || "Ditolak oleh Fonnte. Periksa koneksi perangkat Anda di dashboard Fonnte.");
+        }
+      } catch (err: any) {
+        setWaLogs(prev => [
+          {
+            id: logId,
+            studentName: student.nama_lengkap,
+            phone: parentPhone,
+            status: "failed",
+            timestamp: timestampStr,
+            message: messageText,
+            errorMsg: err.message
+          },
+          ...prev.slice(0, 49)
+        ]);
+        if (isManualClick) {
+          MySwal.fire({
+            icon: "error",
+            title: "Pengiriman Gagal",
+            text: `Gagal mengirim via Fonnte: ${err.message}. Pastikan status device Anda 'Connect' di fonnte.com`
+          });
+        }
+      }
+      return "";
+    }
+
+    // 3. AUTOMATIC CUSTOM POST GATEWAY
+    if (waGatewayType === "custom") {
+      if (!waCustomUrl) {
+        if (isManualClick) {
+          MySwal.fire({
+            icon: "warning",
+            title: "URL Kustom Belum Diset",
+            text: "Silakan masukkan URL API Gateway Kustom Anda di tab WhatsApp."
+          });
+        }
+        return "";
+      }
+
+      try {
+        const response = await fetch(waCustomUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(waApiKey ? { "Authorization": waApiKey } : {})
+          },
+          body: JSON.stringify({
+            phone: cleanPhone,
+            target: cleanPhone,
+            message: messageText
+          })
+        });
+
+        if (response.ok) {
+          setWaLogs(prev => [
+            {
+              id: logId,
+              studentName: student.nama_lengkap,
+              phone: parentPhone,
+              status: "success",
+              timestamp: timestampStr,
+              message: messageText
+            },
+            ...prev.slice(0, 49)
+          ]);
+          if (isManualClick) {
+            MySwal.fire({
+              icon: "success",
+              title: "Terkirim",
+              text: `Notifikasi WhatsApp kustom berhasil dikirim ke orang tua ${student.nama_lengkap}!`
+            });
+          }
+        } else {
+          throw new Error(`HTTP Error ${response.status}`);
+        }
+      } catch (err: any) {
+        setWaLogs(prev => [
+          {
+            id: logId,
+            studentName: student.nama_lengkap,
+            phone: parentPhone,
+            status: "failed",
+            timestamp: timestampStr,
+            message: messageText,
+            errorMsg: err.message
+          },
+          ...prev.slice(0, 49)
+        ]);
+        if (isManualClick) {
+          MySwal.fire({
+            icon: "error",
+            title: "Pengiriman Gagal",
+            text: `Gagal mengirim kustom: ${err.message}`
+          });
+        }
+      }
+      return "";
+    }
+    return "";
+  };
 
   // Keep device time live
   useEffect(() => {
@@ -773,6 +1080,11 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     // Save remote Sync
     syncStudentStatusToSupabase(sId, determinedStatus);
 
+    // Auto-Send WhatsApp Notification
+    if (isWaAutoSendEnabled) {
+      triggerWaNotification(foundStudent, determinedStatus, false);
+    }
+
     setScanFeedback({
       message: `✅ Berhasil mencatat ${foundStudent.nama_lengkap} sebagai '${determinedStatus.toUpperCase()}'!`,
       type: "success"
@@ -784,7 +1096,8 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       studentName: foundStudent.nama_lengkap,
       studentPhoto: foundStudent.foto,
       studentKamar: foundStudent.kamar || "Belum Update",
-      isFemale: foundStudent.jenis_kelamin === "P"
+      isFemale: foundStudent.jenis_kelamin === "P",
+      customMessage: determinedStatus // Pass the recorded status as custom message
     });
   };
 
@@ -917,16 +1230,21 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
     const current = getStatus(studentId);
     if (current === "unmarked" || current === "alpa") {
-      updateStudentStatus(studentId, isIqomahActive ? "terlambat" : "hadir");
+      const determinedStatus = isIqomahActive ? "terlambat" : "hadir";
+      updateStudentStatus(studentId, determinedStatus);
       const foundStudent = students.find(s => String(s.id) === String(studentId));
       if (foundStudent) {
+        if (isWaAutoSendEnabled) {
+          triggerWaNotification(foundStudent, determinedStatus, false);
+        }
         setAttendancePopup({
           isOpen: true,
           type: "success",
           studentName: foundStudent.nama_lengkap,
           studentPhoto: foundStudent.foto,
           studentKamar: foundStudent.kamar || "Belum Update",
-          isFemale: foundStudent.jenis_kelamin === "P"
+          isFemale: foundStudent.jenis_kelamin === "P",
+          customMessage: determinedStatus
         });
       }
     } else {
@@ -1289,6 +1607,16 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           }`}
         >
           Statistik
+        </button>
+        <button
+          onClick={() => setAttendanceSubTab("whatsapp")}
+          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+            attendanceSubTab === "whatsapp"
+              ? "bg-[#3e46ca] text-white shadow"
+              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+          }`}
+        >
+          WhatsApp
         </button>
       </div>
 
@@ -2052,6 +2380,377 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         </div>
       )}
 
+      {/* D. WHATSAPP CONFIGURATION & LOG PANEL */}
+      {attendanceSubTab === "whatsapp" && (
+        <div className="space-y-6 animate-fade-in" id="attendance_whatsapp_section">
+          
+          {/* Header Card */}
+          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-[#25D366]">
+                <MessageSquare className="w-5 h-5 fill-current" />
+                <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">
+                  Manajemen Notifikasi WhatsApp Ortu
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold leading-relaxed">
+                Kirim pesan otomatis atau manual berisi detail presensi (hadir, telat, waktu, sesi) langsung ke WhatsApp orang tua santri secara instan.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 bg-slate-50 dark:bg-slate-900 px-4 py-2.5 rounded-2xl border border-slate-200/50 dark:border-slate-800">
+              <label className="text-xs font-black text-slate-700 dark:text-slate-350 select-none cursor-pointer flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isWaAutoSendEnabled}
+                  onChange={(e) => setIsWaAutoSendEnabled(e.target.checked)}
+                  className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                />
+                Kirim Otomatis Saat Scan Sukses
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            
+            {/* GATEWAY SETTINGS CARD */}
+            <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <Sliders className="w-4 h-4 text-slate-500" />
+                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">
+                  Konfigurasi WA Gateway
+                </h4>
+              </div>
+
+              {/* Mode Selector */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-450 dark:text-slate-500">Mode Pengiriman</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "manual", label: "Manual Chat", desc: "WhatsApp Web Link" },
+                    { id: "fonnte", label: "Fonnte API", desc: "Automated Gateway" },
+                    { id: "custom", label: "Custom REST", desc: "API URL Kustom" }
+                  ].map((mode) => {
+                    const isActive = waGatewayType === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setWaGatewayType(mode.id as any)}
+                        className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 ${
+                          isActive
+                            ? "bg-emerald-50 dark:bg-emerald-950/20 border-[#25D366] text-[#128C7E] dark:text-emerald-400 font-extrabold"
+                            : "bg-[#f8fafc] dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100/50"
+                        }`}
+                      >
+                        <span className="text-xs">{mode.label}</span>
+                        <span className="text-[8px] opacity-80 leading-none">{mode.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Gateway Detail Info Text */}
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 text-[11px] font-semibold text-slate-505 dark:text-slate-400 leading-relaxed">
+                {waGatewayType === "manual" && (
+                  <p>
+                    💡 <strong>Mode Manual:</strong> 100% Gratis & tanpa setup API key. Saat scan berhasil, sebuah tombol chat akan muncul. Klik tombol tersebut untuk membuka WhatsApp Web / Aplikasi WA berisi pesan laporan siap kirim ke orang tua santri.
+                  </p>
+                )}
+                {waGatewayType === "fonnte" && (
+                  <p>
+                    ⚡ <strong>Mode Fonnte:</strong> Kirim notifikasi secara otomatis di latar belakang (tanpa klik manual). Membutuhkan akun berbayar Fonnte. Masukkan Token API Anda di bawah.
+                  </p>
+                )}
+                {waGatewayType === "custom" && (
+                  <p>
+                    🛠️ <strong>Mode Custom Gateway:</strong> Kirim JSON POST request ke endpoint server kustom Anda. Format request yang dikirimkan: <code>{"{ phone, message }"}</code>.
+                  </p>
+                )}
+              </div>
+
+              {/* Token API Input (for Fonnte / Custom) */}
+              {waGatewayType !== "manual" && (
+                <div className="space-y-1.5 animate-scale-up">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+                    {waGatewayType === "fonnte" ? "Token API Fonnte" : "API Token / Authorization Header (Opsional)"}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={waGatewayType === "fonnte" ? "Masukkan Token Fonnte Anda..." : "Authorization Token..."}
+                    value={waApiKey}
+                    onChange={(e) => setWaApiKey(e.target.value)}
+                    className="w-full text-xs font-bold px-4 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                  />
+                </div>
+              )}
+
+              {/* Custom Gateway URL (for Custom) */}
+              {waGatewayType === "custom" && (
+                <div className="space-y-1.5 animate-scale-up">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">URL REST API Custom Gateway</label>
+                  <input
+                    type="url"
+                    placeholder="https://api.domain.com/send-message"
+                    value={waCustomUrl}
+                    onChange={(e) => setWaCustomUrl(e.target.value)}
+                    className="w-full text-xs font-bold px-4 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* TEMPLATE MESSAGE CARD */}
+            <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <Sliders className="w-4 h-4 text-slate-500" />
+                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">
+                  Template Isi Pesan
+                </h4>
+              </div>
+
+              {/* Textarea */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Edit Template Pesan</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm("Reset template ke default?")) {
+                        setWaTemplate(`*LAPORAN KEHADIRAN SANTRI*\n\nAssalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali dari *{nama}*,\n\nMenginfokan bahwa santri tersebut telah tercatat mengikuti presensi:\n\n- *Sesi*: {sesi}\n- *Kegiatan*: {tipe}\n- *Waktu*: {waktu} WIB\n- *Tanggal*: {tanggal}\n- *Status Kehadiran*: *{status}*\n\nTerima kasih atas perhatian dan dukungannya.\n\n_Pondok Pesantren Al Muttaqin Madiun_`);
+                      }
+                    }}
+                    className="text-[9px] font-bold text-[#3e46ca] dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    Reset Default
+                  </button>
+                </div>
+                <textarea
+                  value={waTemplate}
+                  onChange={(e) => setWaTemplate(e.target.value)}
+                  rows={7}
+                  className="w-full text-xs font-mono font-medium p-3.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white leading-relaxed"
+                />
+              </div>
+
+              {/* Variable tags list */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-extrabold uppercase tracking-widest text-slate-450">Variabel Dinamis (Salin & Tempel)</label>
+                <div className="flex flex-wrap gap-1.5 select-all">
+                  {[
+                    { tag: "{nama}", desc: "Nama Lengkap" },
+                    { tag: "{panggilan}", desc: "Nama Panggilan" },
+                    { tag: "{sesi}", desc: "Nama Sesi (misal: Subuh)" },
+                    { tag: "{tipe}", desc: "Jenis Sesi (Sholat/Ngaji)" },
+                    { tag: "{waktu}", desc: "Jam Presensi" },
+                    { tag: "{tanggal}", desc: "Tanggal" },
+                    { tag: "{status}", desc: "Hadir / Terlambat" }
+                  ].map(item => (
+                    <span 
+                      key={item.tag} 
+                      className="bg-indigo-50/60 dark:bg-slate-900 text-[#3e46ca] dark:text-indigo-450 border border-indigo-100/40 dark:border-slate-800 px-2 py-1 rounded-lg text-[9px] font-bold tracking-tight cursor-help shadow-3xs"
+                      title={item.desc}
+                    >
+                      {item.tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Real-time Interactive Mockup */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Pratinjau Pesan Terkirim (Mockup)</label>
+                <div className="bg-[#e5ddd5] dark:bg-slate-950 p-4 rounded-2xl relative shadow-inner overflow-hidden max-h-[220px] overflow-y-auto">
+                  {/* WhatsApp chat balloon */}
+                  <div className="bg-white dark:bg-[#075e54]/30 rounded-2xl rounded-tl-none p-3 max-w-[85%] border border-slate-200/50 dark:border-slate-900 text-[11px] text-slate-800 dark:text-white whitespace-pre-wrap leading-relaxed shadow-sm font-sans">
+                    {formatNotificationMessage(
+                      { nama_lengkap: "Zaidan Al Faruq", nama_panggilan: "Zaidan", kamar: "Gaza 3", kategori: "SMP" } as any,
+                      "Hadir Tepat Waktu",
+                      activeSessionObj?.label || "Sholat Shubuh",
+                      mapLocalSessionToDbSession(activeSessionObj?.id || "subuh", sessions).presensi || "sholat",
+                      isSimulatingTime ? simulatedTimeVal.replace(".", ":") : "04:30 WIB",
+                      new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+                    )}
+                    <span className="text-[8.5px] text-slate-400 block text-right mt-1.5 font-sans font-semibold">
+                      04.30 ✓✓
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* RECENT NOTIFICATION LOGS TABLE CARD */}
+          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-slate-500" />
+                <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">
+                  Log Notifikasi WhatsApp Terbaru
+                </h4>
+              </div>
+              {waLogs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Apakah Anda yakin ingin menghapus semua histori log pengiriman WA?")) {
+                      setWaLogs([]);
+                    }
+                  }}
+                  className="text-[10px] font-black uppercase text-rose-500 hover:text-rose-700 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Hapus Histori Log
+                </button>
+              )}
+            </div>
+
+            {waLogs.length > 0 ? (
+              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                <table className="w-full text-xs text-left text-slate-505 dark:text-slate-400 font-semibold">
+                  <thead className="text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                    <tr>
+                      <th className="py-3 px-4">Waktu</th>
+                      <th className="py-3 px-4">Santri</th>
+                      <th className="py-3 px-4">No. HP Orang Tua</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4">Isi Pesan</th>
+                      <th className="py-3 px-4 text-right">Tindakan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {waLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/45 transition-colors">
+                        <td className="py-3 px-4 whitespace-nowrap text-[10px]">{log.timestamp}</td>
+                        <td className="py-3 px-4 font-extrabold text-slate-800 dark:text-white whitespace-nowrap">{log.studentName}</td>
+                        <td className="py-3 px-4 font-mono text-[11px] whitespace-nowrap">{log.phone}</td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          {log.status === "success" && (
+                            <span className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/60 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase inline-block">
+                              Sukses (API)
+                            </span>
+                          )}
+                          {log.status === "manual" && (
+                            <span className="bg-amber-50 dark:bg-amber-955 text-amber-800 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/60 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase inline-block">
+                              Menunggu Chat
+                            </span>
+                          )}
+                          {log.status === "failed" && (
+                            <span 
+                              className="bg-rose-50 dark:bg-rose-955 text-rose-800 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/60 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase inline-block cursor-help"
+                              title={log.errorMsg || "Gagal mengirim"}
+                            >
+                              Gagal (API)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 max-w-xs truncate text-[10.5px] leading-relaxed" title={log.message}>
+                          {log.message}
+                        </td>
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const foundSt = students.find(s => s.nama_lengkap === log.studentName);
+                              if (foundSt) {
+                                triggerWaNotification(foundSt, "hadir", true);
+                              } else {
+                                MySwal.fire({
+                                  icon: "error",
+                                  title: "Gagal Kirim",
+                                  text: "Data santri tidak ditemukan di sistem saat ini."
+                                });
+                              }
+                            }}
+                            className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-end gap-1 ml-auto cursor-pointer"
+                          >
+                            <Send className="w-3 h-3" />
+                            Kirim Ulang
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl text-xs font-bold flex flex-col items-center justify-center space-y-1 leading-relaxed">
+                <div>📬 Tidak ada log notifikasi WhatsApp terbaru.</div>
+                <div className="text-[10px] text-slate-400 font-semibold">Log akan terekam begitu absensi santri sukses diinput/discan.</div>
+              </div>
+            )}
+          </div>
+
+          {/* TUTORIAL CONNECT FONNTE CARD */}
+          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <Info className="w-4 h-4 text-emerald-500" />
+              <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">
+                Panduan Menghubungkan WhatsApp ke Fonnte
+              </h4>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Step 1 & 2 */}
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-150 dark:border-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center">1</span>
+                    <h5 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">Registrasi Akun Fonnte</h5>
+                  </div>
+                  <ul className="list-disc list-inside text-[11px] text-slate-550 dark:text-slate-400 font-semibold space-y-1 pl-1 leading-relaxed">
+                    <li>Kunjungi situs resmi di <a href="https://fonnte.com" target="_blank" rel="noopener noreferrer" className="text-[#3e46ca] dark:text-indigo-400 hover:underline">fonnte.com</a>.</li>
+                    <li>Klik tombol <strong className="text-slate-800 dark:text-slate-200">Daftar</strong> dan buat akun menggunakan email aktif Anda.</li>
+                    <li>Selesaikan aktivasi akun melalui tautan verifikasi yang dikirimkan ke kotak masuk email Anda.</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-150 dark:border-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center">2</span>
+                    <h5 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">Hubungkan Perangkat (Scan QR)</h5>
+                  </div>
+                  <ul className="list-disc list-inside text-[11px] text-slate-550 dark:text-slate-400 font-semibold space-y-1 pl-1 leading-relaxed">
+                    <li>Masuk ke Dashboard Fonnte, pilih menu <strong className="text-slate-800 dark:text-slate-200">Devices</strong>.</li>
+                    <li>Klik <strong className="text-slate-800 dark:text-slate-200">Add Device</strong> dan masukkan nomor WhatsApp yang akan digunakan sebagai pengirim.</li>
+                    <li>Klik ikon <strong className="text-slate-800 dark:text-slate-200">QR Code</strong>, lalu buka WhatsApp di HP Anda, buka <i>Perangkat Tertaut</i>, dan pindai QR Code tersebut untuk menghubungkan device Anda.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 3 & 4 */}
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-150 dark:border-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center">3</span>
+                    <h5 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">Ambil Token API & Tempel di Sini</h5>
+                  </div>
+                  <ul className="list-disc list-inside text-[11px] text-slate-550 dark:text-slate-400 font-semibold space-y-1 pl-1 leading-relaxed">
+                    <li>Pada halaman <strong className="text-slate-800 dark:text-slate-200">Devices</strong> di Fonnte, Anda akan melihat baris berisi perangkat Anda dan kolom <strong className="text-slate-800 dark:text-slate-200">Token</strong>.</li>
+                    <li>Salin string Token API tersebut secara lengkap.</li>
+                    <li>Tempel Token tersebut ke input <strong className="text-slate-800 dark:text-slate-200">Token API Fonnte</strong> di bagian konfigurasi sebelah atas halaman ini.</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-150 dark:border-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center justify-center">4</span>
+                    <h5 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider font-display">Troubleshooting (Masalah & Solusi)</h5>
+                  </div>
+                  <ul className="list-disc list-inside text-[11px] text-slate-550 dark:text-slate-400 font-semibold space-y-1 pl-1 leading-relaxed">
+                    <li><strong>Status "Disconnect":</strong> Hubungkan kembali via scan QR code di menu Devices fonnte.com.</li>
+                    <li><strong>Notifikasi Sukses tapi Pesan tidak Masuk:</strong> Pastikan HP pengirim memiliki kuota internet aktif, nomor target valid, dan HP tidak dalam mode hemat daya tinggi.</li>
+                    <li><strong>Format Nomor HP Ortu:</strong> Pastikan diinput dengan awalan <code className="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded text-rose-600 dark:text-rose-400">08...</code> atau <code className="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded text-rose-600 dark:text-rose-400">628...</code> agar dapat dikenali dengan baik oleh Gateway.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
       {/* 9. BOTTOM FOOTER */}
       <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-500 font-bold select-none py-1 border-t border-slate-100 dark:border-slate-800 uppercase tracking-widest mt-2" id="attendance_panel_footer">
         <span>CONNECTED • SYSTEM ONLINE</span>
@@ -2116,7 +2815,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                 </div>
               </div>
 
-              <div className="space-y-1 mb-6">
+              <div className="space-y-1 mb-3">
                 <h3 className="text-2xl font-black text-[#10b981] tracking-tight leading-none uppercase">
                   BERHASIL
                 </h3>
@@ -2127,6 +2826,76 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                   Kamar: {attendancePopup.studentKamar}
                 </p>
               </div>
+
+              {(() => {
+                const studentObj = students.find(s => s.nama_lengkap === attendancePopup.studentName);
+                if (!studentObj) return null;
+                const status = attendancePopup.customMessage || "hadir";
+                const parentPhone = studentObj.no_hp_ortu ? studentObj.no_hp_ortu.trim() : "";
+
+                return (
+                  <div className="mt-4 mb-5 border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2 text-left">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">
+                      Notifikasi WhatsApp Ortu
+                    </div>
+                    {parentPhone ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300">
+                          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>{parentPhone}</span>
+                        </div>
+                        {waGatewayType === "manual" ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const url = await triggerWaNotification(studentObj, status, true);
+                              if (url) window.open(url, "_blank");
+                            }}
+                            className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#128C7E] text-white font-extrabold text-[11px] uppercase tracking-wider py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
+                          >
+                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.859-4.42 9.863-9.864.002-2.637-1.023-5.116-2.887-6.98a9.803 9.803 0 00-6.97-2.816C6.014 1.945 1.59 6.364 1.586 11.808c-.001 1.693.45 3.344 1.306 4.793l-.99 3.614 3.751-.983zm13.111-7.14c-.29-.145-1.71-.845-1.97-.94-.265-.096-.457-.145-.65.145-.19.29-.74.94-.905 1.13-.165.19-.33.213-.62.069-.29-.145-1.22-.45-2.324-1.435-.86-.767-1.44-1.716-1.61-2.006-.17-.29-.018-.447.127-.59.13-.13.29-.338.435-.507.145-.17.195-.29.29-.483.097-.19.048-.36-.024-.505-.072-.145-.65-1.57-.89-2.15-.233-.566-.47-.49-.65-.5-.165-.008-.354-.01-.544-.01s-.5.07-.76.36c-.26.29-1 .97-1 2.37s1.01 2.75 1.15 2.94c.14.19 1.99 3.04 4.82 4.26.67.29 1.2.47 1.61.6.68.21 1.3.18 1.79.11.54-.08 1.71-.7 1.95-1.37.24-.67.24-1.24.17-1.37-.07-.13-.26-.2-.55-.345z" />
+                            </svg>
+                            Kirim WA Manual
+                          </button>
+                        ) : !isWaAutoSendEnabled ? (
+                          <div className="space-y-1.5">
+                            <div className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl py-1.5 px-3 text-[10px] font-bold flex items-center justify-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                              Kirim Otomatis Nonaktif
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => triggerWaNotification(studentObj, status, true)}
+                              className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#128C7E] text-white font-extrabold text-[11px] uppercase tracking-wider py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
+                            >
+                              Kirim Notifikasi WA
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/60 rounded-xl py-1.5 px-3 text-[10px] font-bold flex items-center justify-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Otomatis Terkirim
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => triggerWaNotification(studentObj, status, true)}
+                              className="w-full text-indigo-600 dark:text-indigo-400 hover:underline text-[10px] font-bold py-1 text-center cursor-pointer"
+                            >
+                              Kirim Ulang Notifikasi
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-amber-600 dark:text-amber-400 text-[10px] font-bold bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/60 rounded-xl py-2 px-3 text-center">
+                        ⚠️ No. WA Ortu belum terdaftar di profil santri
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <button
                 type="button"

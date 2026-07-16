@@ -115,7 +115,17 @@ const DEMO_SANTRI: SantriData[] = [
 ];
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<{ username: string; role: string; name: string; gender?: string } | null>(() => {
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    role: string;
+    name: string;
+    gender?: string;
+    bagian?: string;
+    jabatan?: string;
+    tugas_kamar?: string;
+    tugas_kelas_sekolah?: string;
+    tugas_kelas_pengajian?: string;
+  } | null>(() => {
     const saved = localStorage.getItem("admin_user");
     return saved ? JSON.parse(saved) : null;
   });
@@ -641,6 +651,7 @@ export default function App() {
         jenis_kelamin: formattedData.jenis_kelamin || "L",
         foto: formattedData.foto || "",
         nfc_id: formattedData.nfc_id || "",
+        no_hp_ortu: formattedData.no_hp_ortu || "",
       };
 
       if (data.kategori !== "Reguler") {
@@ -659,15 +670,38 @@ export default function App() {
             .update(payload)
             .eq("id", editingStudent.id);
 
-          // If the schema cache misses nfc_id, strip and retry
-          if (error && (error.message.includes("nfc_id") || error.message.includes("column"))) {
-            console.warn("PostgREST schema cache mismatch. Stripping nfc_id and retrying update...");
-            const { nfc_id, ...strippedPayload } = payload;
+          // Retry logic if there are column cache mismatches (nfc_id or no_hp_ortu)
+          if (error && (error.message.includes("column") || error.message.includes("does not exist") || error.message.includes("nfc_id") || error.message.includes("no_hp_ortu"))) {
+            console.warn("PostgREST schema cache mismatch. Stripping missing columns and retrying...");
+            let strippedPayload = { ...payload };
+            let hasNoHpOrtuError = error.message.includes("no_hp_ortu");
+            
+            if (error.message.includes("no_hp_ortu")) {
+              const { no_hp_ortu, ...rest } = strippedPayload;
+              strippedPayload = rest;
+            }
+            if (error.message.includes("nfc_id")) {
+              const { nfc_id, ...rest } = strippedPayload;
+              strippedPayload = rest;
+            }
+            
+            // In case of a generic column error, let's try stripping no_hp_ortu first then nfc_id
+            if (!error.message.includes("no_hp_ortu") && !error.message.includes("nfc_id")) {
+              const { no_hp_ortu, nfc_id, ...rest } = strippedPayload;
+              strippedPayload = rest;
+              hasNoHpOrtuError = true;
+            }
+
             const retryRes = await supabase
               .from(TABLE_NAME)
               .update(strippedPayload)
               .eq("id", editingStudent.id);
+            
             error = retryRes.error;
+            
+            if (!error && hasNoHpOrtuError) {
+              triggerNotification("Peringatan: Data tersimpan tanpa No. HP Ortu karena API Supabase belum diperbarui. Silakan klik 'Reload schema' di API Docs Supabase Dashboard Anda.", "warning");
+            }
           }
 
           if (error) throw error;
@@ -678,14 +712,37 @@ export default function App() {
             .from(TABLE_NAME)
             .insert([payload]);
 
-          // If the schema cache misses nfc_id, strip and retry
-          if (error && (error.message.includes("nfc_id") || error.message.includes("column"))) {
-            console.warn("PostgREST schema cache mismatch. Stripping nfc_id and retrying insert...");
-            const { nfc_id, ...strippedPayload } = payload;
+          // Retry logic if there are column cache mismatches (nfc_id or no_hp_ortu)
+          if (error && (error.message.includes("column") || error.message.includes("does not exist") || error.message.includes("nfc_id") || error.message.includes("no_hp_ortu"))) {
+            console.warn("PostgREST schema cache mismatch. Stripping missing columns and retrying...");
+            let strippedPayload = { ...payload };
+            let hasNoHpOrtuError = error.message.includes("no_hp_ortu");
+            
+            if (error.message.includes("no_hp_ortu")) {
+              const { no_hp_ortu, ...rest } = strippedPayload;
+              strippedPayload = rest;
+            }
+            if (error.message.includes("nfc_id")) {
+              const { nfc_id, ...rest } = strippedPayload;
+              strippedPayload = rest;
+            }
+            
+            // In case of a generic column error, let's try stripping no_hp_ortu first then nfc_id
+            if (!error.message.includes("no_hp_ortu") && !error.message.includes("nfc_id")) {
+              const { no_hp_ortu, nfc_id, ...rest } = strippedPayload;
+              strippedPayload = rest;
+              hasNoHpOrtuError = true;
+            }
+
             const retryRes = await supabase
               .from(TABLE_NAME)
               .insert([strippedPayload]);
+            
             error = retryRes.error;
+            
+            if (!error && hasNoHpOrtuError) {
+              triggerNotification("Peringatan: Data tersimpan tanpa No. HP Ortu karena API Supabase belum diperbarui. Silakan klik 'Reload schema' di API Docs Supabase Dashboard Anda.", "warning");
+            }
           }
 
           if (error) throw error;
@@ -983,11 +1040,76 @@ export default function App() {
 
   const userRole = currentUser?.role || "admin";
   const userGenderAccess = currentUser?.gender || "Semua";
-  const displayedStudents = userGenderAccess !== "Semua" ? students.filter(s => s.jenis_kelamin === userGenderAccess) : students;
+
+  const displayedStudents = (() => {
+    let list = students;
+
+    // 1. Filter by Gender Access Restriction
+    if (userGenderAccess !== "Semua") {
+      list = list.filter(s => s.jenis_kelamin === userGenderAccess);
+    }
+
+    // 2. Filter by Granular Jabatan & Duty (Only enforce if not full System Admin)
+    if (currentUser && currentUser.role !== "admin") {
+      const jabString = currentUser.jabatan || "";
+      const jabatans = jabString.split(",").map(j => j.trim().toLowerCase()).filter(Boolean);
+
+      list = list.filter(s => {
+        let hasDutyCheck = false;
+        let matchesAny = false;
+
+        if (jabatans.some(j => ["wali_kamar", "pamong kamar"].includes(j))) {
+          hasDutyCheck = true;
+          if (currentUser.tugas_kamar && s.kamar === currentUser.tugas_kamar) {
+            matchesAny = true;
+          }
+        }
+
+        if (jabatans.some(j => ["wali_kelas", "guru_mapel", "wali kelas", "guru mapel"].includes(j))) {
+          hasDutyCheck = true;
+          if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah === currentUser.tugas_kelas_sekolah) {
+            matchesAny = true;
+          }
+        }
+
+        if (jabatans.some(j => ["guru_pondok", "guru pondok"].includes(j))) {
+          hasDutyCheck = true;
+          if (currentUser.tugas_kelas_pengajian && s.kelas_pengajian === currentUser.tugas_kelas_pengajian) {
+            matchesAny = true;
+          }
+        }
+
+        if (jabatans.some(j => ["kepala_sekolah", "wakil_kepala_sekolah", "kepala sekolah", "wakil kepala sekolah"].includes(j))) {
+          if (currentUser.tugas_kelas_sekolah) {
+            hasDutyCheck = true;
+            if (s.kelas_sekolah === currentUser.tugas_kelas_sekolah) {
+              matchesAny = true;
+            }
+          }
+        }
+
+        if (jabatans.includes("pengurus")) {
+          if (currentUser.tugas_kamar || currentUser.tugas_kelas_sekolah || currentUser.tugas_kelas_pengajian) {
+            hasDutyCheck = true;
+            if (currentUser.tugas_kamar && s.kamar === currentUser.tugas_kamar) matchesAny = true;
+            if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah === currentUser.tugas_kelas_sekolah) matchesAny = true;
+            if (currentUser.tugas_kelas_pengajian && s.kelas_pengajian === currentUser.tugas_kelas_pengajian) matchesAny = true;
+          }
+        }
+
+        if (hasDutyCheck && !matchesAny) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    return list;
+  })();
 
   const allTabs = [
     { id: "dashboard", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin", "pengurus"] },
+    { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "absensi_guru", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },

@@ -82,6 +82,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   });
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [profileDbError, setProfileDbError] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlGuide, setShowSqlGuide] = useState(false);
@@ -511,12 +512,12 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     }
   };
 
-  // FileReader for local photo selection (convert to base64)
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload photo to Supabase Storage (bucket: foto_siswa, folder: foto_guru)
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) { // 2MB limit to prevent huge base64 strings
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
       MySwal.fire({
         icon: 'error',
         title: 'File Terlalu Besar',
@@ -529,16 +530,64 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       MySwal.fire({
         icon: 'error',
         title: 'Format Salah',
-        text: 'File harus berupa gambar (PNG/JPG).'
+        text: 'File harus berupa gambar (PNG/JPG/JPEG).'
       });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setProfile(prev => ({ ...prev, foto_diri: reader.result as string }));
-    };
-    reader.readAsDataURL(file);
+    setIsUploadingPhoto(true);
+
+    try {
+      // Create a unique file name inside foto_guru/ folder
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `foto_guru/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from("foto_siswa")
+        .upload(filePath, file);
+
+      if (error) {
+        throw error;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("foto_siswa")
+        .getPublicUrl(filePath);
+
+      setProfile(prev => ({ ...prev, foto_diri: publicUrl }));
+
+      MySwal.fire({
+        icon: 'success',
+        title: 'Foto Terunggah',
+        text: 'Foto profil berhasil disimpan di Cloud Storage.',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true
+      });
+    } catch (err: any) {
+      console.error("Error uploading guru photo:", err);
+      // Fallback to Base64 in case of storage issue (like bucket not exists, offline, or RLS error)
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfile(prev => ({ ...prev, foto_diri: reader.result as string }));
+        MySwal.fire({
+          icon: 'warning',
+          title: 'Unggah dengan Fallback',
+          text: 'Gagal mengunggah ke Cloud Storage (' + (err?.message || "error") + '). Menggunakan format penyimpanan lokal (Base64) agar tetap dapat disimpan.',
+          confirmButtonColor: '#0c66e4'
+        });
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
   // Filter profiles based on search
@@ -633,37 +682,40 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       )}
 
       {/* SUB-TAB NAVIGATION */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden flex shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-center p-1.5 bg-slate-100/90 dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-sm max-w-3xl mx-auto gap-1.5 backdrop-blur-sm">
         <button
           onClick={() => setActiveSubTab("absensi")}
-          className={`flex-1 py-3 px-4 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 border-r border-slate-100 transition-all cursor-pointer ${
+          className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
             activeSubTab === "absensi"
-              ? "bg-[#0c66e4] text-white"
-              : "text-slate-600 hover:bg-slate-50"
+              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/40"
           }`}
         >
-          <Clock className="w-4 h-4" /> Presensi Kehadiran
+          <Clock className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "absensi" ? "scale-110" : ""}`} /> 
+          <span>Presensi Kehadiran</span>
         </button>
         <button
           onClick={() => setActiveSubTab("profil")}
-          className={`flex-1 py-3 px-4 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 border-r border-slate-100 transition-all cursor-pointer ${
+          className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
             activeSubTab === "profil"
-              ? "bg-[#0c66e4] text-white"
-              : "text-slate-600 hover:bg-slate-50"
+              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.01]"
+              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/40"
           }`}
         >
-          <User className="w-4 h-4" /> Profil Data Diri
+          <User className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "profil" ? "scale-110" : ""}`} /> 
+          <span>Profil Data Diri</span>
         </button>
         {(currentUser?.role === 'admin' || currentUser?.role === 'pengurus') && (
           <button
             onClick={() => setActiveSubTab("semua_guru")}
-            className={`flex-1 py-3 px-4 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
               activeSubTab === "semua_guru"
-                ? "bg-[#0c66e4] text-white"
-                : "text-slate-600 hover:bg-slate-50"
+                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.01]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/40"
             }`}
           >
-            <Search className="w-4 h-4" /> Daftar Guru Sekolah
+            <Search className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "semua_guru" ? "scale-110" : ""}`} /> 
+            <span>Daftar Guru Sekolah</span>
           </button>
         )}
       </div>
@@ -1024,7 +1076,12 @@ CREATE POLICY "Akses Publik Guru Sekolah Seluruh Operasi" ON guru_sekolah
                 <div className="flex flex-col items-center space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200/60">
                   <span className="text-xs font-bold text-slate-500 block uppercase tracking-wider">8. Foto Diri</span>
                   <div className="relative w-32 h-32 group">
-                    {profile.foto_diri ? (
+                    {isUploadingPhoto ? (
+                      <div className="w-full h-full rounded-full bg-slate-100 border-2 border-slate-200 flex flex-col items-center justify-center text-slate-500">
+                        <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+                        <span className="text-[9px] mt-1.5 font-bold text-indigo-600 animate-pulse">Mengunggah...</span>
+                      </div>
+                    ) : profile.foto_diri ? (
                       <img 
                         src={profile.foto_diri} 
                         alt="Preview Foto" 
@@ -1037,7 +1094,7 @@ CREATE POLICY "Akses Publik Guru Sekolah Seluruh Operasi" ON guru_sekolah
                         <span className="text-[9px] mt-1 font-semibold">Pilih Foto</span>
                       </div>
                     )}
-                    {profile.foto_diri && (
+                    {profile.foto_diri && !isUploadingPhoto && (
                       <button
                         type="button"
                         onClick={() => setProfile(prev => ({ ...prev, foto_diri: "" }))}
@@ -1057,12 +1114,25 @@ CREATE POLICY "Akses Publik Guru Sekolah Seluruh Operasi" ON guru_sekolah
                       ref={fileInputRef}
                       className="hidden"
                       id="profile-foto-file-input"
+                      disabled={isUploadingPhoto}
                     />
                     <label 
                       htmlFor="profile-foto-file-input"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold rounded-lg text-slate-700 shadow-sm cursor-pointer"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 border text-xs font-bold rounded-lg shadow-sm ${
+                        isUploadingPhoto 
+                          ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed" 
+                          : "bg-white border-slate-300 hover:bg-slate-50 text-slate-700 cursor-pointer"
+                      }`}
                     >
-                      <Camera className="w-3.5 h-3.5" /> Unggah Foto
+                      {isUploadingPhoto ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" /> Mengunggah...
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-3.5 h-3.5" /> Unggah Foto
+                        </>
+                      )}
                     </label>
                     <p className="text-[9px] text-slate-400 mt-2">Maksimal file 2MB (JPG/PNG)</p>
                   </div>

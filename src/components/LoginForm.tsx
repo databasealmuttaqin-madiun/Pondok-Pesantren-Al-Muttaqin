@@ -33,15 +33,25 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
         .from("pengguna")
         .select("*")
         .eq("username", username)
-        .eq("password", password); // Wait, this stores password in plain text. Ideally hash, but user requested custom simplest ID/Password.
+        .eq("password", password);
 
       if (data && data.length > 0) {
         const user = data[0];
+        
+        // Merge with local fallback details in case columns aren't present in remote Supabase table yet
+        const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
+        const extra = localDetails[user.username] || {};
+
         const dbUserVal = {
           username: user.username,
           role: user.role,
           name: user.nama,
-          gender: user.gender || 'Semua'
+          gender: user.gender || 'Semua',
+          bagian: user.bagian || extra.bagian || (user.role === "admin" ? "kedua" : user.role === "guru_sekolah" ? "sekolah" : "pondok"),
+          jabatan: user.jabatan || extra.jabatan || (user.role === "admin" ? "pengurus" : user.role === "guru_sekolah" ? "guru mapel" : "guru pondok"),
+          tugas_kamar: user.tugas_kamar || extra.tugas_kamar || "",
+          tugas_kelas_sekolah: user.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
+          tugas_kelas_pengajian: user.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || ""
         };
         
         setIsSuccess(true);

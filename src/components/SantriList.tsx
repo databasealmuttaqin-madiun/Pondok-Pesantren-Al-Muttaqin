@@ -154,6 +154,7 @@ export default function SantriList({
       "Provinsi",
       "Nama Ayah",
       "Nama Ibu",
+      "No HP Ortu",
       "Kelompok Sambung",
       "Desa Sambung",
       "Daerah",
@@ -179,6 +180,7 @@ export default function SantriList({
       s.provinsi,
       `"${s.nama_ayah.replace(/"/g, '""')}"`,
       `"${s.nama_ibu.replace(/"/g, '""')}"`,
+      `"${(s.no_hp_ortu || "").replace(/"/g, '""')}"`,
       `"${s.kelompok_sambung.replace(/"/g, '""')}"`,
       `"${s.desa_sambung.replace(/"/g, '""')}"`,
       s.daerah,
@@ -877,11 +879,12 @@ export default function SantriList({
                           <div>
                             <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-2">
                               <Users className="w-4 h-4 text-sky-200" />
-                              <span>E. ORANG TUA</span>
+                              <span>E. ORANG TUA & WA</span>
                             </div>
                             <div className="grid grid-cols-1 gap-y-0.5">
                               {renderFormRow("Nama Ayah", selectedStudent.nama_ayah)}
                               {renderFormRow("Nama Ibu", selectedStudent.nama_ibu)}
+                              {renderFormRow("No. WA Ortu", selectedStudent.no_hp_ortu || "-")}
                             </div>
                           </div>
 

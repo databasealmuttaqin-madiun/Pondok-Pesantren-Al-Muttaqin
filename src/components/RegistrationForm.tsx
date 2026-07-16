@@ -38,6 +38,7 @@ export default function RegistrationForm({
         kelas_pengajian: initialData.kelas_pengajian || "",
         kelas_sekolah: initialData.kelas_sekolah || "",
         jenis_kelamin: initialData.jenis_kelamin || "L",
+        no_hp_ortu: initialData.no_hp_ortu || "",
       };
     }
     return {
@@ -65,6 +66,7 @@ export default function RegistrationForm({
       kelas_pengajian: "",
       kelas_sekolah: "",
       jenis_kelamin: "L",
+      no_hp_ortu: "",
     };
   });
 
@@ -937,6 +939,25 @@ export default function RegistrationForm({
                       <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.nama_ibu}</p>
                     )}
                   </div>
+
+                  {/* Nomor WhatsApp Orang Tua */}
+                  <div className="space-y-1 col-span-1 sm:col-span-2">
+                    <label htmlFor="no_hp_ortu" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                      Nomor WhatsApp Orang Tua (Aktif)
+                    </label>
+                    <input
+                      type="text"
+                      id="no_hp_ortu"
+                      name="no_hp_ortu"
+                      value={formData.no_hp_ortu || ""}
+                      onChange={handleChange}
+                      placeholder="Contoh: 081234567890"
+                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      Digunakan untuk pengiriman notifikasi/laporan absensi otomatis maupun manual via WhatsApp ke Wali Santri.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -1211,12 +1232,15 @@ export default function RegistrationForm({
                     <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                     III. ORANG TUA
                   </h4>
-                  <dl className="grid grid-cols-3 gap-y-2 gap-x-2 text-sm text-gray-700">
+                   <dl className="grid grid-cols-3 gap-y-2 gap-x-2 text-sm text-gray-700">
                     <dt className="text-gray-400 font-medium">Ayah</dt>
                     <dd className="col-span-2 font-medium text-gray-900">{formData.nama_ayah}</dd>
 
                     <dt className="text-gray-400 font-medium">Ibu</dt>
                     <dd className="col-span-2 font-medium text-gray-900">{formData.nama_ibu}</dd>
+
+                    <dt className="text-gray-400 font-medium font-mono text-xs">WhatsApp</dt>
+                    <dd className="col-span-2 font-medium text-emerald-700 font-mono text-xs">{formData.no_hp_ortu || "-"}</dd>
                   </dl>
                 </div>
 

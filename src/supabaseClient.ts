@@ -55,6 +55,7 @@ export interface SantriData {
   jenis_kelamin?: "L" | "P";
   nfc_id?: string;
   foto?: string;
+  no_hp_ortu?: string;
 }
 
 /**
@@ -99,5 +100,6 @@ export function formatSantriData(s: SantriData): SantriData {
     jenis_kelamin: s.jenis_kelamin || "L",
     nfc_id: s.nfc_id || "",
     foto: s.foto || "",
+    no_hp_ortu: s.no_hp_ortu || "",
   };
 }
