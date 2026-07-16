@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit3, Shield, User, Key, Check, AlertCircle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Plus, Trash2, Edit3, Shield, User, Key, Check, AlertCircle, ChevronDown, X, Search } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 interface PenggunaData {
@@ -35,6 +35,11 @@ export default function ManajemenPenggunaPanel() {
   const [isPondok, setIsPondok] = useState(true);
   const [isSekolah, setIsSekolah] = useState(true);
   const [selectedJabatans, setSelectedJabatans] = useState<string[]>(["guru_pondok"]);
+  
+  // Custom multi-select component states
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
   const [tugasKamar, setTugasKamar] = useState("");
   const [tugasKelasSekolah, setTugasKelasSekolah] = useState("");
@@ -94,6 +99,17 @@ export default function ManajemenPenggunaPanel() {
       }
     }
   }, [selectedJabatans]);
+
+  // Click outside multi-select dropdown handler
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -209,12 +225,16 @@ export default function ManajemenPenggunaPanel() {
       setTugasKelasPengajian("");
       setTugasMapel("");
     }
+    setIsDropdownOpen(false);
+    setSearchQuery("");
     setIsFormOpen(true);
   };
 
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingId(null);
+    setIsDropdownOpen(false);
+    setSearchQuery("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -440,37 +460,136 @@ export default function ManajemenPenggunaPanel() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">Tugas / Jabatan (Bisa Pilih Lebih Dari Satu)</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-900">
-                  {[
-                    { id: "guru_pondok", label: "Guru Pondok" },
-                    { id: "guru_mapel", label: "Guru Mata Pelajaran" },
-                    { id: "wali_kamar", label: "Wali Kamar" },
-                    { id: "wali_kelas", label: "Wali Kelas Sekolah" },
-                    { id: "kepala_sekolah", label: "Kepala Sekolah" },
-                    { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" }
-                  ].map(item => {
-                    const checked = selectedJabatans.includes(item.id);
-                    return (
-                      <label key={item.id} className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            if (checked) {
-                              setSelectedJabatans(selectedJabatans.filter(j => j !== item.id));
-                            } else {
-                              setSelectedJabatans([...selectedJabatans, item.id]);
-                            }
-                          }}
-                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        {item.label}
-                      </label>
-                    );
-                  })}
+              <div className="space-y-2 relative" ref={dropdownRef}>
+                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                  Tugas / Jabatan (Bisa Pilih Lebih Dari Satu)
+                </label>
+                
+                {/* Custom Multi-Select Input Box */}
+                <div 
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className={`w-full min-h-[46px] flex flex-wrap items-center gap-2 px-4 py-2 bg-[#f8fafc] dark:bg-slate-950 border rounded-2xl cursor-pointer transition-all ${
+                    isDropdownOpen 
+                      ? "border-blue-600 dark:border-blue-500 ring-2 ring-blue-500/20 bg-white dark:bg-slate-900" 
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                  }`}
+                >
+                  {selectedJabatans.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedJabatans.map(jid => {
+                        const itemsList = [
+                          { id: "guru_pondok", label: "Guru Pondok" },
+                          { id: "guru_mapel", label: "Guru Mata Pelajaran" },
+                          { id: "wali_kamar", label: "Wali Kamar" },
+                          { id: "wali_kelas", label: "Wali Kelas Sekolah" },
+                          { id: "kepala_sekolah", label: "Kepala Sekolah" },
+                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" }
+                        ];
+                        const item = itemsList.find(j => j.id === jid);
+                        const label = item ? item.label : jid;
+                        return (
+                          <span 
+                            key={jid} 
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-100 dark:border-blue-950/60 animate-in zoom-in-95 duration-150"
+                          >
+                            <span>{label}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedJabatans(selectedJabatans.filter(j => j !== jid));
+                              }}
+                              className="hover:bg-blue-100 dark:hover:bg-blue-900/60 p-0.5 rounded transition-colors text-blue-500 hover:text-blue-700 cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-xs font-bold text-slate-450 dark:text-slate-500 select-none">
+                      Pilih Tugas / Jabatan...
+                    </span>
+                  )}
+
+                  {/* Chevron Icon */}
+                  <div className="ml-auto pl-2 text-slate-450 dark:text-slate-500 shrink-0">
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isDropdownOpen ? "rotate-180" : ""}`} />
+                  </div>
                 </div>
+
+                {/* Dropdown Menu Overlay */}
+                {isDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                    {/* Search Field */}
+                    <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 flex items-center gap-2">
+                      <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Ketik untuk mencari..."
+                        onClick={(e) => e.stopPropagation()} // Prevent dropdown close on input click
+                        className="w-full text-xs font-bold bg-transparent border-none outline-none focus:ring-0 text-slate-800 dark:text-white placeholder-slate-400"
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSearchQuery("");
+                          }}
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Available options list */}
+                    <div className="max-h-52 overflow-y-auto py-1">
+                      {(() => {
+                        const itemsList = [
+                          { id: "guru_pondok", label: "Guru Pondok" },
+                          { id: "guru_mapel", label: "Guru Mata Pelajaran" },
+                          { id: "wali_kamar", label: "Wali Kamar" },
+                          { id: "wali_kelas", label: "Wali Kelas Sekolah" },
+                          { id: "kepala_sekolah", label: "Kepala Sekolah" },
+                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" }
+                        ];
+                        const filtered = itemsList.filter(item => {
+                          const isNotSelected = !selectedJabatans.includes(item.id);
+                          const matchesSearch = item.label.toLowerCase().includes(searchQuery.toLowerCase());
+                          return isNotSelected && matchesSearch;
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="px-4 py-3.5 text-xs text-slate-400 dark:text-slate-500 text-center font-bold">
+                              {searchQuery ? "Tidak ada hasil ditemukan." : "Semua opsi telah terpilih."}
+                            </div>
+                          );
+                        }
+
+                        return filtered.map(item => (
+                          <div
+                            key={item.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedJabatans([...selectedJabatans, item.id]);
+                              setSearchQuery("");
+                            }}
+                            className="px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors flex items-center justify-between"
+                          >
+                            <span>{item.label}</span>
+                            <span className="text-[10px] text-blue-500 font-extrabold opacity-0 hover:opacity-100 transition-opacity">Pilih</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Conditional Duty Assignment Inputs */}
@@ -541,25 +660,6 @@ export default function ManajemenPenggunaPanel() {
                       <option value="">-- Pilih Kamar --</option>
                       {optRooms.map(r => (
                         <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {selectedJabatans.includes("guru_pondok") && (
-                <div className="space-y-2 p-3.5 bg-purple-50/50 dark:bg-purple-950/10 rounded-2xl border border-purple-100/50 dark:border-purple-950/30 animate-in fade-in duration-200">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 block">Konfigurasi Guru Pondok</span>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Tugas Kelas Pengajian / Pondok</label>
-                    <select
-                      value={tugasKelasPengajian}
-                      onChange={(e) => setTugasKelasPengajian(e.target.value)}
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                    >
-                      <option value="">-- Pilih Kelas Pengajian --</option>
-                      {optRecitationClasses.map(rc => (
-                        <option key={rc} value={rc}>{rc}</option>
                       ))}
                     </select>
                   </div>
