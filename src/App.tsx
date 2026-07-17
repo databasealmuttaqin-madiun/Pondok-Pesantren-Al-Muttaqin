@@ -12,7 +12,7 @@ import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin } from "lucide-react";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap } from "lucide-react";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
 
 const DEMO_SANTRI: SantriData[] = [
@@ -1112,7 +1112,7 @@ export default function App() {
     { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "absensi_guru", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: MapPin, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "absensi_guru", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "manajemen_sesi", label: "Manajemen Sesi", shortLabel: "Sesi", icon: Clock, roles: ["admin"] },
     { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin", "pengurus"] },
