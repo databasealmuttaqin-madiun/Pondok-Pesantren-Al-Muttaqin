@@ -9,6 +9,7 @@ interface SantriListProps {
   onUpdateStatus: (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang" | "Haid") => Promise<void>;
   initialFilterCategory?: string;
   initialFilterStatus?: string;
+  currentUserRole?: string;
 }
 
 // Helper to infer gender based on common Indonesian female name keywords for authentic visual parity with the mockup screen
@@ -97,7 +98,8 @@ export default function SantriList({
   onDelete, 
   onUpdateStatus, 
   initialFilterCategory = "All", 
-  initialFilterStatus = "All" 
+  initialFilterStatus = "All",
+  currentUserRole
 }: SantriListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>(initialFilterCategory);
@@ -623,22 +625,26 @@ export default function SantriList({
                           </button>
 
                           {/* 1. Edit Elegant light cyan circle with dark blue pen */}
-                          <button
-                            onClick={() => onEdit(s)}
-                            className="w-8 h-8 flex items-center justify-center bg-[#E6F4FA] hover:bg-[#d0edfa] text-[#00a5ec] rounded-full transition-all cursor-pointer shadow-sm shadow-sky-100"
-                            title="Ubah Data"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                          {currentUserRole !== "guru_sekolah" && (
+                            <button
+                              onClick={() => onEdit(s)}
+                              className="w-8 h-8 flex items-center justify-center bg-[#E6F4FA] hover:bg-[#d0edfa] text-[#00a5ec] rounded-full transition-all cursor-pointer shadow-sm shadow-sky-100"
+                              title="Ubah Data"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
                           {/* 2. Trash bin */}
-                          <button
-                            onClick={() => handleDeleteClick(s.id!)}
-                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50/55 rounded-full transition-all cursor-pointer"
-                            title="Hapus Data"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {currentUserRole !== "guru_sekolah" && (
+                            <button
+                              onClick={() => handleDeleteClick(s.id!)}
+                              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50/55 rounded-full transition-all cursor-pointer"
+                              title="Hapus Data"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
 

@@ -485,14 +485,7 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
             )}
           </div> 
 
-          <div className="pt-2 border-t border-slate-100 flex justify-center">
-            <button
-              onClick={onNavigateToForm}
-              className="bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-[11px] px-3.5 py-1.5 rounded transition-all flex items-center gap-1 cursor-pointer animate-pulse"
-            >
-              🚀 Tambah Santri
-            </button>
-          </div>
+          {/* Removed Tambah Santri button since guru_sekolah role has no access to the registration form */}
         </div> 
 
       </div>

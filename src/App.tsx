@@ -1132,12 +1132,12 @@ export default function App() {
   const allTabs = [
     { id: "dashboard", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "pengurus"] },
+    { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "pengurus"] },
     { id: "absensi_guru", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "manajemen_pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Home, roles: ["admin", "pengurus"] },
     { id: "manajemen_sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["admin", "pengurus"] },
-    { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "pengurus"] },
     { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin", "pengurus"] },
     { id: "pengguna", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
   ];
@@ -1669,6 +1669,7 @@ export default function App() {
                 onUpdateStatus={handleUpdateStudentStatus}
                 initialFilterCategory={listFilters.category || "All"}
                 initialFilterStatus={listFilters.status || "All"}
+                currentUserRole={userRole}
               />
             )}
 
