@@ -1066,30 +1066,40 @@ export default function App() {
         let matchesAny = false;
 
         if (jabatans.some(j => ["wali_kamar", "pamong kamar"].includes(j))) {
-          hasDutyCheck = true;
-          if (currentUser.tugas_kamar && s.kamar === currentUser.tugas_kamar) {
-            matchesAny = true;
+          if (currentUser.tugas_kamar) {
+            hasDutyCheck = true;
+            if (s.kamar === currentUser.tugas_kamar) {
+              matchesAny = true;
+            }
           }
         }
 
         if (jabatans.some(j => ["wali_kelas", "guru_mapel", "wali kelas", "guru mapel"].includes(j))) {
-          hasDutyCheck = true;
-          if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah === currentUser.tugas_kelas_sekolah) {
-            matchesAny = true;
+          if (currentUser.tugas_kelas_sekolah) {
+            hasDutyCheck = true;
+            if (s.kelas_sekolah) {
+              const allowedClasses = currentUser.tugas_kelas_sekolah.split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
+              if (allowedClasses.includes(s.kelas_sekolah.toLowerCase())) {
+                matchesAny = true;
+              }
+            }
           }
         }
 
         if (jabatans.some(j => ["guru_pondok", "guru pondok"].includes(j))) {
-          hasDutyCheck = true;
-          if (currentUser.tugas_kelas_pengajian && s.kelas_pengajian === currentUser.tugas_kelas_pengajian) {
-            matchesAny = true;
+          if (currentUser.tugas_kelas_pengajian) {
+            hasDutyCheck = true;
+            if (s.kelas_pengajian === currentUser.tugas_kelas_pengajian) {
+              matchesAny = true;
+            }
           }
         }
 
         if (jabatans.some(j => ["kepala_sekolah", "wakil_kepala_sekolah", "kepala sekolah", "wakil kepala sekolah"].includes(j))) {
-          if (currentUser.tugas_kelas_sekolah) {
+          if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah) {
             hasDutyCheck = true;
-            if (s.kelas_sekolah === currentUser.tugas_kelas_sekolah) {
+            const allowedClasses = currentUser.tugas_kelas_sekolah.split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
+            if (allowedClasses.includes(s.kelas_sekolah.toLowerCase())) {
               matchesAny = true;
             }
           }
@@ -1099,7 +1109,12 @@ export default function App() {
           if (currentUser.tugas_kamar || currentUser.tugas_kelas_sekolah || currentUser.tugas_kelas_pengajian) {
             hasDutyCheck = true;
             if (currentUser.tugas_kamar && s.kamar === currentUser.tugas_kamar) matchesAny = true;
-            if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah === currentUser.tugas_kelas_sekolah) matchesAny = true;
+            if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah) {
+              const allowedClasses = currentUser.tugas_kelas_sekolah.split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
+              if (allowedClasses.includes(s.kelas_sekolah.toLowerCase())) {
+                matchesAny = true;
+              }
+            }
             if (currentUser.tugas_kelas_pengajian && s.kelas_pengajian === currentUser.tugas_kelas_pengajian) matchesAny = true;
           }
         }

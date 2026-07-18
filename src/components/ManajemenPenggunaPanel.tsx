@@ -609,19 +609,48 @@ export default function ManajemenPenggunaPanel() {
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Di Kelas Berapa?</label>
-                    <select
-                      value={tugasKelasSekolah}
-                      onChange={(e) => setTugasKelasSekolah(e.target.value)}
-                      required
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                    >
-                      <option value="">-- Pilih Kelas Sekolah --</option>
-                      {optSchoolClasses.map(sc => (
-                        <option key={sc} value={sc}>{sc}</option>
-                      ))}
-                    </select>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Di Kelas Berapa?</label>
+                      <span className="text-[9px] text-indigo-500 font-extrabold italic">Bisa pilih lebih dari satu kelas</span>
+                    </div>
+                    {optSchoolClasses.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">Belum ada data kelas sekolah yang diatur.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-100 dark:border-slate-800 max-h-36 overflow-y-auto">
+                        {optSchoolClasses.map(sc => {
+                          const selectedList = tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean);
+                          const isSelected = selectedList.includes(sc);
+                          return (
+                            <button
+                              type="button"
+                              key={sc}
+                              onClick={() => {
+                                let current = tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean);
+                                if (current.includes(sc)) {
+                                  current = current.filter(c => c !== sc);
+                                } else {
+                                  current = [...current, sc];
+                                }
+                                setTugasKelasSekolah(current.join(", "));
+                              }}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+                                isSelected
+                                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/10 scale-[1.02]"
+                                  : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                              }`}
+                            >
+                              {isSelected && (
+                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                              )}
+                              <span>{sc}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
