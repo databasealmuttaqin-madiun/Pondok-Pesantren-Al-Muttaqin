@@ -726,12 +726,12 @@ export default function NfcRegisterPanel({
                                   <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
                                     {filteredStudentsForAssign.length > 0 ? (
                                       filteredStudentsForAssign.map((s) => {
-                                        const isSelected = selectedStudentId === s.id;
+                                        const isSelected = selectedStudentId === String(s.id);
                                         return (
                                           <div
                                             key={s.id}
                                             onClick={() => {
-                                              setSelectedStudentId(s.id);
+                                              setSelectedStudentId(String(s.id));
                                               setAssignSearch(`${s.nama_lengkap} ${s.kamar ? `(Kamar: ${s.kamar})` : ""}`);
                                               setIsDropdownOpen(false);
                                             }}

@@ -680,7 +680,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   const isSessionOpen = isInsideTargetWindow(activeTimeStr, activeSession);
 
   // Use a ref to always access the latest executeScan function without restarting the camera
-  const executeScanRef = useRef<(code: string, medium: string) => void>();
+  const executeScanRef = useRef<(code: string, medium: string) => void>(undefined);
 
   // Hook 1: Professional WebRTC Stream Handler with ZXing QR Scanner
   useEffect(() => {
@@ -1149,7 +1149,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   }, [] as any);
 
   const roomsList = Array.from(
-    new Set(hydratedStudentsList.map((s: any) => s.kamar).filter(Boolean))
+    new Set(hydratedStudentsList.map((s: any) => String(s.kamar)).filter(Boolean))
   ).sort();
 
   const kelasList = Array.from(
@@ -1349,7 +1349,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         if (mappedPresensi !== type) return;
         const key = `${date}_absensi_${sess.id}`;
         let status = attendanceDb[key]?.[sId] || "unmarked";
-        status = resolveStatus(status);
+        status = resolveStatus(status) as AttendanceStatus;
         sessionsData[date][sess.id] = status;
         if (status === "hadir") hadir++;
         else if (status === "terlambat") terlambat++;
@@ -1376,7 +1376,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           if (mappedPresensi !== type) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           let status = attendanceDb[key]?.[sId] || "unmarked";
-          status = resolveStatus(status);
+          status = resolveStatus(status) as AttendanceStatus;
           sessionsData[dateStr][sess.id] = status;
           if (status === "hadir") hadir++;
           else if (status === "terlambat") terlambat++;
@@ -1402,7 +1402,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
           if (mappedPresensi !== type) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           let status = attendanceDb[key]?.[sId] || "unmarked";
-          status = resolveStatus(status);
+          status = resolveStatus(status) as AttendanceStatus;
           sessionsData[dateStr][sess.id] = status;
           if (status === "hadir") hadir++;
           else if (status === "terlambat") terlambat++;
@@ -3005,7 +3005,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                   className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 >
                   <option value="All">Semua Kamar</option>
-                  {roomsList.map(k => (
+                  {roomsList.map((k: string) => (
                     <option key={k} value={k}>{k}</option>
                   ))}
                 </select>

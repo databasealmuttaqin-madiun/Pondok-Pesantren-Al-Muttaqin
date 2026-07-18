@@ -547,7 +547,7 @@ export default function ManagementPanel({
 
       {/* SELECT LABELS DAN QUICK ACTION BUTTON (Erat dengan menu yang diaktifkan agar tombol langsung terlihat) */}
       <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-white rounded-2xl border border-slate-200 p-4 shadow-sm" id="pilihan_menu_plotting_dan_tombol">
-        <div className="grid grid-cols-3 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner flex-1 max-w-xl">
+        <div className="grid grid-cols-2 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner flex-1 max-w-sm">
           <button
             onClick={() => {
               setActiveMode("kamar");
@@ -576,20 +576,6 @@ export default function ManagementPanel({
           >
             Kelas Pengajian
           </button>
-          <button
-            onClick={() => {
-              setActiveMode("sekolah");
-              setSelectedNik("");
-              setSelectedTarget("");
-            }}
-            className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
-              activeMode === "sekolah"
-                ? "bg-white text-indigo-705 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Kelas Sekolah
-          </button>
         </div>
 
         {/* TOMBOL BERGANTUNG PADA TAB YANG AKTIF */}
@@ -605,14 +591,6 @@ export default function ManagementPanel({
           {activeMode === "pengajian" && (
             <button
               onClick={() => setShowAddRecitation(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all cursor-pointer whitespace-nowrap"
-            >
-              Buat Kelas
-            </button>
-          )}
-          {activeMode === "sekolah" && (
-            <button
-              onClick={() => setShowAddSchool(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2 rounded-lg shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-all cursor-pointer whitespace-nowrap"
             >
               Buat Kelas

@@ -11,8 +11,11 @@ import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
+import ErrorBoundary from "./components/ErrorBoundary";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap } from "lucide-react";
+import ManajemenPondokPanel from "./components/ManajemenPondokPanel";
+import ManajemenSekolahPanel from "./components/ManajemenSekolahPanel";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked } from "lucide-react";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
 
 const DEMO_SANTRI: SantriData[] = [
@@ -143,7 +146,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah">("dashboard");
   const [listFilters, setListFilters] = useState<{ category?: string; status?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
@@ -153,6 +156,10 @@ export default function App() {
   });
   const [dbStatus, setDbStatus] = useState<"connected" | "missing_table" | "error" | "loading">("loading");
   const [dbErrorMsg, setDbErrorMsg] = useState<string>("");
+  const [isDbConfigModalOpen, setIsDbConfigModalOpen] = useState(false);
+  const [modalDbUrl, setModalDbUrl] = useState(() => localStorage.getItem("supabase_url") || "");
+  const [modalDbKey, setModalDbKey] = useState(() => localStorage.getItem("supabase_anon_key") || "");
+  const [modalSuccessMsg, setModalSuccessMsg] = useState("");
   const [editingStudent, setEditingStudent] = useState<SantriData | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
 
@@ -1113,9 +1120,9 @@ export default function App() {
     { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
     { id: "absensi_guru", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "manajemen_sesi", label: "Manajemen Sesi", shortLabel: "Sesi", icon: Clock, roles: ["admin"] },
+    { id: "manajemen_pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Home, roles: ["admin", "pengurus"] },
+    { id: "manajemen_sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["admin", "pengurus"] },
     { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "management", label: "Plotting Siswa", shortLabel: "Plotting", icon: Sliders, roles: ["admin", "pengurus"] },
     { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin", "pengurus"] },
     { id: "pengguna", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
   ];
@@ -1167,6 +1174,144 @@ export default function App() {
         </div>
       )}
 
+      {/* Database connection configuration modal */}
+      {isDbConfigModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Database className="w-5 h-5 text-blue-600" />
+                Konfigurasi Database Supabase
+              </h3>
+              <button
+                onClick={() => {
+                  setIsDbConfigModalOpen(false);
+                  setModalSuccessMsg("");
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-extrabold text-sm p-1 cursor-pointer outline-none border-0 bg-transparent"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className={`p-3 rounded-2xl border text-xs leading-relaxed font-semibold transition-colors ${
+              isDarkMode ? "bg-blue-950/20 border-blue-900/30 text-blue-300" : "bg-blue-50 border-blue-100 text-blue-800"
+            }`}>
+              {dbStatus === "connected" ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  ● Status: Terhubung ke Database Cloud Anda.
+                </span>
+              ) : (
+                <span>
+                  ● Status: <strong>Offline</strong> ({dbErrorMsg || "Koneksi terputus"}). Masukkan kredensial database Anda sendiri untuk mengaktifkan sinkronisasi otomatis.
+                </span>
+              )}
+            </div>
+
+            {modalSuccessMsg && (
+              <div className="p-2 text-center text-xs font-bold text-emerald-500 bg-emerald-500/10 rounded-xl animate-pulse">
+                {modalSuccessMsg}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (modalDbUrl.trim()) {
+                  localStorage.setItem("supabase_url", modalDbUrl.trim());
+                } else {
+                  localStorage.removeItem("supabase_url");
+                }
+                if (modalDbKey.trim()) {
+                  localStorage.setItem("supabase_anon_key", modalDbKey.trim());
+                } else {
+                  localStorage.removeItem("supabase_anon_key");
+                }
+                setModalSuccessMsg("Konfigurasi disimpan! Memuat ulang sistem...");
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1500);
+              }}
+              className="space-y-4 text-left"
+            >
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold tracking-wider uppercase text-slate-500">
+                  SUPABASE PROJECT URL
+                </label>
+                <input
+                  type="url"
+                  value={modalDbUrl}
+                  onChange={(e) => setModalDbUrl(e.target.value)}
+                  placeholder="https://xyz.supabase.co"
+                  className="w-full text-xs font-mono px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold tracking-wider uppercase text-slate-500">
+                  SUPABASE ANON KEY
+                </label>
+                <input
+                  type="password"
+                  value={modalDbKey}
+                  onChange={(e) => setModalDbKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="w-full text-xs font-mono px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {dbStatus === "missing_table" && (
+                <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-[10px] text-red-700 dark:text-red-300 space-y-1">
+                  <div className="font-bold uppercase text-[9px] tracking-wide">Pemberitahuan SQL:</div>
+                  <p>Tabel <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 py-0.5 rounded">santri</code> tidak ditemukan di database Anda. Pastikan Anda telah membuat tabel-tabel yang diperlukan di editor SQL Supabase Anda.</p>
+                </div>
+              )}
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDbConfigModalOpen(false);
+                    setModalSuccessMsg("");
+                  }}
+                  className="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer transition-all border-0"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer shadow-md transition-all flex items-center justify-center gap-1 border-0"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} />
+                  Simpan
+                </button>
+                {(localStorage.getItem("supabase_url") || localStorage.getItem("supabase_anon_key")) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem("supabase_url");
+                      localStorage.removeItem("supabase_anon_key");
+                      setModalDbUrl("");
+                      setModalDbKey("");
+                      setModalSuccessMsg("Koneksi dikembalikan ke default! Memuat ulang...");
+                      setTimeout(() => {
+                        window.location.reload();
+                      }, 1500);
+                    }}
+                    className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer shadow transition-all border-0"
+                    title="Reset ke Default"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* 2. HEADER */}
       <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex md:hidden items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -1199,6 +1344,31 @@ export default function App() {
         {/* Administrator Profile Info & Logout */}
         <div className="flex items-center gap-3.5 text-[#041e49] dark:text-slate-100">
           
+          {/* Database Connection Pill */}
+          <button
+            onClick={() => setIsDbConfigModalOpen(true)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider shadow-sm transition-all border outline-none cursor-pointer ${
+              dbStatus === "connected"
+                ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : dbStatus === "loading"
+                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/20"
+            }`}
+            title="Klik untuk konfigurasi database Supabase"
+          >
+            <span className={`w-2 h-2 rounded-full ${
+              dbStatus === "connected"
+                ? "bg-emerald-500 shadow-[0_0_8px_#10b981]"
+                : dbStatus === "loading"
+                ? "bg-amber-500 animate-pulse"
+                : "bg-rose-500 shadow-[0_0_8px_#f43f5e]"
+            }`} />
+            <span className="hidden md:inline">
+              {dbStatus === "connected" ? "Database: Terhubung" : dbStatus === "loading" ? "Koneksi..." : "Database: Offline"}
+            </span>
+            <span className="inline md:hidden">DB</span>
+          </button>
+
           {/* Day/Night Mode Toggle selector switch */}
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
@@ -1368,13 +1538,19 @@ export default function App() {
           
           {/* Offline warning banner */}
           {dbStatus !== "connected" && (
-            <div className={`mb-4 p-3 bg-amber-50 border border-amber-200/60 rounded-lg text-[11px] text-amber-800 leading-tight flex items-center justify-between gap-4 ${activeTab === 'dashboard' ? 'mx-4 mt-4 md:mx-6 md:mt-6' : ''}`}>
+            <div className={`mb-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-250 dark:border-amber-900/40 rounded-xl text-[11px] text-amber-800 dark:text-amber-400 leading-tight flex items-center justify-between gap-4 ${activeTab === 'dashboard' ? 'mx-4 mt-4 md:mx-6 md:mt-6' : ''}`}>
               <div className="flex items-center gap-2">
                 <span>⚠️</span>
                 <span>
-                  <strong>Mode Offline Aktif:</strong> Data disimpan lokal di web browser ini.
+                  <strong>Mode Offline Aktif:</strong> Database belum terhubung ({dbErrorMsg || "Mencoba menghubungkan..."}). Data disimpan lokal di browser ini.
                 </span>
               </div>
+              <button
+                onClick={() => setIsDbConfigModalOpen(true)}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer uppercase tracking-wider"
+              >
+                Atur Koneksi Database
+              </button>
             </div>
           )}
 
@@ -1500,24 +1676,32 @@ export default function App() {
 
             {activeTab === "absensi_guru" && (
               <div className="w-full">
-                <AbsensiGuruPanel currentUser={currentUser} />
+                <ErrorBoundary>
+                  <AbsensiGuruPanel currentUser={currentUser} />
+                </ErrorBoundary>
               </div>
             )}
 
-            {activeTab === "manajemen_sesi" && (
+            {activeTab === "manajemen_pondok" && (
               <div className="w-full">
-                <ManajemenSesiPanel />
-              </div>
-            )}
-
-            {activeTab === "management" && (
-              <div className="w-full">
-                <ManagementPanel
+                <ManajemenPondokPanel
                   students={displayedStudents}
                   rooms={rooms}
                   setRooms={setRooms}
                   recitationClasses={recitationClasses}
                   setRecitationClasses={setRecitationClasses}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "manajemen_sekolah" && (
+              <div className="w-full">
+                <ManajemenSekolahPanel
+                  students={displayedStudents}
                   schoolClasses={schoolClasses}
                   setSchoolClasses={setSchoolClasses}
                   metadataMap={metadataMap}

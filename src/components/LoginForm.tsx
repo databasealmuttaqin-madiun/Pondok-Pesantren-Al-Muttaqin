@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop } from "lucide-react";
+import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop, Database, Settings, RefreshCw, Trash2 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 interface LoginFormProps {
@@ -16,6 +16,41 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Database Connection states
+  const [showDbSettings, setShowDbSettings] = useState(false);
+  const [customDbUrl, setCustomDbUrl] = useState(() => localStorage.getItem("supabase_url") || "");
+  const [customDbKey, setCustomDbKey] = useState(() => localStorage.getItem("supabase_anon_key") || "");
+  const [dbSuccessMsg, setDbSuccessMsg] = useState("");
+
+  const handleSaveDbSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customDbUrl.trim()) {
+      localStorage.setItem("supabase_url", customDbUrl.trim());
+    } else {
+      localStorage.removeItem("supabase_url");
+    }
+    if (customDbKey.trim()) {
+      localStorage.setItem("supabase_anon_key", customDbKey.trim());
+    } else {
+      localStorage.removeItem("supabase_anon_key");
+    }
+    setDbSuccessMsg("Konfigurasi disimpan! Memuat ulang sistem...");
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  };
+
+  const handleResetDbSettings = () => {
+    localStorage.removeItem("supabase_url");
+    localStorage.removeItem("supabase_anon_key");
+    setCustomDbUrl("");
+    setCustomDbKey("");
+    setDbSuccessMsg("Koneksi dikembalikan ke default! Memuat ulang...");
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -414,6 +449,102 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
                 : "bg-slate-50 border-slate-200/50 text-slate-500 shadow-inner"
             }`}>
               Silakan hubungi admin pondok untuk mendapatkan hak akses login.
+            </div>
+
+            {/* Database Connection Settings Accordion */}
+            <div className="w-full mt-4 text-left border-t border-slate-100/50 dark:border-slate-800/50 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowDbSettings(!showDbSettings)}
+                className={`w-full flex items-center justify-between text-xs font-black uppercase tracking-wider py-1.5 focus:outline-none transition-colors cursor-pointer ${
+                  isDarkMode ? "text-[#8c98bd] hover:text-white" : "text-slate-500 hover:text-slate-850"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5 text-blue-500" />
+                  Koneksi Database (Supabase)
+                </span>
+                <span>{showDbSettings ? "▲" : "▼"}</span>
+              </button>
+
+              {showDbSettings && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="mt-3 space-y-3"
+                >
+                  <div className={`p-3 rounded-xl border text-[10px] leading-relaxed font-semibold transition-colors ${
+                    isDarkMode ? "bg-blue-950/20 border-blue-900/30 text-blue-300" : "bg-blue-50 border-blue-100 text-blue-800"
+                  }`}>
+                    Ganti URL dan API key di bawah untuk menghubungkan aplikasi dengan database Supabase milik Anda sendiri.
+                  </div>
+
+                  {dbSuccessMsg && (
+                    <div className="p-2 text-center text-[11px] font-bold text-emerald-500 bg-emerald-500/10 rounded-xl animate-pulse">
+                      {dbSuccessMsg}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveDbSettings} className="space-y-3">
+                    <div className="space-y-1">
+                      <label className={`text-[9px] font-bold uppercase ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                        SUPABASE PROJECT URL
+                      </label>
+                      <input
+                        type="url"
+                        value={customDbUrl}
+                        onChange={(e) => setCustomDbUrl(e.target.value)}
+                        placeholder="https://xyz.supabase.co"
+                        className={`w-full text-xs font-mono px-3 py-2.5 rounded-xl border outline-none focus:ring-1 ${
+                          isDarkMode
+                            ? "bg-[#0b0c16] border-[#1d2138] text-white focus:border-sky-500/80 focus:ring-sky-500/30"
+                            : "bg-[#eef2fc] border-[#d2dff6] text-slate-800 focus:border-blue-500 focus:ring-blue-500/20"
+                        }`}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className={`text-[9px] font-bold uppercase ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                        SUPABASE ANON KEY (PUBLIC API KEY)
+                      </label>
+                      <input
+                        type="password"
+                        value={customDbKey}
+                        onChange={(e) => setCustomDbKey(e.target.value)}
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        className={`w-full text-xs font-mono px-3 py-2.5 rounded-xl border outline-none focus:ring-1 ${
+                          isDarkMode
+                            ? "bg-[#0b0c16] border-[#1d2138] text-white focus:border-sky-500/80 focus:ring-sky-500/30"
+                            : "bg-[#eef2fc] border-[#d2dff6] text-slate-800 focus:border-blue-500 focus:ring-blue-500/20"
+                        }`}
+                        required
+                      />
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="submit"
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer shadow transition-all flex items-center justify-center gap-1"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} />
+                        Simpan & Hubungkan
+                      </button>
+                      {(localStorage.getItem("supabase_url") || localStorage.getItem("supabase_anon_key")) && (
+                        <button
+                          type="button"
+                          onClick={handleResetDbSettings}
+                          className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer shadow transition-all flex items-center justify-center gap-1"
+                          title="Reset ke Default"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </motion.div>
+              )}
             </div>
           </motion.div>
         ) : (

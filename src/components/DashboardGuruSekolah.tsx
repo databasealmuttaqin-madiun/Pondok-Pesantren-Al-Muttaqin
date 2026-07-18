@@ -1,6 +1,21 @@
-import React from "react";
-import { Users, GraduationCap, Map, Calendar, ArrowUpRight, TrendingUp, BookOpen, Quote, LogOut, MessageCircle, Headphones } from "lucide-react";
-import { SantriData } from "../supabaseClient";
+import React, { useState, useEffect } from "react";
+import { 
+  Users, 
+  GraduationCap, 
+  Map, 
+  Calendar, 
+  ArrowUpRight, 
+  TrendingUp, 
+  BookOpen, 
+  Quote, 
+  LogOut, 
+  MessageCircle, 
+  Headphones,
+  Clock,
+  Megaphone,
+  BookMarked
+} from "lucide-react";
+import { SantriData, supabase } from "../supabaseClient";
 
 interface DashboardProps {
   students: SantriData[];
@@ -13,7 +28,36 @@ interface DashboardProps {
   onLogout?: () => void;
 }
 
+interface ClassSchedule {
+  id: string;
+  hari: string;
+  jam_ke: number;
+  kelas: string;
+  mapel: string;
+  guru_username: string;
+  guru_nama: string;
+}
+
+interface LessonPeriod {
+  id: string;
+  jam_ke: number;
+  mulai: string;
+  selesai: string;
+}
+
+interface TeacherAnnouncement {
+  id: string;
+  judul: string;
+  isi: string;
+  tanggal: string;
+  dibuat_oleh: string;
+}
+
 export default function DashboardGuruSekolah({ students, onNavigateToForm, onNavigateToList, onNavigateToAbsensiGuru, isDarkMode, setIsDarkMode, currentUser, onLogout }: DashboardProps) {
+  const [mySchedules, setMySchedules] = useState<ClassSchedule[]>([]);
+  const [periods, setPeriods] = useState<LessonPeriod[]>([]);
+  const [announcements, setAnnouncements] = useState<TeacherAnnouncement[]>([]);
+
   // Compute basic metrics
   const totalCount = students.length;
   const smpCount = students.filter((s) => s.kategori === "SMP").length;
@@ -61,6 +105,68 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
   const monthsId = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
   const currentDateFormatted = `${daysId[d.getDay()]}, ${d.getDate()} ${monthsId[d.getMonth()]} ${d.getFullYear()}`;
   const currentDayEn = daysEn[d.getDay()];
+
+  // Fetch teaching schedules and announcements specifically for the logged in teacher
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      // 1. Fetch lesson periods
+      try {
+        const { data: dbPeriods } = await supabase.from("jam_pelajaran").select("*").order("jam_ke", { ascending: true });
+        if (dbPeriods && dbPeriods.length > 0) {
+          setPeriods(dbPeriods);
+        } else {
+          const cached = localStorage.getItem("school_lesson_periods");
+          if (cached) setPeriods(JSON.parse(cached));
+        }
+      } catch (e) {
+        const cached = localStorage.getItem("school_lesson_periods");
+        if (cached) setPeriods(JSON.parse(cached));
+      }
+
+      // 2. Fetch schedules filtered by logged in teacher's username
+      if (currentUser?.username) {
+        try {
+          const { data: dbSchedules } = await supabase
+            .from("jadwal_pelajaran")
+            .select("*")
+            .eq("guru_username", currentUser.username);
+          if (dbSchedules) {
+            setMySchedules(dbSchedules);
+          } else {
+            const cached = localStorage.getItem("school_schedules");
+            if (cached) {
+              const allSch: ClassSchedule[] = JSON.parse(cached);
+              setMySchedules(allSch.filter(s => s.guru_username === currentUser.username));
+            }
+          }
+        } catch (e) {
+          const cached = localStorage.getItem("school_schedules");
+          if (cached) {
+            const allSch: ClassSchedule[] = JSON.parse(cached);
+            setMySchedules(allSch.filter(s => s.guru_username === currentUser.username));
+          }
+        }
+      }
+
+      // 3. Fetch announcements
+      try {
+        const { data: dbAnn } = await supabase.from("pengumuman_guru").select("*").order("tanggal", { ascending: false });
+        if (dbAnn) {
+          setAnnouncements(dbAnn);
+        } else {
+          const cached = localStorage.getItem("school_announcements");
+          if (cached) setAnnouncements(JSON.parse(cached));
+        }
+      } catch (e) {
+        const cached = localStorage.getItem("school_announcements");
+        if (cached) setAnnouncements(JSON.parse(cached));
+      }
+    };
+
+    loadDashboardData();
+  }, [currentUser]);
+
+  const daysList = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
 
   return (
     <div className="flex flex-col min-h-full pb-6" id="dashboard_container_id">
@@ -326,7 +432,7 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
                 <Calendar className="w-3.5 h-3.5 text-sky-600" /> Registrasi Santri Terbaru
               </h3>
               <button
-                onClick={onNavigateToList}
+                onClick={() => onNavigateToList()}
                 className="text-sky-600 text-[11px] hover:underline font-bold cursor-pointer"
               >
                 Lihat Semua
@@ -390,6 +496,96 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
         </div> 
 
       </div>
+
+      {/* Row 4: Jadwal Mengajar Guru & Pengumuman Guru */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" id="teacher-info-section">
+        {/* Jadwal Mengajar Anda */}
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
+          <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-[#0c66e4]" /> Jadwal Mengajar Anda
+            </h3>
+            <span className="text-[9px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded font-mono">
+              {mySchedules.length} Sesi Mengajar
+            </span>
+          </div>
+
+          {mySchedules.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-xs italic">
+              Tidak ada jadwal mengajar terdaftar untuk akun Anda ({currentUser?.username || "Guest"}).
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-450">
+                    <th className="p-2">Hari</th>
+                    <th className="p-2">Jam Ke</th>
+                    <th className="p-2">Waktu</th>
+                    <th className="p-2">Kelas</th>
+                    <th className="p-2">Mapel</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                  {mySchedules
+                    .sort((a, b) => {
+                      const dayOrderA = daysList.indexOf(a.hari);
+                      const dayOrderB = daysList.indexOf(b.hari);
+                      if (dayOrderA !== dayOrderB) return dayOrderA - dayOrderB;
+                      return a.jam_ke - b.jam_ke;
+                    })
+                    .map((sch) => {
+                      const period = periods.find(p => p.jam_ke === sch.jam_ke);
+                      const timeStr = period ? `${period.mulai} - ${period.selesai}` : "--:--";
+                      return (
+                        <tr key={sch.id} className="hover:bg-slate-50/50">
+                          <td className="p-2 font-black text-blue-700 uppercase">{sch.hari}</td>
+                          <td className="p-2">Ke-{sch.jam_ke}</td>
+                          <td className="p-2 font-mono text-[10px] text-slate-500">{timeStr}</td>
+                          <td className="p-2 font-bold text-slate-900">Kelas {sch.kelas}</td>
+                          <td className="p-2 font-semibold text-slate-800">{sch.mapel}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Pengumuman Guru */}
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
+          <div className="border-b border-slate-100 pb-2">
+            <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <Megaphone className="w-3.5 h-3.5 text-orange-500" /> Pengumuman Resmi Guru
+            </h3>
+          </div>
+
+          {announcements.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-xs italic">
+              Belum ada pengumuman guru diterbitkan.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+              {announcements.map((ann) => (
+                <div key={ann.id} className="p-3 border border-slate-150 rounded-xl bg-orange-50/10 space-y-1 hover:border-orange-200 transition-colors">
+                  <div className="flex justify-between items-center gap-2">
+                    <h4 className="font-bold text-xs text-slate-900">{ann.judul}</h4>
+                    <span className="text-[9px] text-slate-400 font-bold">{ann.tanggal}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-650 leading-relaxed whitespace-pre-wrap font-medium">
+                    {ann.isi}
+                  </p>
+                  <div className="text-[8px] font-extrabold uppercase tracking-wide text-slate-400 pt-1 border-t border-slate-100/50">
+                    Oleh: {ann.dibuat_oleh}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       </div>
     </div>
   );

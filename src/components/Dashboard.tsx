@@ -319,7 +319,7 @@ export default function Dashboard({ students, onNavigateToForm, onNavigateToList
                 <Calendar className="w-3.5 h-3.5 text-sky-600" /> Registrasi Santri Terbaru
               </h3>
               <button
-                onClick={onNavigateToList}
+                onClick={() => onNavigateToList()}
                 className="text-sky-600 text-[11px] hover:underline font-bold cursor-pointer"
               >
                 Lihat Semua

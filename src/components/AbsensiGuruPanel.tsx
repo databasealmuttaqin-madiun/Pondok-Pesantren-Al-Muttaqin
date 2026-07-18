@@ -55,7 +55,7 @@ interface GuruSekolahProfile {
 
 export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps) {
   // Navigation sub-tab
-  const [activeSubTab, setActiveSubTab] = useState<"absensi" | "semua_guru">("absensi");
+  const [activeSubTab, setActiveSubTab] = useState<"absensi" | "mengajar" | "semua_guru">("absensi");
 
   // Location/Presence State
   const [location, setLocation] = useState<{lat: number, lng: number, accuracy: number} | null>(null);
@@ -171,20 +171,54 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   const fetchStudents = async () => {
     setLoadingStudents(true);
     try {
+      // Fetch school class mappings from supabase first
+      let schoolAssignments: Record<string, string> = {};
+      try {
+        const { data: dbSpace, error: spaceErr } = await supabase.from("kelas sekolah").select("nama, kelas");
+        if (!spaceErr && dbSpace) {
+          dbSpace.forEach((row: any) => {
+            if (row.nama) {
+              schoolAssignments[row.nama.trim().toLowerCase()] = row.kelas || "";
+            }
+          });
+        } else {
+          const { data: dbUnderline } = await supabase.from("kelas_sekolah").select("nama, kelas");
+          if (dbUnderline) {
+            dbUnderline.forEach((row: any) => {
+              if (row.nama) {
+                schoolAssignments[row.nama.trim().toLowerCase()] = row.kelas || "";
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal memuat mapping kelas sekolah di AbsensiGuruPanel:", err);
+      }
+
       const { data, error } = await supabase
         .from("santri")
         .select("*")
         .order("nama_lengkap", { ascending: true });
       
       if (data && !error) {
-        setStudents(data);
+        const savedMetadataMap = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
+        const mappedStudents = data.map((s: any) => {
+          const key = (s.nama_lengkap || "").trim().toLowerCase();
+          const localPlot = savedMetadataMap[s.nik] || {};
+          return {
+            ...s,
+            kelas_sekolah: schoolAssignments[key] || localPlot.kelas_sekolah || s.kelas_sekolah || ""
+          };
+        });
+        setStudents(mappedStudents);
+        localStorage.setItem("santri_data_mapped", JSON.stringify(mappedStudents));
         localStorage.setItem("santri_data", JSON.stringify(data));
       } else {
         throw new Error(error?.message || "No data");
       }
     } catch (e) {
       console.warn("Failed to fetch students from Supabase, loading local fallback", e);
-      const cached = localStorage.getItem("santri_data");
+      const cached = localStorage.getItem("santri_data_mapped") || localStorage.getItem("santri_data");
       if (cached) {
         try {
           setStudents(JSON.parse(cached));
@@ -1053,9 +1087,9 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
   // Filter profiles based on search
   const filteredProfiles = allProfiles.filter(p => 
-    p.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.nik.includes(searchQuery) ||
-    p.username.toLowerCase().includes(searchQuery.toLowerCase())
+    String(p.nama_lengkap || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    String(p.nik || "").includes(searchQuery) ||
+    String(p.username || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -2274,16 +2308,16 @@ CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah 
                       <span className="text-xs font-extrabold text-blue-900 dark:text-blue-300">Ringkasan Absensi Kelas {kelas}:</span>
                       <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
                         <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 rounded-full border border-emerald-200/50">
-                          Hadir: {students.filter(s => s.kelas_sekolah === kelas).filter(s => (attendanceMap[String(s.id || s.nama_lengkap)] || "Hadir") === "Hadir").length}
+                          Hadir: {students.filter(s => s?.kelas_sekolah === kelas).filter(s => (attendanceMap[String(s?.id || s?.nama_lengkap || "")] || "Hadir") === "Hadir").length}
                         </span>
                         <span className="px-2.5 py-0.5 bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 rounded-full border border-orange-200/50">
-                          Sakit: {students.filter(s => s.kelas_sekolah === kelas).filter(s => attendanceMap[String(s.id || s.nama_lengkap)] === "Sakit").length}
+                          Sakit: {students.filter(s => s?.kelas_sekolah === kelas).filter(s => attendanceMap[String(s?.id || s?.nama_lengkap || "")] === "Sakit").length}
                         </span>
                         <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 rounded-full border border-amber-200/50">
-                          Izin: {students.filter(s => s.kelas_sekolah === kelas).filter(s => attendanceMap[String(s.id || s.nama_lengkap)] === "Izin").length}
+                          Izin: {students.filter(s => s?.kelas_sekolah === kelas).filter(s => attendanceMap[String(s?.id || s?.nama_lengkap || "")] === "Izin").length}
                         </span>
                         <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 rounded-full border border-rose-200/50">
-                          Alfa: {students.filter(s => s.kelas_sekolah === kelas).filter(s => attendanceMap[String(s.id || s.nama_lengkap)] === "Alfa").length}
+                          Alfa: {students.filter(s => s?.kelas_sekolah === kelas).filter(s => attendanceMap[String(s?.id || s?.nama_lengkap || "")] === "Alfa").length}
                         </span>
                       </div>
                     </div>
@@ -2299,20 +2333,20 @@ CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah 
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {students
-                            .filter(s => s.kelas_sekolah === kelas)
-                            .filter(s => !studentSearchQuery || s.nama_lengkap.toLowerCase().includes(studentSearchQuery.toLowerCase()))
+                            .filter(s => s?.kelas_sekolah === kelas)
+                            .filter(s => !studentSearchQuery || String(s?.nama_lengkap || "").toLowerCase().includes(studentSearchQuery.toLowerCase()))
                             .map((student, idx) => {
-                              const sId = String(student.id || student.nama_lengkap);
+                              const sId = String(student?.id || student?.nama_lengkap || "");
                               const currentStatus = attendanceMap[sId] || "Hadir";
                               return (
                                 <tr key={student.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
                                   <td className="py-3 px-4">
                                     <div className="flex items-center gap-3">
                                       <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 uppercase shadow-inner">
-                                        {student.nama_lengkap.substr(0, 2)}
+                                        {String(student.nama_lengkap || "").substring(0, 2)}
                                       </div>
                                       <div>
-                                        <p className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{student.nama_lengkap}</p>
+                                        <p className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{student.nama_lengkap || "-"}</p>
                                         <p className="text-[10px] text-slate-400 font-semibold">NIK: {student.nik || "-"}</p>
                                       </div>
                                     </div>
@@ -2923,19 +2957,19 @@ CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah 
                     {guru.foto_diri ? (
                       <img 
                         src={guru.foto_diri} 
-                        alt={guru.nama_lengkap} 
+                        alt={String(guru.nama_lengkap || "")} 
                         className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-sm"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
                       <div className="w-20 h-20 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-extrabold text-xl shadow-inner border border-slate-300">
-                        {guru.nama_lengkap ? guru.nama_lengkap.charAt(0).toUpperCase() : "?"}
+                        {guru.nama_lengkap ? String(guru.nama_lengkap).charAt(0).toUpperCase() : "?"}
                       </div>
                     )}
 
                     {/* Basic Info */}
                     <div className="space-y-1">
-                      <h4 className="font-extrabold text-slate-800 text-base leading-tight">{guru.nama_lengkap}</h4>
+                      <h4 className="font-extrabold text-slate-800 text-base leading-tight">{guru.nama_lengkap || "-"}</h4>
                       <p className="text-xs text-slate-400 font-bold tracking-wide uppercase">ID: {guru.username}</p>
                       <p className="text-xs text-slate-600 font-medium">
                         Mapel: <span className="font-bold text-[#0c66e4]">{guru.mata_pelajaran || "Semua Mata Pelajaran"}</span>
