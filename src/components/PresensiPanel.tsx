@@ -4,7 +4,7 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 import { SantriData, supabase } from "../supabaseClient";
 import { parseNfcPayload, normalizeNfcId } from "./NfcRegisterPanel";
-import { BrowserQRCodeReader, IScannerControls } from "@zxing/browser";
+import { BrowserQRCodeReader, BrowserCodeReader, IScannerControls } from "@zxing/browser";
 import { 
   Calendar, 
   Search, 
@@ -335,6 +335,8 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     customMessage?: string;
   } | null>(null);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   const [scannerInputVal, setScannerInputVal] = useState("");
@@ -682,6 +684,44 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
   // Use a ref to always access the latest executeScan function without restarting the camera
   const executeScanRef = useRef<(code: string, medium: string) => void>(undefined);
 
+  // Hook for finding and listing all available camera devices
+  useEffect(() => {
+    if (isCameraActive) {
+      BrowserCodeReader.listVideoInputDevices()
+        .then((devices) => {
+          const videoDevices = devices.filter((device) => device.deviceId);
+          setAvailableCameras(videoDevices);
+          
+          if (videoDevices.length > 0) {
+            // Find rear/back camera
+            const backCamera = videoDevices.find((device) => {
+              const label = device.label.toLowerCase();
+              return (
+                label.includes("back") ||
+                label.includes("rear") ||
+                label.includes("environment") ||
+                label.includes("utama") ||
+                label.includes("belakang") ||
+                label.includes("facing back")
+              );
+            });
+            if (backCamera) {
+              setSelectedCameraId(backCamera.deviceId);
+            } else {
+              // Try choosing the last camera device (typically rear camera on Android)
+              setSelectedCameraId(videoDevices[videoDevices.length - 1].deviceId);
+            }
+          }
+        })
+        .catch((err) => {
+          console.error("Error listing cameras:", err);
+        });
+    } else {
+      setAvailableCameras([]);
+      setSelectedCameraId("");
+    }
+  }, [isCameraActive]);
+
   // Hook 1: Professional WebRTC Stream Handler with ZXing QR Scanner
   useEffect(() => {
     let controls: IScannerControls | null = null;
@@ -689,7 +729,11 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
 
     if (isCameraActive && isSessionOpen && videoRef.current) {
       codeReader = new BrowserQRCodeReader();
-      codeReader.decodeFromVideoDevice(undefined, videoRef.current, (result, error, controlsResult) => {
+      
+      // Use the selected camera id or let ZXing fallback to default rear camera
+      const deviceIdToUse = selectedCameraId || undefined;
+
+      codeReader.decodeFromVideoDevice(deviceIdToUse, videoRef.current, (result, error, controlsResult) => {
         if (controlsResult) {
           controls = controlsResult;
           // Trigger a re-render to hide the "Waiting for Camera..." UI if it's connected
@@ -714,7 +758,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         controls.stop();
       }
     };
-  }, [isCameraActive, isSessionOpen]);
+  }, [isCameraActive, isSessionOpen, selectedCameraId]);
 
   // Hook 2: Real device NDEFReader Scanner binding
   useEffect(() => {
@@ -1813,6 +1857,25 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
                     </div>
                   )}
                 </div>
+
+                {availableCameras.length > 1 && (
+                  <div className="space-y-1.5 text-left pt-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider select-none block">
+                      PILIH LENSA KAMERA (UNTUK ANDROID):
+                    </label>
+                    <select
+                      value={selectedCameraId}
+                      onChange={(e) => setSelectedCameraId(e.target.value)}
+                      className="w-full text-[11px] font-extrabold bg-[#1e293b] text-slate-200 border border-slate-700 rounded-xl px-3 py-2 outline-none focus:border-rose-500 transition-colors"
+                    >
+                      {availableCameras.map((camera, index) => (
+                        <option key={camera.deviceId} value={camera.deviceId} className="font-extrabold">
+                          📷 {camera.label || `Kamera ${index + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 

@@ -14,6 +14,7 @@ export default function ManajemenSesiPanel() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<SessionInfo | null>(null);
 
   // Form Fields
   const [namaSesi, setNamaSesi] = useState("");
@@ -104,32 +105,38 @@ export default function ManajemenSesiPanel() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDelete = async (id: string, label: string) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus sesi "${label}"?`)) {
-      try {
-        setIsLoading(true);
-        // Supabase DB modification
-        // If id is numeric it means it comes from DB, but we pass toString() 
-        // We actually map "sesi" to identify because user uses id.toString()
-        const isNumeric = !isNaN(Number(id)) && String(id).trim() !== "";
-        if (isNumeric) {
-          const { error } = await supabase.from('sesi_absensi').delete().eq('id', Number(id));
-          if (error) throw error;
-        } else {
-          // If it was fallback local session id, try delete by 'sesi' label
-          const { error } = await supabase.from('sesi_absensi').delete().eq('sesi', label);
-          if (error) throw error;
-        }
+  const confirmDelete = (sess: SessionInfo) => {
+    setSessionToDelete(sess);
+  };
 
-        const updated = sessions.filter(s => s.id !== id);
-        setSessions(updated);
-        localStorage.setItem("santri_absensi_sessions", JSON.stringify(updated));
-      } catch (err) {
-        console.warn(err);
-        alert("Gagal menghapus sesi. Pastikan izin database diatur dengan benar.");
-      } finally {
-        setIsLoading(false);
+  const executeDelete = async () => {
+    if (!sessionToDelete) return;
+    const { id, label } = sessionToDelete;
+
+    try {
+      setIsLoading(true);
+      const isNumeric = !isNaN(Number(id)) && String(id).trim() !== "";
+      
+      let supabaseErr;
+      if (isNumeric) {
+        const { error } = await supabase.from('sesi_absensi').delete().eq('id', Number(id));
+        supabaseErr = error;
+      } else {
+        const { error } = await supabase.from('sesi_absensi').delete().eq('sesi', label);
+        supabaseErr = error;
       }
+
+      if (supabaseErr) throw supabaseErr;
+
+      const updated = sessions.filter(s => s.id !== id);
+      setSessions(updated);
+      localStorage.setItem("santri_absensi_sessions", JSON.stringify(updated));
+      setSessionToDelete(null);
+    } catch (err: any) {
+      console.warn(err);
+      alert("Gagal menghapus sesi: " + err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -410,7 +417,7 @@ export default function ManajemenSesiPanel() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDelete(sess.id, sess.label)}
+                    onClick={() => confirmDelete(sess)}
                     className="p-2 text-slate-500 hover:text-rose-650 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950 border border-slate-200 dark:border-slate-700 hover:border-rose-200 rounded-xl transition-all cursor-pointer"
                     title="Hapus Sesi"
                   >
@@ -422,6 +429,51 @@ export default function ManajemenSesiPanel() {
           </div>
         )}
       </div>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {sessionToDelete && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm z-[100] transition-all animate-fade-in"
+          onClick={() => setSessionToDelete(null)}
+        >
+          <div 
+            className="w-full max-w-md bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-scale-up z-50 flex flex-col p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-rose-500 dark:text-rose-400">
+              <div className="w-10 h-10 rounded-full bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-450" />
+              </div>
+              <h3 className="text-base font-black text-slate-850 dark:text-white">
+                Konfirmasi Hapus Sesi
+              </h3>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-350 font-medium leading-relaxed">
+              Apakah Anda yakin ingin menghapus sesi <span className="font-extrabold text-slate-800 dark:text-white">"{sessionToDelete.label}"</span>? 
+              Tindakan ini akan menghapus opsi sesi ini dari daftar presensi harian santri secara permanen.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2 select-none">
+              <button
+                type="button"
+                onClick={() => setSessionToDelete(null)}
+                className="px-4 py-2.5 text-xs font-extrabold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                BATAL
+              </button>
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={executeDelete}
+                className={`bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider px-5 py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
+              >
+                <span>{isLoading ? "Menghapus..." : "Ya, Hapus Sesi"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between text-[9px] text-slate-405 font-bold select-none py-1 border-t border-slate-100 dark:border-slate-850 uppercase tracking-widest mt-2" id="session_mgr_footer">
         <span>SESSION SETUP ACTIVE</span>
