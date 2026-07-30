@@ -5,7 +5,7 @@ import { SantriData } from "../supabaseClient";
 interface SantriListProps {
   students: SantriData[];
   onEdit: (student: SantriData) => void;
-  onDelete: (id: number) => Promise<void>;
+  onDelete: (id: number, student?: SantriData) => Promise<void>;
   onUpdateStatus: (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang" | "Haid") => Promise<void>;
   initialFilterCategory?: string;
   initialFilterStatus?: string;
@@ -107,7 +107,7 @@ export default function SantriList({
   const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus);
   const [selectedStudent, setSelectedStudent] = useState<SantriData | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<SantriData | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewTab, setPreviewTab] = useState<"formulir" | "card">("formulir");
 
@@ -201,18 +201,20 @@ export default function SantriList({
     document.body.removeChild(link);
   };
 
-  const handleDeleteClick = (id: number) => {
-    setDeleteConfirmId(id);
+  const handleDeleteClick = (student: SantriData) => {
+    setDeleteConfirmTarget(student);
   };
 
   const confirmDelete = async () => {
-    if (deleteConfirmId !== null) {
+    if (deleteConfirmTarget) {
       setIsDeleting(true);
       try {
-        await onDelete(deleteConfirmId);
+        await onDelete(deleteConfirmTarget.id || 0, deleteConfirmTarget);
+      } catch (err) {
+        console.error("Gagal menghapus santri:", err);
       } finally {
         setIsDeleting(false);
-        setDeleteConfirmId(null);
+        setDeleteConfirmTarget(null);
       }
     }
   };
@@ -638,7 +640,7 @@ export default function SantriList({
                           {/* 2. Trash bin */}
                           {currentUserRole !== "guru_sekolah" && (
                             <button
-                              onClick={() => handleDeleteClick(s.id!)}
+                              onClick={() => handleDeleteClick(s)}
                               className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50/55 rounded-full transition-all cursor-pointer"
                               title="Hapus Data"
                             >
@@ -658,10 +660,10 @@ export default function SantriList({
       )}
 
       {/* 1. DELETE CONFIRMATION MODAL */}
-      {deleteConfirmId !== null && (
+      {deleteConfirmTarget !== null && (
         <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-500/75 transition-opacity" aria-hidden="true" onClick={() => setDeleteConfirmId(null)}></div>
+            <div className="fixed inset-0 bg-gray-500/75 transition-opacity" aria-hidden="true" onClick={() => setDeleteConfirmTarget(null)}></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <div className="bg-white px-6 pt-6 pb-4 sm:p-6 sm:pb-4">
@@ -671,9 +673,12 @@ export default function SantriList({
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                     <h3 className="text-lg leading-6 font-bold text-gray-900" id="modal-title">Hapus Data Santri</h3>
-                    <div className="mt-2 text-sm text-gray-500">
+                    <div className="mt-2 text-sm text-gray-500 space-y-1">
                       <p>
-                        Apakah Anda yakin ingin menghapus data santri ini secara permanen dari database pesantren? Tindakan ini <strong>tidak dapat dibatalkan</strong>.
+                        Apakah Anda yakin ingin menghapus data santri <strong className="text-slate-900">{deleteConfirmTarget.nama_lengkap}</strong> {deleteConfirmTarget.nik ? `(NIK: ${deleteConfirmTarget.nik})` : ""} secara permanen dari database pesantren?
+                      </p>
+                      <p className="text-red-600 text-xs font-semibold mt-1">
+                        Tindakan ini tidak dapat dibatalkan.
                       </p>
                     </div>
                   </div>
@@ -684,14 +689,14 @@ export default function SantriList({
                   type="button"
                   onClick={confirmDelete}
                   disabled={isDeleting}
-                  className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2.5 bg-red-600 text-base font-semibold text-white hover:bg-red-750 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                  className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2.5 bg-red-600 text-base font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 cursor-pointer"
                 >
                   {isDeleting ? "Menghapus..." : "Ya, Hapus Permanen"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDeleteConfirmId(null)}
-                  className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2.5 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 sm:mt-0 sm:w-auto sm:text-sm"
+                  onClick={() => setDeleteConfirmTarget(null)}
+                  className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2.5 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 sm:mt-0 sm:w-auto sm:text-sm cursor-pointer"
                 >
                   Batal
                 </button>

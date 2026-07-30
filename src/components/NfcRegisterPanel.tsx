@@ -279,13 +279,19 @@ export default function NfcRegisterPanel({
     return matchRoom && matchSearch;
   });
 
-  // Derive rooms dynamically from students array combined with the standard rooms meta array
-  const derivedRooms = Array.from(
-    new Set([
-      ...rooms,
-      ...students.map((s) => s.kamar || "").filter(Boolean)
-    ])
-  ).sort();
+  // Derive rooms dynamically from active rooms list
+  const derivedRooms = (() => {
+    if (rooms && rooms.length > 0) {
+      return Array.from(new Set(rooms.filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+      );
+    }
+    return Array.from(
+      new Set(students.map((s) => s.kamar || "").filter(Boolean))
+    ).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
+  })();
 
   // Get list of all students that already have registered NFC cards
   const studentsWithNfc = students.filter(

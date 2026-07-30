@@ -30,6 +30,7 @@ import {
 
 interface PresensiPanelProps {
   students: SantriData[];
+  rooms?: string[];
   activeMenu?: string; // made optional to support seamless transition to unified absensi menu
 }
 
@@ -132,7 +133,7 @@ function mapDbSessionToLocalSession(dbSesi: string, dbPresensi: string | undefin
   return dbSesi;
 }
 
-export default function PresensiPanel({ students }: PresensiPanelProps) {
+export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
   // Configured date & viewMode
   const [viewMode, setViewMode] = useState<"selection" | "attendance">("attendance");
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -1192,9 +1193,45 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
     return acc;
   }, [] as any);
 
-  const roomsList = Array.from(
-    new Set(hydratedStudentsList.map((s: any) => String(s.kamar)).filter(Boolean))
-  ).sort();
+  const roomsList = (() => {
+    let masterRooms: string[] = rooms && rooms.length > 0 ? rooms : [];
+    if (masterRooms.length === 0) {
+      try {
+        const saved = localStorage.getItem("manajemen_rooms");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            masterRooms = parsed;
+          }
+        }
+      } catch {}
+    }
+
+    if (masterRooms.length > 0) {
+      const map = new Map<string, string>();
+      masterRooms.forEach((r) => {
+        if (!r) return;
+        const trimmed = String(r).trim();
+        const key = trimmed.toLowerCase();
+        if (key && !map.has(key)) {
+          map.set(key, trimmed);
+        }
+      });
+      return Array.from(map.values()).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+      );
+    }
+
+    const set = new Set<string>();
+    hydratedStudentsList.forEach((s: any) => {
+      if (s.kamar && String(s.kamar).trim()) {
+        set.add(String(s.kamar).trim());
+      }
+    });
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
+  })();
 
   const kelasList = Array.from(
     new Set(students.map(s => s.kelas_sekolah).filter(Boolean))
@@ -1208,7 +1245,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
       (s.kamar || "").toLowerCase().includes(term);
 
     const matchCategory = categoryFilter === "All" || s.kategori === categoryFilter;
-    const matchRoom = roomFilter === "All" || s.kamar === roomFilter;
+    const matchRoom = roomFilter === "All" || (s.kamar || "").trim().toLowerCase() === roomFilter.trim().toLowerCase();
 
     return matchSearch && matchCategory && matchRoom;
   });
@@ -1489,7 +1526,7 @@ export default function PresensiPanel({ students }: PresensiPanelProps) {
         let head: string[][] = [];
 
         const pdfStudents = hydratedStudentsList.filter((s: any) => 
-          downloadOptions.kamar === "All" || s.kamar === downloadOptions.kamar
+          downloadOptions.kamar === "All" || (s.kamar || "").trim().toLowerCase() === downloadOptions.kamar.trim().toLowerCase()
         );
         
         if (rekapPresensiType === "makan" && tf === "harian") {

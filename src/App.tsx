@@ -543,7 +543,8 @@ export default function App() {
 
         const formattedList = hydrateWithAllStatusSources(data || [], cloudStatusMap, cloudPlottingMap, cloudNfcMap);
         setStudents(formattedList);
-        // Also save to localStorage as a background backup!
+        // Also save to localStorage as background backup!
+        localStorage.setItem("santri_data", JSON.stringify(formattedList));
         localStorage.setItem("santri_local_backup", JSON.stringify(formattedList));
       }
     } catch (e: any) {
@@ -995,26 +996,99 @@ export default function App() {
   };
 
   // Delete a Santri
-  const handleDeleteStudent = async (id: number) => {
+  const handleDeleteStudent = async (id?: number, student?: SantriData) => {
     try {
-      if (dbStatus === "connected") {
-        const { error } = await supabase
-          .from(TABLE_NAME)
-          .delete()
-          .eq("id", id);
+      const targetId = id && id > 0 ? id : student?.id;
+      const targetNik = student?.nik;
+      const targetName = student?.nama_lengkap?.trim();
 
-        if (error) throw error;
-        triggerNotification("Data santri terhapus dari cloud database", "success");
-        await checkConnectionAndLoad();
+      if (!targetId && !targetNik && !targetName) {
+        triggerNotification("Gagal menghapus: Identitas santri tidak valid", "error");
+        return;
+      }
+
+      // 1. Immediately update local state & storage for snappy UI response
+      const filterOut = (item: SantriData) => {
+        if (targetId && item.id === targetId) return false;
+        if (targetNik && item.nik === targetNik) return false;
+        if (targetName && item.nama_lengkap?.trim().toLowerCase() === targetName.toLowerCase()) return false;
+        return true;
+      };
+
+      const updated = students.filter(filterOut);
+      setStudents(updated);
+      localStorage.setItem("santri_data", JSON.stringify(updated));
+      localStorage.setItem("santri_local_backup", JSON.stringify(updated));
+
+      // Clean up local metadata & status override maps
+      if (targetNik) {
+        try {
+          const metaMap = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
+          delete metaMap[targetNik];
+          localStorage.setItem("santri_custom_metadata_map", JSON.stringify(metaMap));
+        } catch {}
+      }
+      if (targetName) {
+        try {
+          const statusMap = JSON.parse(localStorage.getItem("santri_status_map") || "{}");
+          delete statusMap[targetName.toLowerCase()];
+          delete statusMap[targetName];
+          localStorage.setItem("santri_status_map", JSON.stringify(statusMap));
+        } catch {}
+      }
+
+      // 2. Perform deletion on Supabase Cloud Database if connected
+      if (dbStatus === "connected") {
+        let isDeleted = false;
+
+        // Try Delete by ID first
+        if (targetId) {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .delete()
+            .eq("id", targetId);
+          if (!error) isDeleted = true;
+          else console.warn("Supabase delete by ID error:", error);
+        }
+
+        // Try Delete by NIK
+        if (targetNik) {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .delete()
+            .eq("nik", targetNik);
+          if (!error) isDeleted = true;
+          else console.warn("Supabase delete by NIK error:", error);
+        }
+
+        // Try Delete by Nama Lengkap
+        if (targetName) {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .delete()
+            .ilike("nama_lengkap", targetName);
+          if (!error) isDeleted = true;
+          else console.warn("Supabase delete by Nama error:", error);
+        }
+
+        // Clean up auxiliary tables in Supabase
+        if (targetName) {
+          await Promise.allSettled([
+            supabase.from("kamar").delete().ilike("nama", targetName),
+            supabase.from("kelas_pengajian").delete().ilike("nama", targetName),
+            supabase.from("kelas_sekolah").delete().ilike("nama", targetName),
+            supabase.from("kelas sekolah").delete().ilike("nama", targetName),
+            supabase.from("nfc").delete().ilike("nama", targetName),
+            supabase.from("status_siswa").delete().ilike("nama", targetName)
+          ]);
+        }
+
+        triggerNotification(`Data santri "${targetName || 'terpilih'}" berhasil dihapus secara permanen dari database`, "success");
       } else {
-        // Offline Fallback remove
-        const updated = students.filter((item) => item.id !== id);
-        setStudents(updated);
-        localStorage.setItem("santri_data", JSON.stringify(updated));
-        triggerNotification("Data santri dihapus secara lokal", "warning");
+        triggerNotification(`Data santri "${targetName || 'terpilih'}" dihapus dari penyimpanan lokal`, "warning");
       }
     } catch (e: any) {
-      console.error(e);
+      console.error("Gagal menghapus santri:", e);
       triggerNotification(`Tindakan gagal: ${e.message || "Kendala basis data."}`, "error");
     }
   };
@@ -1686,7 +1760,7 @@ export default function App() {
 
             {activeTab === "absensi" && (
               <div className="w-full">
-                <PresensiPanel students={displayedStudents} />
+                <PresensiPanel students={displayedStudents} rooms={rooms} />
               </div>
             )}
 

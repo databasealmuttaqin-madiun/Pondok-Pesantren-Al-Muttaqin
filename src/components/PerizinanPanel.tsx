@@ -49,13 +49,19 @@ export default function PerizinanPanel({
   const [showSqlGuide, setShowSqlGuide] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
-  // Consolidate rooms: defaults from props + any custom ones found on assigned students
-  const allRooms = Array.from(
-    new Set([
-      ...rooms, 
-      ...students.map(s => s.kamar).filter((k): k is string => !!k)
-    ])
-  ).sort();
+  // Active rooms list derived from props or master rooms list
+  const allRooms = (() => {
+    if (rooms && rooms.length > 0) {
+      return Array.from(new Set(rooms.filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+      );
+    }
+    return Array.from(
+      new Set(students.map(s => s.kamar).filter((k): k is string => !!k))
+    ).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
+  })();
 
   // Load status history records from status_siswa table
   const fetchStatusHistory = async () => {
