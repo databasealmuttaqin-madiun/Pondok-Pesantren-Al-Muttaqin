@@ -15,8 +15,9 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
 import ManajemenPondokPanel from "./components/ManajemenPondokPanel";
 import ManajemenSekolahPanel from "./components/ManajemenSekolahPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked } from "lucide-react";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, RotateCw } from "lucide-react";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
+import LandscapeNotice from "./components/LandscapeNotice";
 
 const DEMO_SANTRI: SantriData[] = [
   {
@@ -401,7 +402,7 @@ export default function App() {
           .select("nama, status");
         
         if (statusErr) {
-          console.error("Gagal mendapatkan status dari tabel status_siswa:", statusErr.message);
+          console.warn("Tabel status_siswa tidak ditemukan atau gagal dimuat (Abaikan jika tabel belum ada).");
         } else if (statusOverrides) {
           statusOverrides.forEach((row) => {
             if (row.nama && row.status) {
@@ -885,7 +886,7 @@ export default function App() {
                 .eq("id", existingStatus[0].id);
 
               if (error) {
-                console.error("Gagal memperbarui tabel status_siswa:", error.message);
+                console.warn("Gagal memperbarui tabel status_siswa:", error.message);
               } else {
                 triggerNotification(`Status diperbarui ke "${newStatus}" di Cloud Database`, "success");
                 return;
@@ -896,7 +897,7 @@ export default function App() {
                 .insert([{ nama: studentName, status: newStatus, created_at: new Date().toISOString() }]);
 
               if (error) {
-                console.error("Gagal menambahkan ke tabel status_siswa:", error.message);
+                console.warn("Gagal menambahkan ke tabel status_siswa:", error.message);
               } else {
                 triggerNotification(`Status ditambahkan ke "${newStatus}" di Cloud Database`, "success");
                 return;
@@ -1040,38 +1041,9 @@ export default function App() {
       // 2. Perform deletion on Supabase Cloud Database if connected
       if (dbStatus === "connected") {
         let isDeleted = false;
+        let deleteError: any = null;
 
-        // Try Delete by ID first
-        if (targetId) {
-          const { error } = await supabase
-            .from(TABLE_NAME)
-            .delete()
-            .eq("id", targetId);
-          if (!error) isDeleted = true;
-          else console.warn("Supabase delete by ID error:", error);
-        }
-
-        // Try Delete by NIK
-        if (targetNik) {
-          const { error } = await supabase
-            .from(TABLE_NAME)
-            .delete()
-            .eq("nik", targetNik);
-          if (!error) isDeleted = true;
-          else console.warn("Supabase delete by NIK error:", error);
-        }
-
-        // Try Delete by Nama Lengkap
-        if (targetName) {
-          const { error } = await supabase
-            .from(TABLE_NAME)
-            .delete()
-            .ilike("nama_lengkap", targetName);
-          if (!error) isDeleted = true;
-          else console.warn("Supabase delete by Nama error:", error);
-        }
-
-        // Clean up auxiliary tables in Supabase
+        // Clean up auxiliary tables first to avoid foreign key or reference leftovers
         if (targetName) {
           await Promise.allSettled([
             supabase.from("kamar").delete().ilike("nama", targetName),
@@ -1079,11 +1051,63 @@ export default function App() {
             supabase.from("kelas_sekolah").delete().ilike("nama", targetName),
             supabase.from("kelas sekolah").delete().ilike("nama", targetName),
             supabase.from("nfc").delete().ilike("nama", targetName),
-            supabase.from("status_siswa").delete().ilike("nama", targetName)
+            supabase.from("status_siswa").delete().ilike("nama", targetName),
           ]);
         }
 
-        triggerNotification(`Data santri "${targetName || 'terpilih'}" berhasil dihapus secara permanen dari database`, "success");
+        // Try Delete by ID
+        if (targetId) {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .delete()
+            .eq("id", targetId);
+
+          if (!error) {
+            isDeleted = true;
+          } else {
+            console.warn("Supabase delete by ID error:", error);
+            deleteError = error;
+          }
+        }
+
+        // Try Delete by NIK fallback
+        if (!isDeleted && targetNik) {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .delete()
+            .eq("nik", targetNik);
+
+          if (!error) {
+            isDeleted = true;
+          } else {
+            console.warn("Supabase delete by NIK error:", error);
+            if (!deleteError) deleteError = error;
+          }
+        }
+
+        // Try Delete by Nama Lengkap fallback
+        if (!isDeleted && targetName) {
+          const { error } = await supabase
+            .from(TABLE_NAME)
+            .delete()
+            .ilike("nama_lengkap", targetName);
+
+          if (!error) {
+            isDeleted = true;
+          } else {
+            console.warn("Supabase delete by Nama error:", error);
+            if (!deleteError) deleteError = error;
+          }
+        }
+
+        if (!isDeleted && deleteError) {
+          triggerNotification(`Gagal menghapus di database (${deleteError.code || 'RLS'}): ${deleteError.message || 'Izin database dibatasi (RLS Policy)'}`, "error");
+        } else {
+          triggerNotification(`Data santri "${targetName || 'terpilih'}" berhasil dihapus secara permanen`, "success");
+        }
+
+        // Re-sync with cloud database
+        await checkConnectionAndLoad();
       } else {
         triggerNotification(`Data santri "${targetName || 'terpilih'}" dihapus dari penyimpanan lokal`, "warning");
       }
@@ -1242,6 +1266,9 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-[#f3f6fc] dark:bg-[#080914] text-slate-800 dark:text-slate-100 font-sans overflow-hidden select-none transition-colors duration-300 relative z-10" id="boarding_school_app">
       
+      {/* LANDSCAPE ORIENTATION HELPER FOR MOBILE */}
+      <LandscapeNotice />
+
       {/* 0. FLOATING COSMIC BACKGROUND GRADIENTS & SHAPES */}
       <BackgroundDecorations isDarkMode={isDarkMode} />
       
@@ -1456,6 +1483,30 @@ export default function App() {
               {dbStatus === "connected" ? "Database: Terhubung" : dbStatus === "loading" ? "Koneksi..." : "Database: Offline"}
             </span>
             <span className="inline md:hidden">DB</span>
+          </button>
+
+          {/* Mobile Landscape Quick Switcher */}
+          <button
+            onClick={async () => {
+              try {
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                  await elem.requestFullscreen().catch(() => {});
+                } else if ((elem as any).webkitRequestFullscreen) {
+                  await (elem as any).webkitRequestFullscreen().catch(() => {});
+                }
+                if (window.screen && window.screen.orientation && "lock" in window.screen.orientation) {
+                  // @ts-ignore
+                  await window.screen.orientation.lock("landscape");
+                }
+              } catch (e) {
+                alert("Silakan aktifkan 'Auto-Rotate' di HP Anda dan miringkan perangkat ke posisi Landscape.");
+              }
+            }}
+            className="w-10 h-10 md:hidden rounded-xl flex items-center justify-center bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 active:scale-95 transition-all outline-none cursor-pointer"
+            title="Mode Landscape & Layar Penuh"
+          >
+            <RotateCw className="w-4 h-4" />
           </button>
 
           {/* Day/Night Mode Toggle selector switch */}

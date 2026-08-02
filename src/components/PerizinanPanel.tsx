@@ -79,7 +79,7 @@ export default function PerizinanPanel({
       setStatusHistory(data || []);
       setConnectionError(null);
     } catch (e: any) {
-      console.error("Gagal mengambil data status_siswa:", e);
+      console.warn("Gagal mengambil data status_siswa:", e.message);
       setConnectionError(e.message || "Tabel status_siswa tidak terhubung / tidak ditemukan");
       // Fallback local storage
       const savedOverwrites = JSON.parse(localStorage.getItem("santri_status_map") || "{}");
