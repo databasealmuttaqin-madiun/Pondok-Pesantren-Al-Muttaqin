@@ -43,8 +43,10 @@ async function startServer() {
     console.log(`[ESP32 NFC] Card Tapped: ${cleanUid} from ${deviceId}`);
     res.json({
       success: true,
-      message: "NFC card tap registered successfully",
+      status: true,
+      message: "Berhasil Membaca Kartu",
       card_uid: cleanUid,
+      uid: cleanUid,
       device_id: deviceId,
       timestamp: latestNfcTap.timestamp
     });
