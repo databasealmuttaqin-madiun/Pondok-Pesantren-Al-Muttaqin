@@ -14,24 +14,6 @@ body {
   background-color: #fcfcfd;
 }
 
-@keyframes spinSlow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes bounceSubtle {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-.animate-spin-slow {
-  animation: spinSlow 8s linear infinite;
-}
-
-.animate-bounce-subtle {
-  animation: bounceSubtle 3s ease-in-out infinite;
-}
-
 /* Custom Scrollbar Styles: Ultra-thin, auto-hides when not hovered/touched, and hides the arrow scroll buttons */
 ::-webkit-scrollbar {
   width: 5px; /* Thinner vertical scrollbar */

@@ -124,25 +124,51 @@ export default function ManajemenSekolahPanel({
 
   const fetchTeachers = async () => {
     try {
-      const { data, error } = await supabase
+      let teacherMap = new Map<string, { username: string; nama: string }>();
+
+      // 1. Fetch from 'guru' table
+      const { data: dbGuru } = await supabase.from("guru").select("username, nama_lengkap, nama");
+      if (dbGuru && dbGuru.length > 0) {
+        dbGuru.forEach((g: any) => {
+          if (g.username) {
+            teacherMap.set(g.username.toLowerCase(), {
+              username: g.username,
+              nama: g.nama_lengkap || g.nama || g.username
+            });
+          }
+        });
+      }
+
+      // 2. Fetch from 'pengguna' table
+      const { data: dbPengguna } = await supabase
         .from("pengguna")
-        .select("username, nama, role")
-        .eq("role", "guru_sekolah");
-      if (!error && data) {
-        setTeachers(data);
-      } else {
-        // Fallback or read all users if role filter fails
-        const { data: allUsers } = await supabase.from("pengguna").select("username, nama");
-        if (allUsers) setTeachers(allUsers);
+        .select("username, nama, role, jabatan");
+
+      if (dbPengguna && dbPengguna.length > 0) {
+        dbPengguna.forEach((u: any) => {
+          const isTeacher =
+            u.role === "guru_sekolah" ||
+            u.role === "guru_pondok" ||
+            (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
+
+          if (isTeacher && u.username) {
+            const key = u.username.toLowerCase();
+            if (!teacherMap.has(key)) {
+              teacherMap.set(key, {
+                username: u.username,
+                nama: u.nama || u.username
+              });
+            }
+          }
+        });
+      }
+
+      const list = Array.from(teacherMap.values());
+      if (list.length > 0) {
+        setTeachers(list);
       }
     } catch (e) {
       console.warn("Failed to fetch teachers:", e);
-      // Fallback
-      setTeachers([
-        { username: "guru1", nama: "Ust. Ahmad Syarifuddin, S.Pd." },
-        { username: "guru2", nama: "Ustz. Siti Rahma, S.Pd." },
-        { username: "guru3", nama: "Ust. M. Ridwan, M.Pd." }
-      ]);
     }
   };
 
@@ -631,12 +657,12 @@ export default function ManajemenSekolahPanel({
                   {isDropdownOpen && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
                       {students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 ? (
-                        students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).map((student) => {
+                        students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).map((student, sIdx) => {
                           const clsVal = student.kelas_sekolah || "Belum ada kelas";
                           const isSelected = selectedNik === student.nik;
                           return (
                             <div
-                              key={student.nik}
+                              key={`sch-st-dd-${student.nik || student.id || sIdx}-${sIdx}`}
                               onClick={() => {
                                 setSelectedNik(student.nik);
                                 setSearchQuery(`${student.nama_lengkap} (${clsVal})`);
@@ -721,7 +747,7 @@ export default function ManajemenSekolahPanel({
                               <p className="text-[10px] text-slate-400 italic py-1 font-medium">Kosong (belum ada siswa)</p>
                             ) : (
                               mapped.map((siswa, idx) => (
-                                <div key={siswa.nik} className="flex justify-between items-center text-[11px] py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1">
+                                <div key={`sch-cls-st-${siswa.nik || siswa.id || idx}-${idx}`} className="flex justify-between items-center text-[11px] py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1">
                                   <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
                                     {idx + 1}. {siswa.nama_lengkap}
                                   </span>

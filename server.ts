@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 
@@ -7,6 +7,78 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // In-memory store for ESP32 + RC522 NFC events
+  let latestNfcTap: { uid: string; device_id: string; timestamp: number } | null = null;
+  const sseClients: Response[] = [];
+
+  // 1. Endpoint for ESP32 RC522 HTTP Tap (Accepts POST / GET query or body)
+  const handleNfcTap = (req: Request, res: Response) => {
+    const cardUid = req.body?.card_uid || req.body?.uid || req.query?.card_uid || req.query?.uid;
+    const deviceId = req.body?.device_id || req.query?.device_id || "ESP32_RC522";
+
+    if (!cardUid) {
+      res.status(400).json({ success: false, message: "card_uid or uid parameter required" });
+      return;
+    }
+
+    const cleanUid = String(cardUid).trim().toUpperCase();
+    latestNfcTap = {
+      uid: cleanUid,
+      device_id: String(deviceId),
+      timestamp: Date.now()
+    };
+
+    // Broadcast to all SSE connected browsers instantly
+    const sseData = `data: ${JSON.stringify(latestNfcTap)}\n\n`;
+    for (let i = sseClients.length - 1; i >= 0; i--) {
+      try {
+        sseClients[i].write(sseData);
+      } catch (err) {
+        sseClients.splice(i, 1);
+      }
+    }
+
+    console.log(`[ESP32 NFC] Card Tapped: ${cleanUid} from ${deviceId}`);
+    res.json({
+      success: true,
+      message: "NFC card tap registered successfully",
+      card_uid: cleanUid,
+      device_id: deviceId,
+      timestamp: latestNfcTap.timestamp
+    });
+  };
+
+  app.post("/api/nfc/tap", handleNfcTap);
+  app.get("/api/nfc/tap", handleNfcTap);
+
+  // 2. Endpoint to fetch latest tapped NFC
+  app.get("/api/nfc/latest", (req, res) => {
+    res.json({
+      success: true,
+      latestTap: latestNfcTap
+    });
+  });
+
+  // 3. SSE Stream endpoint for real-time live push to browser
+  app.get("/api/nfc/stream", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    if (latestNfcTap) {
+      res.write(`data: ${JSON.stringify(latestNfcTap)}\n\n`);
+    }
+
+    sseClients.push(res);
+
+    req.on("close", () => {
+      const index = sseClients.indexOf(res);
+      if (index !== -1) sseClients.splice(index, 1);
+    });
+  });
 
   // API Route for Admin Login
   app.post("/api/login", (req, res) => {

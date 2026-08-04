@@ -658,6 +658,34 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   const fetchMyProfile = async () => {
     if (!currentUser?.username) return;
     try {
+      // Try table 'guru' first
+      const { data: guruData } = await supabase
+        .from("guru")
+        .select("*")
+        .eq("username", currentUser.username)
+        .maybeSingle();
+
+      if (guruData) {
+        const localProfileKey = `guru_profile_${currentUser.username}`;
+        const cached = localStorage.getItem(localProfileKey);
+        let localMapel = "";
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            localMapel = parsed.mata_pelajaran || "";
+          } catch {}
+        }
+        const mergedData = {
+          ...guruData,
+          mata_pelajaran: guruData.mata_pelajaran || localMapel || ""
+        };
+        setProfile(mergedData);
+        setProfileDbError(false);
+        localStorage.setItem(localProfileKey, JSON.stringify(mergedData));
+        return;
+      }
+
+      // Secondary fallback: 'guru_sekolah'
       const { data, error } = await supabase
         .from("guru_sekolah")
         .select("*")
@@ -696,18 +724,68 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
   const fetchAllProfiles = async () => {
     try {
-      const { data, error } = await supabase
-        .from("guru_sekolah")
+      let combinedMap = new Map<string, any>();
+
+      // 1. Fetch from 'guru' table
+      const { data: guruData } = await supabase
+        .from("guru")
         .select("*")
         .order("nama_lengkap", { ascending: true });
 
-      if (error) {
-        if (error.message?.includes("relation \"guru_sekolah\" does not exist")) {
-          setProfileDbError(true);
+      if (guruData && guruData.length > 0) {
+        guruData.forEach((g: any) => {
+          const key = (g.username || "").toLowerCase() || `guru_${g.id}`;
+          combinedMap.set(key, g);
+        });
+      } else {
+        // Fallback to guru_sekolah if guru table empty
+        const { data: gsData } = await supabase
+          .from("guru_sekolah")
+          .select("*")
+          .order("nama_lengkap", { ascending: true });
+        if (gsData) {
+          gsData.forEach((g: any) => {
+            const key = (g.username || "").toLowerCase() || `gs_${g.id}`;
+            combinedMap.set(key, g);
+          });
         }
-      } else if (data) {
-        setAllProfiles(data);
-        localStorage.setItem("guru_sekolah_all_profiles", JSON.stringify(data));
+      }
+
+      // 2. Fetch from 'pengguna' table for teachers
+      const { data: penggunaData } = await supabase
+        .from("pengguna")
+        .select("*");
+
+      if (penggunaData && penggunaData.length > 0) {
+        penggunaData.forEach((u: any) => {
+          const isTeacher =
+            u.role === "guru_pondok" ||
+            u.role === "guru_sekolah" ||
+            (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
+
+          if (isTeacher && u.username) {
+            const key = u.username.toLowerCase();
+            if (!combinedMap.has(key)) {
+              combinedMap.set(key, {
+                id: u.id,
+                username: u.username,
+                nama_lengkap: u.nama || u.username,
+                jenis_kelamin: u.gender || "L",
+                mata_pelajaran: u.tugas_mapel || "",
+                nomor_seluler: u.no_hp || "",
+                role: u.role || "guru_sekolah",
+                bagian: u.bagian || "sekolah",
+                jabatan: u.jabatan || "Guru Pengajar"
+              });
+            }
+          }
+        });
+      }
+
+      const listProfiles = Array.from(combinedMap.values());
+      if (listProfiles.length > 0) {
+        setAllProfiles(listProfiles);
+        localStorage.setItem("guru_sekolah_all_profiles", JSON.stringify(listProfiles));
       }
     } catch (err) {
       console.warn("Failed to fetch all profiles", err);
@@ -941,6 +1019,20 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         foto_diri: profile.foto_diri,
         mata_pelajaran: profile.mata_pelajaran || ""
       };
+
+      // Upsert to primary 'guru' table
+      const guruPayload = {
+        username: profile.username,
+        nama_lengkap: profile.nama_lengkap,
+        nik: profile.nik,
+        jenis_kelamin: profile.jenis_kelamin,
+        tempat_lahir: profile.tempat_lahir,
+        tanggal_lahir: profile.tanggal_lahir,
+        alamat_pribadi: profile.alamat_pribadi,
+        nomor_seluler: profile.nomor_seluler,
+        foto_diri: profile.foto_diri
+      };
+      await supabase.from("guru").upsert([guruPayload], { onConflict: "username" });
 
       let { error } = await supabase
         .from("guru_sekolah")
@@ -1336,65 +1428,18 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         )}
       </div>
 
-      {/* SQL SCHEMA WARNING HELPER BOX (If database table doesn't exist yet) */}
+      {/* CONNECTION ALERT FOR GURU_SEKOLAH */}
       {profileDbError && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 shadow-sm space-y-4 animate-fade-in">
-          <div className="flex gap-3">
-            <AlertTriangle className="text-amber-600 flex-shrink-0 w-6 h-6 mt-0.5 animate-bounce" />
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-sm animate-fade-in">
+          <div className="flex gap-3 items-center">
+            <AlertTriangle className="text-amber-600 flex-shrink-0 w-5 h-5" />
             <div>
-              <h4 className="font-black text-amber-900 text-sm">💡 Tabel 'guru_sekolah' Belum Dibuat di Supabase</h4>
-              <p className="text-xs text-amber-800 leading-relaxed mt-1">
-                Sistem saat ini menggunakan <strong>Mode Simulasi Offline (Local Browser)</strong>. Untuk mengaktifkan sinkronisasi database cloud Supabase, administrator hanya perlu menyalin query SQL berikut lalu menjalankannya di SQL Editor pada dashboard Supabase Anda.
+              <h4 className="font-extrabold text-amber-900 text-xs">Mode Penyimpanan Lokal Sementara (Offline)</h4>
+              <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
+                Data presensi guru saat ini tersimpan di penyimpanan lokal browser.
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-200">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(`-- KODE SQL UNTUK TABEL GURU_SEKOLAH
-CREATE TABLE IF NOT EXISTS guru_sekolah (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    username TEXT NOT NULL UNIQUE,
-    nama_lengkap TEXT NOT NULL,
-    nik TEXT NOT NULL,
-    jenis_kelamin TEXT NOT NULL,
-    tempat_lahir TEXT NOT NULL,
-    tanggal_lahir TEXT NOT NULL,
-    alamat_pribadi TEXT NOT NULL,
-    nomor_seluler TEXT NOT NULL,
-    foto_diri TEXT NOT NULL
-);
-
--- Mengaktifkan Row Level Security (RLS) agar dapat diakses dari frontend web
-ALTER TABLE guru_sekolah ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Akses Publik Guru Sekolah Seluruh Operasi" ON guru_sekolah;
-CREATE POLICY "Akses Publik Guru Sekolah Seluruh Operasi" ON guru_sekolah 
-    AS PERMISSIVE FOR ALL TO public USING (true) WITH CHECK (true);`);
-                setCopiedSql(true);
-                setTimeout(() => setCopiedSql(false), 2000);
-              }}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-black text-xs px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
-            >
-              {copiedSql ? "✓ SQL Berhasil Disalin!" : "Salin Query SQL Pembuat Tabel"}
-            </button>
-            <button
-              onClick={() => setShowSqlGuide(!showSqlGuide)}
-              className="bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
-            >
-              {showSqlGuide ? "Sembunyikan Panduan 🙈" : "Lihat Petunjuk 📖"}
-            </button>
-          </div>
-          {showSqlGuide && (
-            <div className="bg-slate-900 text-slate-200 rounded-xl p-4 text-xs font-mono space-y-2 mt-2 leading-relaxed">
-              <p className="font-bold text-amber-400">Petunjuk Pemasangan Tabel Supabase:</p>
-              <ol className="list-decimal list-inside space-y-1.5 text-slate-300">
-                <li>Buka dashboard Supabase proyek Anda.</li>
-                <li>Klik ikon <strong className="text-white">"SQL Editor"</strong> di panel sebelah kiri.</li>
-                <li>Klik tombol <strong className="text-white">"New Query"</strong>, tempel (paste) kode SQL yang disalin, dan klik tombol <strong className="text-white">"Run"</strong>.</li>
-              </ol>
-            </div>
-          )}
         </div>
       )}
 
@@ -1973,132 +2018,6 @@ CREATE POLICY "Akses Publik Guru Sekolah Seluruh Operasi" ON guru_sekolah
             </div>
           </div>
 
-          {/* PETUNJUK & PERSIAPAN DATABASE HELPER ACCORDION */}
-          <div className="bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Info className="text-blue-600 dark:text-blue-400 w-5 h-5 flex-shrink-0" />
-                <div>
-                  <h4 className="font-extrabold text-slate-800 dark:text-slate-200 text-sm">💡 Panduan Persiapan Database & Sinkronisasi Cloud</h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Petunjuk penting untuk administrator dalam menyiapkan tabel Supabase agar fitur tab mengajar sinkron otomatis.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowSqlGuide(!showSqlGuide)}
-                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0c66e4] text-xs font-bold rounded-lg transition-colors cursor-pointer"
-              >
-                {showSqlGuide ? "Sembunyikan SQL" : "Tampilkan SQL"}
-              </button>
-            </div>
-
-            {showSqlGuide && (
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 animate-fade-in">
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Jika Anda menggunakan database Cloud Supabase, jalankan script SQL di bawah ini pada menu <strong>SQL Editor</strong> di dashboard Supabase Anda. Apabila tabel belum dibuat, sistem secara cerdas akan menyimpan seluruh laporan mengajar dan absensi secara offline di memori browser guru.
-                </p>
-                <div className="relative">
-                  <pre className="bg-slate-950 text-emerald-400 p-4 rounded-xl text-[10px] md:text-xs font-mono overflow-x-auto max-h-60 leading-relaxed shadow-inner">
-{`-- SQL UNTUK FITUR TAB MENGAJAR & ABSENSI SEKOLAH
-CREATE TABLE IF NOT EXISTS jurnal_mengajar (
-  id BIGSERIAL PRIMARY KEY,
-  hari TEXT NOT NULL,
-  tanggal DATE NOT NULL,
-  kelas TEXT NOT NULL,
-  semester TEXT NOT NULL,
-  tahun_ajaran TEXT NOT NULL,
-  jam_pelajaran TEXT NOT NULL,
-  mata_pelajaran TEXT,
-  materi_pokok TEXT NOT NULL,
-  tujuan_pembelajaran TEXT,
-  evaluasi TEXT,
-  kendala TEXT,
-  rencana_perbaikan TEXT,
-  foto_pembelajaran TEXT, -- Menyimpan Base64 Image terkompresi
-  guru_nama TEXT NOT NULL,
-  guru_username TEXT NOT NULL,
-  attendance_summary TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS absensi_sekolah (
-  id BIGSERIAL PRIMARY KEY,
-  jurnal_id BIGINT REFERENCES jurnal_mengajar(id) ON DELETE CASCADE,
-  tanggal DATE NOT NULL,
-  kelas TEXT NOT NULL,
-  santri_id BIGINT NOT NULL,
-  nama_santri TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('Hadir', 'Sakit', 'Izin', 'Alfa')),
-  guru_username TEXT NOT NULL,
-  mata_pelajaran TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- AKTIFKAN ROW LEVEL SECURITY (RLS) UNTUK KEAMANAN
-ALTER TABLE jurnal_mengajar ENABLE ROW LEVEL SECURITY;
-ALTER TABLE absensi_sekolah ENABLE ROW LEVEL SECURITY;
-
--- BUAT POLICY AKSES PUBLIK OPERASI LENGKAP (SESUAI DENGAN DESAIN SIMPLE APP)
-CREATE POLICY "Akses Publik Jurnal Seluruh Operasi" ON jurnal_mengajar FOR ALL TO public USING (true) WITH CHECK (true);
-CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah FOR ALL TO public USING (true) WITH CHECK (true);`}
-                  </pre>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(`CREATE TABLE IF NOT EXISTS jurnal_mengajar (
-  id BIGSERIAL PRIMARY KEY,
-  hari TEXT NOT NULL,
-  tanggal DATE NOT NULL,
-  kelas TEXT NOT NULL,
-  semester TEXT NOT NULL,
-  tahun_ajaran TEXT NOT NULL,
-  jam_pelajaran TEXT NOT NULL,
-  mata_pelajaran TEXT,
-  materi_pokok TEXT NOT NULL,
-  tujuan_pembelajaran TEXT,
-  evaluasi TEXT,
-  kendala TEXT,
-  rencana_perbaikan TEXT,
-  foto_pembelajaran TEXT,
-  guru_nama TEXT NOT NULL,
-  guru_username TEXT NOT NULL,
-  attendance_summary TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS absensi_sekolah (
-  id BIGSERIAL PRIMARY KEY,
-  jurnal_id BIGINT REFERENCES jurnal_mengajar(id) ON DELETE CASCADE,
-  tanggal DATE NOT NULL,
-  kelas TEXT NOT NULL,
-  santri_id BIGINT NOT NULL,
-  nama_santri TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('Hadir', 'Sakit', 'Izin', 'Alfa')),
-  guru_username TEXT NOT NULL,
-  mata_pelajaran TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE jurnal_mengajar ENABLE ROW LEVEL SECURITY;
-ALTER TABLE absensi_sekolah ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Akses Publik Jurnal Seluruh Operasi" ON jurnal_mengajar FOR ALL TO public USING (true) WITH CHECK (true);
-CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah FOR ALL TO public USING (true) WITH CHECK (true);`);
-                      MySwal.fire({
-                        icon: "success",
-                        title: "Query SQL Berhasil Disalin!",
-                        text: "Silakan paste query ini di SQL Editor dashboard Supabase Anda.",
-                        timer: 2000,
-                        showConfirmButton: false
-                      });
-                    }}
-                    className="absolute top-2 right-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer border border-slate-700"
-                  >
-                    Salin Script SQL
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* TAB MENGAJAR: SUB-VIEW INPUT */}
           {mengajarTab === "input" && (
             <form onSubmit={handleSaveJournal} className="space-y-6">
@@ -2339,7 +2258,7 @@ CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah 
                               const sId = String(student?.id || student?.nama_lengkap || "");
                               const currentStatus = attendanceMap[sId] || "Hadir";
                               return (
-                                <tr key={student.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                                <tr key={`abs-st-${student?.id || student?.nik || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
                                   <td className="py-3 px-4">
                                     <div className="flex items-center gap-3">
                                       <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 uppercase shadow-inner">
@@ -2950,8 +2869,8 @@ CREATE POLICY "Akses Publik Absensi Sekolah Seluruh Operasi" ON absensi_sekolah 
           {/* Grid of Profiles */}
           {filteredProfiles.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredProfiles.map((guru) => (
-                <div key={guru.id || guru.username} className="border border-slate-150 rounded-xl p-5 hover:shadow-md transition-all space-y-4 bg-slate-50/50">
+              {filteredProfiles.map((guru, idx) => (
+                <div key={`absensi-guru-${guru.id || guru.username || idx}-${idx}`} className="border border-slate-150 rounded-xl p-5 hover:shadow-md transition-all space-y-4 bg-slate-50/50">
                   <div className="flex items-start gap-4">
                     {/* Avatar */}
                     {guru.foto_diri ? (

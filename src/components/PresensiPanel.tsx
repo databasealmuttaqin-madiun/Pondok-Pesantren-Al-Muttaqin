@@ -25,8 +25,11 @@ import {
   X,
   MessageSquare,
   Trash2,
-  Send
+  Send,
+  Cpu
 } from "lucide-react";
+import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
+import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
 
 interface PresensiPanelProps {
   students: SantriData[];
@@ -309,6 +312,18 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
   const [isNfcActive, setIsNfcActive] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showNfcErrorModal, setShowNfcErrorModal] = useState(false);
+
+  // ESP32 RC522 Reader State & Hook for attendance scanning
+  const [showEsp32GuideModal, setShowEsp32GuideModal] = useState(false);
+
+  const { wifiStatus, isSerialConnected } = useEsp32NfcListener({
+    onCardTapped: (uid) => {
+      if (executeScanRef.current) {
+        executeScanRef.current(uid, "nfc");
+      }
+    },
+    enabled: true
+  });
   const [isManualDate, setIsManualDate] = useState(false);
   const [rekapTimeframe, setRekapTimeframe] = useState<"harian" | "mingguan" | "bulanan">("harian");
   const [rekapPresensiType, setRekapPresensiType] = useState<string>("sholat");
@@ -1775,6 +1790,17 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
             </button>
           )}
 
+          {/* ESP32 Hardware Reader Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setShowEsp32GuideModal(true)}
+            className="flex items-center gap-2 px-4 py-3 rounded-2xl border text-[10.5px] font-black uppercase tracking-wider transition-all duration-150 cursor-pointer shadow-sm bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100"
+            title="Klik untuk melihat skema & setting ESP32 RC522 Reader"
+          >
+            <Cpu className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>ESP32 Reader {wifiStatus === "connected" || isSerialConnected ? "🟢" : "⚙️"}</span>
+          </button>
+
           {/* Camera Barcode Scanner Trigger Button */}
           <button
             type="button"
@@ -3172,6 +3198,17 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
           </div>
         </div>
       )}
+
+      {/* ESP32 Guide & Wiring Modal */}
+      <Esp32NfcGuideModal
+        isOpen={showEsp32GuideModal}
+        onClose={() => setShowEsp32GuideModal(false)}
+        onSimulateTap={(uid) => {
+          if (executeScanRef.current) {
+            executeScanRef.current(uid, "nfc");
+          }
+        }}
+      />
 
     </div>
   );

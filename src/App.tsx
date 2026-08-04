@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, SantriData, TABLE_NAME, formatSantriData } from "./supabaseClient";
 import RegistrationForm from "./components/RegistrationForm";
 import SantriList from "./components/SantriList";
@@ -15,108 +15,22 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
 import ManajemenPondokPanel from "./components/ManajemenPondokPanel";
 import ManajemenSekolahPanel from "./components/ManajemenSekolahPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, RotateCw } from "lucide-react";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, Search, ClipboardList, Moon, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, User, Users, UserMinus, Award, ShieldAlert, Bell } from "lucide-react";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
-import LandscapeNotice from "./components/LandscapeNotice";
+import DaftarWargaPanel from "./components/DaftarWargaPanel";
+import SiswaLulusMutasiPanel from "./components/SiswaLulusMutasiPanel";
+import PelanggaranPanel from "./components/PelanggaranPanel";
 
-const DEMO_SANTRI: SantriData[] = [
-  {
-    id: 1,
-    kategori: "SMP",
-    nama_lengkap: "Muhammad Ali Syihab",
-    nama_panggilan: "Ali",
-    nik: "3506121408100001",
-    nisn: "0102948576",
-    tempat_lahir: "Kediri",
-    tanggal_lahir: "2011-08-14",
-    alamat: "Jl. Joyoboyo No. 42, Dusun Klopo",
-    rt: "002",
-    rw: "004",
-    desa_kelurahan: "Gampeng",
-    kecamatan: "Gampengrejo",
-    kabupaten_kota: "Kediri",
-    provinsi: "Jawa Timur",
-    nama_ayah: "Ahmad Syihabuddin",
-    nama_ibu: "Siti Aminah",
-    kelompok_sambung: "Kelompok Gampeng",
-    desa_sambung: "Gampeng Barat",
-    daerah: "Kediri",
-    jenis_kelamin: "L",
-    created_at: new Date(Date.now() - 3600000 * 24 * 3).toISOString()
-  },
-  {
-    id: 2,
-    kategori: "SMA",
-    nama_lengkap: "Salsabila Azzahra",
-    nama_panggilan: "Salsa",
-    nik: "3506135211090002",
-    nisn: "0083948512",
-    tempat_lahir: "Malang",
-    tanggal_lahir: "2009-11-12",
-    alamat: "Dusun Purworejo RT 012 RW 003",
-    rt: "012",
-    rw: "003",
-    desa_kelurahan: "Purworejo",
-    kecamatan: "Donomulyo",
-    kabupaten_kota: "Malang",
-    provinsi: "Jawa Timur",
-    nama_ayah: "Joko Susilo",
-    nama_ibu: "Tri Wahyuni",
-    kelompok_sambung: "Kelompok Purworejo",
-    desa_sambung: "Donomulyo",
-    daerah: "Malang",
-    jenis_kelamin: "P",
-    created_at: new Date(Date.now() - 3600000 * 24 * 1).toISOString()
-  },
-  {
-    id: 3,
-    kategori: "Reguler",
-    nama_lengkap: "Ahmad Dhika Prasetya",
-    nama_panggilan: "Dhika",
-    nik: "3404111502120003",
-    npsn: "20439481",
-    tempat_lahir: "Surabaya",
-    tanggal_lahir: "2012-02-15",
-    alamat: "Gg. Masjid Baiturrohman No. 9",
-    rt: "001",
-    rw: "002",
-    desa_kelurahan: "Wonokromo",
-    kecamatan: "Wonokromo",
-    kabupaten_kota: "Surabaya",
-    provinsi: "Jawa Timur",
-    nama_ayah: "Bambang Prasetyo",
-    nama_ibu: "Sri Lestari",
-    kelompok_sambung: "Kelompok Wonokromo Baru",
-    desa_sambung: "Wonokromo Makmur",
-    daerah: "Surabaya",
-    jenis_kelamin: "L",
-    created_at: new Date(Date.now() - 3600000 * 12).toISOString()
-  },
-  {
-    id: 4,
-    kategori: "SMA",
-    nama_lengkap: "Fatimah Az-Zahra",
-    nama_panggilan: "Fatimah",
-    nik: "3173054106100004",
-    nisn: "0103948518",
-    tempat_lahir: "Jakarta Pusat",
-    tanggal_lahir: "2010-06-01",
-    alamat: "Jl. Kramat Raya No. 101",
-    rt: "004",
-    rw: "001",
-    desa_kelurahan: "Senen",
-    kecamatan: "Senen",
-    kabupaten_kota: "Jakarta Pusat",
-    provinsi: "DKI Jakarta",
-    nama_ayah: "Abdurrahman",
-    nama_ibu: "Khadijah",
-    kelompok_sambung: "Kelompok Senen Barat",
-    desa_sambung: "Jakarta Pusat",
-    daerah: "Jakarta",
-    jenis_kelamin: "P",
-    created_at: new Date().toISOString()
+const DEMO_SANTRI: SantriData[] = [];
+
+const getInitials = (name?: string) => {
+  if (!name) return "A";
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
-];
+  return name.slice(0, 2).toUpperCase();
+};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<{
@@ -147,7 +61,13 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap">("dashboard");
+  const [isDataWargaExpanded, setIsDataWargaExpanded] = useState(false);
+  const [isPelanggaranExpanded, setIsPelanggaranExpanded] = useState(false);
+  const [hoveredFlyout, setHoveredFlyout] = useState<"data_warga" | "pelanggaran" | null>(null);
+  const [mobileDataWargaOpen, setMobileDataWargaOpen] = useState(false);
+  const [mobilePelanggaranOpen, setMobilePelanggaranOpen] = useState(false);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const [listFilters, setListFilters] = useState<{ category?: string; status?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
@@ -181,6 +101,26 @@ export default function App() {
     const saved = localStorage.getItem("manajemen_school_classes");
     const parsed = saved ? JSON.parse(saved) : [];
     return parsed;
+  });
+
+  const [lulusList, setLulusList] = useState<any[]>(() => {
+    const saved = localStorage.getItem("siswa_lulus_data");
+    if (!saved) return [];
+    try {
+      return JSON.parse(saved) || [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [mutasiList, setMutasiList] = useState<any[]>(() => {
+    const saved = localStorage.getItem("siswa_mutasi_data");
+    if (!saved) return [];
+    try {
+      return JSON.parse(saved) || [];
+    } catch {
+      return [];
+    }
   });
 
   const [metadataMap, setMetadataMap] = useState<Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>>(() => {
@@ -542,6 +482,36 @@ export default function App() {
           console.warn("Gagal memuat master data NFC dari tabel nfc:", err);
         }
 
+        // 8. Load Siswa Lulus data
+        try {
+          let { data: dbLulus } = await supabase.from("siswa_lulus").select("*");
+          if (!dbLulus || dbLulus.length === 0) {
+            const { data: altLulus } = await supabase.from("lulus").select("*");
+            if (altLulus) dbLulus = altLulus;
+          }
+          if (dbLulus) {
+            setLulusList(dbLulus);
+            localStorage.setItem("siswa_lulus_data", JSON.stringify(dbLulus));
+          }
+        } catch (err) {
+          console.warn("Gagal memuat data siswa_lulus:", err);
+        }
+
+        // 9. Load Siswa Mutasi data
+        try {
+          let { data: dbMutasi } = await supabase.from("siswa_mutasi").select("*");
+          if (!dbMutasi || dbMutasi.length === 0) {
+            const { data: altMutasi } = await supabase.from("mutasi").select("*");
+            if (altMutasi) dbMutasi = altMutasi;
+          }
+          if (dbMutasi) {
+            setMutasiList(dbMutasi);
+            localStorage.setItem("siswa_mutasi_data", JSON.stringify(dbMutasi));
+          }
+        } catch (err) {
+          console.warn("Gagal memuat data siswa_mutasi:", err);
+        }
+
         const formattedList = hydrateWithAllStatusSources(data || [], cloudStatusMap, cloudPlottingMap, cloudNfcMap);
         setStudents(formattedList);
         // Also save to localStorage as background backup!
@@ -559,18 +529,26 @@ export default function App() {
   const loadLocalFallback = () => {
     const cached = localStorage.getItem("santri_data");
     const backup = localStorage.getItem("santri_local_backup");
+    const demoNiks = ["3506121408100001", "3506135211090002", "3404111502120003", "3173054106100004"];
     
     if (cached) {
-      const parsed = JSON.parse(cached);
-      setStudents(Array.isArray(parsed) ? hydrateStudentsWithStatus(parsed) : []);
+      try {
+        const parsed = JSON.parse(cached);
+        const filtered = Array.isArray(parsed) ? parsed.filter((s: any) => !demoNiks.includes(s.nik)) : [];
+        setStudents(hydrateStudentsWithStatus(filtered));
+      } catch {
+        setStudents([]);
+      }
     } else if (backup) {
-      const parsed = JSON.parse(backup);
-      setStudents(Array.isArray(parsed) ? hydrateStudentsWithStatus(parsed) : []);
+      try {
+        const parsed = JSON.parse(backup);
+        const filtered = Array.isArray(parsed) ? parsed.filter((s: any) => !demoNiks.includes(s.nik)) : [];
+        setStudents(hydrateStudentsWithStatus(filtered));
+      } catch {
+        setStudents([]);
+      }
     } else {
-      // Load initial beautiful DEMO_SANTRI for pristine presentation
-      const list = hydrateStudentsWithStatus(DEMO_SANTRI);
-      setStudents(list);
-      localStorage.setItem("santri_data", JSON.stringify(list));
+      setStudents([]);
     }
   };
 
@@ -627,6 +605,17 @@ export default function App() {
       supabase.removeChannel(realtimeChannel);
     };
   }, []);
+
+  // Close mobile sidebar on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && mobileMenuOpen) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
 
   // Save or Update a Santri
   const handleFormSubmit = async (data: SantriData): Promise<{ success: boolean; error?: string }> => {
@@ -715,7 +704,7 @@ export default function App() {
 
           if (error) throw error;
           
-          triggerNotification(`Berhasil memperbarui data santri ${formattedData.nama_lengkap}!`, "success");
+          triggerNotification(`Berhasil memperbarui data siswa ${formattedData.nama_lengkap}!`, "success");
         } else {
           let { error } = await supabase
             .from(TABLE_NAME)
@@ -755,7 +744,7 @@ export default function App() {
           }
 
           if (error) throw error;
-          triggerNotification(`Santri baru ${formattedData.nama_lengkap} berhasil terdaftarkan ke cloud database!`, "success");
+          triggerNotification(`Siswa baru ${formattedData.nama_lengkap} berhasil terdaftarkan ke cloud database!`, "success");
         }
 
         // Save NFC Mapping to 'nfc' table too if nfc_id is provided
@@ -1146,98 +1135,71 @@ export default function App() {
   const userRole = currentUser?.role || "admin";
   const userGenderAccess = currentUser?.gender || "Semua";
 
-  const displayedStudents = (() => {
-    let list = students;
+  const displayedStudents = useMemo(() => {
+    const excludedSantriIds = new Set<number>();
+    const excludedNiks = new Set<string>();
+    const excludedNisns = new Set<string>();
+    const excludedNames = new Set<string>();
 
-    // 1. Filter by Gender Access Restriction
-    if (userGenderAccess !== "Semua") {
-      list = list.filter(s => s.jenis_kelamin === userGenderAccess);
-    }
+    const processItem = (item: any) => {
+      if (!item) return;
+      if (item.santri_id) excludedSantriIds.add(Number(item.santri_id));
+      if (item.nik && String(item.nik).trim()) excludedNiks.add(String(item.nik).trim().toLowerCase());
+      if (item.nisn && String(item.nisn).trim()) excludedNisns.add(String(item.nisn).trim().toLowerCase());
+      if (item.nama_lengkap && String(item.nama_lengkap).trim()) {
+        excludedNames.add(String(item.nama_lengkap).trim().toLowerCase());
+      }
+    };
 
-    // 2. Filter by Granular Jabatan & Duty (Only enforce if not full System Admin)
-    if (currentUser && currentUser.role !== "admin") {
-      const jabString = currentUser.jabatan || "";
-      const jabatans = jabString.split(",").map(j => j.trim().toLowerCase()).filter(Boolean);
+    lulusList.forEach(processItem);
+    mutasiList.forEach(processItem);
 
-      list = list.filter(s => {
-        let hasDutyCheck = false;
-        let matchesAny = false;
+    try {
+      const savedLulus = localStorage.getItem("siswa_lulus_data");
+      if (savedLulus) JSON.parse(savedLulus).forEach(processItem);
+    } catch {}
 
-        if (jabatans.some(j => ["wali_kamar", "pamong kamar"].includes(j))) {
-          if (currentUser.tugas_kamar) {
-            hasDutyCheck = true;
-            if (s.kamar === currentUser.tugas_kamar) {
-              matchesAny = true;
-            }
-          }
-        }
+    try {
+      const savedMutasi = localStorage.getItem("siswa_mutasi_data");
+      if (savedMutasi) JSON.parse(savedMutasi).forEach(processItem);
+    } catch {}
 
-        if (jabatans.some(j => ["wali_kelas", "guru_mapel", "wali kelas", "guru mapel"].includes(j))) {
-          if (currentUser.tugas_kelas_sekolah) {
-            hasDutyCheck = true;
-            if (s.kelas_sekolah) {
-              const allowedClasses = currentUser.tugas_kelas_sekolah.split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
-              if (allowedClasses.includes(s.kelas_sekolah.toLowerCase())) {
-                matchesAny = true;
-              }
-            }
-          }
-        }
-
-        if (jabatans.some(j => ["guru_pondok", "guru pondok"].includes(j))) {
-          if (currentUser.tugas_kelas_pengajian) {
-            hasDutyCheck = true;
-            if (s.kelas_pengajian === currentUser.tugas_kelas_pengajian) {
-              matchesAny = true;
-            }
-          }
-        }
-
-        if (jabatans.some(j => ["kepala_sekolah", "wakil_kepala_sekolah", "kepala sekolah", "wakil kepala sekolah"].includes(j))) {
-          if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah) {
-            hasDutyCheck = true;
-            const allowedClasses = currentUser.tugas_kelas_sekolah.split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
-            if (allowedClasses.includes(s.kelas_sekolah.toLowerCase())) {
-              matchesAny = true;
-            }
-          }
-        }
-
-        if (jabatans.includes("pengurus")) {
-          if (currentUser.tugas_kamar || currentUser.tugas_kelas_sekolah || currentUser.tugas_kelas_pengajian) {
-            hasDutyCheck = true;
-            if (currentUser.tugas_kamar && s.kamar === currentUser.tugas_kamar) matchesAny = true;
-            if (currentUser.tugas_kelas_sekolah && s.kelas_sekolah) {
-              const allowedClasses = currentUser.tugas_kelas_sekolah.split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
-              if (allowedClasses.includes(s.kelas_sekolah.toLowerCase())) {
-                matchesAny = true;
-              }
-            }
-            if (currentUser.tugas_kelas_pengajian && s.kelas_pengajian === currentUser.tugas_kelas_pengajian) matchesAny = true;
-          }
-        }
-
-        if (hasDutyCheck && !matchesAny) {
-          return false;
-        }
-        return true;
-      });
-    }
-
-    return list;
-  })();
+    return students.filter((s) => {
+      if (s.id && excludedSantriIds.has(Number(s.id))) return false;
+      if (s.nik && excludedNiks.has(String(s.nik).trim().toLowerCase())) return false;
+      if (s.nisn && excludedNisns.has(String(s.nisn).trim().toLowerCase())) return false;
+      if (s.nama_lengkap && excludedNames.has(String(s.nama_lengkap).trim().toLowerCase())) return false;
+      return true;
+    });
+  }, [students, lulusList, mutasiList]);
 
   const allTabs = [
-    { id: "dashboard", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "list", label: "Database Santri", shortLabel: "Database", icon: TableProperties, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "perizinan", label: "Perizinan Santri", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "absensi", label: "Absensi Santri", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "absensi_guru", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "manajemen_pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Home, roles: ["admin", "pengurus"] },
-    { id: "manajemen_sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["admin", "pengurus"] },
-    { id: "form", label: editingStudent ? "Edit Santri" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "nfc", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin", "pengurus"] },
-    { id: "pengguna", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
+    { id: "dashboard", group: "UTAMA", label: "Dasbor Ringkasan", shortLabel: "Dasbor", icon: LayoutDashboard, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    
+    // DATA WARGA GROUP WITH SUBMENUS
+    { id: "list", group: "DATA WARGA", isSubmenu: true, subLabel: "Siswa", label: "Siswa", shortLabel: "Siswa", icon: User, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "warga_guru", group: "DATA WARGA", isSubmenu: true, subLabel: "Guru", label: "Guru", shortLabel: "Guru", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "warga_pengurus", group: "DATA WARGA", isSubmenu: true, subLabel: "Pengurus", label: "Pengurus", shortLabel: "Pengurus", icon: Shield, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "warga_mutasi", group: "DATA WARGA", isSubmenu: true, subLabel: "Mutasi", label: "Mutasi Siswa", shortLabel: "Mutasi", icon: UserMinus, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "warga_lulus", group: "DATA WARGA", isSubmenu: true, subLabel: "Lulus", label: "Alumni / Lulus", shortLabel: "Lulus", icon: Award, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    
+    // LAYANAN & ABSENSI
+    { id: "perizinan", group: "LAYANAN", label: "Perizinan Siswa", shortLabel: "Izin", icon: UserCheck, roles: ["admin", "guru_pondok", "pengurus"] },
+    { id: "absensi", group: "LAYANAN", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "pengurus"] },
+    { id: "absensi_guru", group: "LAYANAN", label: "Guru Sekolah & Jurnal", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+
+    // PELANGGARAN GROUP WITH SUBMENUS
+    { id: "pelanggaran_input", group: "PELANGGARAN", isSubmenu: true, subLabel: "Input Pelanggaran", label: "Input Pelanggaran", shortLabel: "Input Pelanggaran", icon: ShieldAlert, roles: ["admin", "guru_pondok", "pengurus"] },
+    { id: "pelanggaran_rekap", group: "PELANGGARAN", isSubmenu: true, subLabel: "Daftar Pelanggaran", label: "Daftar Pelanggaran", shortLabel: "Rekap Pelanggaran", icon: ClipboardList, roles: ["admin", "guru_pondok", "pengurus"] },
+    
+    // MANAJEMEN AKADEMIK
+    { id: "manajemen_pondok", group: "MANAJEMEN", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Home, roles: ["admin", "pengurus"] },
+    { id: "manajemen_sekolah", group: "MANAJEMEN", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["admin", "pengurus"] },
+    { id: "form", group: "MANAJEMEN", label: editingStudent ? "Edit Siswa" : "Pendaftaran Baru", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "pengurus"] },
+    { id: "nfc", group: "MANAJEMEN", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin", "pengurus"] },
+    
+    // PENGATURAN
+    { id: "pengguna", group: "PENGATURAN", label: "Manajemen Pengguna", shortLabel: "Pengguna", icon: Shield, roles: ["admin"] },
   ];
   
   const accessibleTabs = allTabs.filter(t => t.roles.includes(userRole));
@@ -1266,9 +1228,6 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-[#f3f6fc] dark:bg-[#080914] text-slate-800 dark:text-slate-100 font-sans overflow-hidden select-none transition-colors duration-300 relative z-10" id="boarding_school_app">
       
-      {/* LANDSCAPE ORIENTATION HELPER FOR MOBILE */}
-      <LandscapeNotice />
-
       {/* 0. FLOATING COSMIC BACKGROUND GRADIENTS & SHAPES */}
       <BackgroundDecorations isDarkMode={isDarkMode} />
       
@@ -1380,8 +1339,8 @@ export default function App() {
 
               {dbStatus === "missing_table" && (
                 <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-[10px] text-red-700 dark:text-red-300 space-y-1">
-                  <div className="font-bold uppercase text-[9px] tracking-wide">Pemberitahuan SQL:</div>
-                  <p>Tabel <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 py-0.5 rounded">santri</code> tidak ditemukan di database Anda. Pastikan Anda telah membuat tabel-tabel yang diperlukan di editor SQL Supabase Anda.</p>
+                  <div className="font-bold uppercase text-[9px] tracking-wide">Pemberitahuan Database:</div>
+                  <p>Tabel <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 py-0.5 rounded">santri</code> belum siap di database Anda.</p>
                 </div>
               )}
 
@@ -1428,127 +1387,42 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. HEADER */}
-      <header className="h-14 bg-white dark:bg-[#111322] text-slate-800 dark:text-slate-100 flex md:hidden items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm border-b border-slate-200/80 dark:border-[#1d2138] z-40 select-none transition-colors duration-300">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button 
-            className="md:hidden p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg outline-none"
-            onClick={() => setMobileMenuOpen(true)}
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-white/50 dark:bg-black/30 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200/50 dark:border-slate-800 shadow-sm hidden sm:flex">
-            <img
-              src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
-              alt="Logo Pondok"
-              className="w-6 h-6 sm:w-7 sm:h-7 object-contain"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div className="flex flex-col">
-            <h1 className="text-[12px] sm:text-sm md:text-base font-bold tracking-tight uppercase text-slate-800 dark:text-slate-100 leading-tight">
-              <span className="hidden sm:inline">Pondok Pesantren Al Muttaqin</span>
-              <span className="inline sm:hidden flex flex-col gap-0.5">
-                <span>Pondok Pesantren</span>
-                <span>Al Muttaqin</span>
-              </span>
-            </h1>
-            <span className="text-[14px-small] text-slate-500 dark:text-slate-400 font-semibold tracking-wider font-mono mt-0.5 sm:mt-0.5 uppercase leading-none text-[8px] sm:text-[9px]">Kota Madiun</span>
-          </div>
-        </div>
-
-        {/* Administrator Profile Info & Logout */}
-        <div className="flex items-center gap-3.5 text-[#041e49] dark:text-slate-100">
-          
-          {/* Database Connection Pill */}
-          <button
-            onClick={() => setIsDbConfigModalOpen(true)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider shadow-sm transition-all border outline-none cursor-pointer ${
-              dbStatus === "connected"
-                ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                : dbStatus === "loading"
-                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/20"
-            }`}
-            title="Klik untuk konfigurasi database Supabase"
-          >
-            <span className={`w-2 h-2 rounded-full ${
-              dbStatus === "connected"
-                ? "bg-emerald-500 shadow-[0_0_8px_#10b981]"
-                : dbStatus === "loading"
-                ? "bg-amber-500 animate-pulse"
-                : "bg-rose-500 shadow-[0_0_8px_#f43f5e]"
-            }`} />
-            <span className="hidden md:inline">
-              {dbStatus === "connected" ? "Database: Terhubung" : dbStatus === "loading" ? "Koneksi..." : "Database: Offline"}
-            </span>
-            <span className="inline md:hidden">DB</span>
-          </button>
-
-          {/* Mobile Landscape Quick Switcher */}
-          <button
-            onClick={async () => {
-              try {
-                const elem = document.documentElement;
-                if (elem.requestFullscreen) {
-                  await elem.requestFullscreen().catch(() => {});
-                } else if ((elem as any).webkitRequestFullscreen) {
-                  await (elem as any).webkitRequestFullscreen().catch(() => {});
-                }
-                if (window.screen && window.screen.orientation && "lock" in window.screen.orientation) {
-                  // @ts-ignore
-                  await window.screen.orientation.lock("landscape");
-                }
-              } catch (e) {
-                alert("Silakan aktifkan 'Auto-Rotate' di HP Anda dan miringkan perangkat ke posisi Landscape.");
-              }
-            }}
-            className="w-10 h-10 md:hidden rounded-xl flex items-center justify-center bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 active:scale-95 transition-all outline-none cursor-pointer"
-            title="Mode Landscape & Layar Penuh"
-          >
-            <RotateCw className="w-4 h-4" />
-          </button>
-
-          {/* Day/Night Mode Toggle selector switch */}
-          <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="w-10 h-10 rounded-xl relative overflow-hidden flex items-center justify-center bg-white/20 dark:bg-slate-805 hover:bg-white/35 dark:hover:bg-slate-800 active:scale-95 transition-all outline-none border-0 cursor-pointer shadow-sm group"
-            title={isDarkMode ? "Aktifkan Mode Siang" : "Aktifkan Mode Malam"}
-            id="theme-switcher-toggle"
-          >
-            <div className="absolute inset-x-0 inset-y-0 transition-all duration-300 transform rounded-xl" />
-            <span className="text-base select-none z-10 transition-transform duration-300 group-hover:rotate-12">
-              {isDarkMode ? "☀️" : "🌙"}
-            </span>
-          </button>
-
-          <div className="hidden sm:flex flex-col items-end">
-            <span className="text-xs font-extrabold">{currentUser?.name}</span>
-            <span className="text-[9px] font-mono tracking-wider opacity-80 uppercase font-black">
-              {currentUser?.role?.replace('_', ' ')} {currentUser?.gender && currentUser.gender !== 'Semua' ? `(${currentUser.gender})` : ''}
-            </span>
-          </div>
-        </div>
-      </header>
-
       {/* 3. MAIN CONTAINER WITH SIDEBAR & CONTENT AREA */}
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row relative">
         
         {/* Navigation Sidebar (Desktop view) */}
         <aside 
-          className={`${sidebarCollapsed ? "w-[72px]" : "w-64"} bg-[#002b6b] border-r border-[#001d4a] flex flex-col p-0 shrink-0 hidden md:flex transition-all duration-300 overflow-hidden shadow-xl text-white z-20`} 
+          className={`${sidebarCollapsed ? "w-[72px]" : "w-64"} bg-[#f4f5f7] dark:bg-[#111827] border-r border-slate-200/80 dark:border-slate-800 hidden md:flex md:flex-col p-0 shrink-0 transition-all duration-300 shadow-sm text-slate-800 dark:text-slate-100 z-20 select-none`} 
           id="desktop-sidebar"
         >
           {/* Top section with Logo and Toggle */}
-          <div className={`pt-4 pb-2 relative flex flex-col items-center shrink-0`}>
-            {/* Toggle Button */}
+          <div className="pt-4 pb-2 relative flex flex-col items-center shrink-0 border-b border-slate-200/80 dark:border-slate-800 mb-2">
+            {/* Logo Area */}
+            <div className={`flex flex-col items-center justify-center transition-all duration-300 ${sidebarCollapsed ? "w-10 h-10 mb-1" : "w-14 h-14 mb-1"} rounded-full p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs`}>
+              <img
+                src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
+                alt="Logo Pondok"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            {!sidebarCollapsed && (
+              <div className="text-center px-4 mb-2">
+                <div className="text-[11px] font-black tracking-wider uppercase text-slate-800 dark:text-slate-100 leading-tight">
+                  AL MUTTAQIN
+                </div>
+                <div className="text-[9px] font-mono text-slate-500 dark:text-slate-400 tracking-widest uppercase">Pondok Pesantren</div>
+              </div>
+            )}
+
+            {/* Toggle Expand/Collapse Button */}
             <button
               onClick={() => {
                 const nextVal = !sidebarCollapsed;
                 setSidebarCollapsed(nextVal);
                 localStorage.setItem("sidebar_collapsed", String(nextVal));
               }}
-              className={`absolute top-4 ${sidebarCollapsed ? "relative top-0 mb-4" : "right-4"} p-1 text-white hover:text-yellow-400 transition-colors focus:outline-none`}
+              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-lg transition-all focus:outline-none my-1 cursor-pointer"
               title={sidebarCollapsed ? "Buka Sidebar" : "Sembunyikan Sidebar"}
             >
               {sidebarCollapsed ? (
@@ -1558,75 +1432,306 @@ export default function App() {
               )}
             </button>
 
-            {/* Logo Area */}
-            <div className={`flex flex-col items-center justify-center transition-all duration-300 ${sidebarCollapsed ? "w-10 h-10 mb-2" : "w-16 h-16 mb-2"} rounded-full p-1`}>
-              <img
-                src="https://eflhcunxpckcynozywol.supabase.co/storage/v1/object/public/foto_siswa/1779791263491_pbf19o.png"
-                alt="Logo Pondok"
-                className="w-full h-full object-contain"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            {!sidebarCollapsed && (
-              <div className="text-center px-4 mb-5">
-                <div className="text-[10px] font-bold tracking-tight uppercase text-white leading-tight">
-                  AL MUTTAQIN
-                </div>
-              </div>
-            )}
-
             {/* Search Input Area */}
             {!sidebarCollapsed ? (
-              <div className="w-full px-4 mb-2">
-                <div className="flex items-center bg-[#1a4079] rounded-lg px-3 py-2 border border-[#2b5390]">
-                  <Search className="w-4 h-4 text-white shrink-0" />
+              <div className="w-full px-3 my-1">
+                <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 focus-within:border-emerald-500 transition-all shadow-xs">
+                  <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <input
                     type="text"
                     placeholder="Cari Menu..."
-                    className="bg-transparent border-none outline-none text-xs font-bold text-white placeholder-slate-300 ml-2 w-full"
+                    value={sidebarSearchQuery}
+                    onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                    className="bg-transparent border-none outline-none text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 ml-2 w-full"
                   />
-                  <div className="bg-[#2b5390] text-slate-200 text-[10px] px-1.5 py-0.5 rounded ml-1 shrink-0 font-mono">/</div>
+                  {sidebarSearchQuery && (
+                    <button onClick={() => setSidebarSearchQuery("")} className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs font-mono ml-1">✕</button>
+                  )}
                 </div>
               </div>
             ) : (
-              <div className="w-full flex justify-center mb-4 mt-2">
-                 <button className="p-2 text-white hover:text-yellow-400" title="Cari Menu">
-                   <Search className="w-5 h-5" />
+              <div className="w-full flex justify-center my-1">
+                 <button className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-all" title="Cari Menu">
+                   <Search className="w-4 h-4" />
                  </button>
               </div>
             )}
           </div>
 
           {/* Navigation links */}
-          <nav className="flex-1 py-2 text-xs select-none overflow-y-auto custom-scrollbar">
+          <nav className="flex-1 py-1 text-xs select-none overflow-y-auto custom-scrollbar">
             <div className="flex flex-col space-y-1">
-              {accessibleTabs.map((tab) => {
+              {/* Dasbor Ringkasan */}
+              {accessibleTabs.filter(t => t.id === "dashboard" && (!sidebarSearchQuery || t.label.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))).map(tab => {
                 const TabIcon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
-                  <div key={tab.id} className="w-full px-3">
+                  <div key={tab.id} className="w-full px-2.5">
+                    <button
+                      onClick={() => setActiveTab("dashboard")}
+                      title={sidebarCollapsed ? tab.label : undefined}
+                      className={`w-full flex items-center transition-all rounded-xl ${
+                        sidebarCollapsed ? "justify-center py-2.5" : "justify-between px-3 py-2.5"
+                      } ${isActive ? "bg-emerald-600 text-white font-extrabold shadow-sm" : "text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <TabIcon className={`w-5 h-5 shrink-0 ${isActive ? "text-white" : "text-slate-500 dark:text-slate-400"}`} />
+                        {!sidebarCollapsed && <span className="truncate tracking-wide text-xs">{tab.label}</span>}
+                      </div>
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* DATA WARGA GROUP WITH FLOATING FLYOUT SUBMENU & ACCORDION */}
+              {accessibleTabs.some(t => t.group === "DATA WARGA") && (!sidebarSearchQuery || "data warga siswa guru pengurus".includes(sidebarSearchQuery.toLowerCase())) && (
+                <div 
+                  className="w-full px-2.5 my-0.5 relative group/flyout"
+                  onMouseEnter={() => setHoveredFlyout("data_warga")}
+                  onMouseLeave={() => setHoveredFlyout(null)}
+                >
+                  <button
+                    onClick={() => setIsDataWargaExpanded(!isDataWargaExpanded)}
+                    title={sidebarCollapsed ? "Data Warga" : undefined}
+                    className={`w-full flex items-center transition-all rounded-xl ${
+                      sidebarCollapsed ? "justify-center py-2.5" : "justify-between px-3 py-2.5"
+                    } ${
+                      ["list", "warga_guru", "warga_pengurus", "warga_mutasi", "warga_lulus"].includes(activeTab) 
+                        ? "bg-slate-200/80 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 font-extrabold" 
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      {!sidebarCollapsed && <span className="truncate tracking-wide text-xs font-bold">Data Warga</span>}
+                    </div>
+                    {!sidebarCollapsed && (
+                      isDataWargaExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />
+                    )}
+                  </button>
+
+                  {/* Floating Popover / Flyout Submenu */}
+                  {(sidebarCollapsed || hoveredFlyout === "data_warga") && (
+                    <div className="hidden group-hover/flyout:block absolute left-full top-0 ml-2 z-50 w-56 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 pb-2 mb-2 flex items-center justify-between">
+                        <span>DATA WARGA</span>
+                      </div>
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => {
+                            setListFilters({});
+                            setActiveTab("list");
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "list" ? "bg-emerald-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Siswa</span>
+                          {activeTab === "list" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveTab("warga_guru")}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "warga_guru" ? "bg-emerald-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Guru</span>
+                          {activeTab === "warga_guru" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveTab("warga_pengurus")}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "warga_pengurus" ? "bg-emerald-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Pengurus</span>
+                          {activeTab === "warga_pengurus" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveTab("warga_mutasi")}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "warga_mutasi" ? "bg-emerald-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Mutasi</span>
+                          {activeTab === "warga_mutasi" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveTab("warga_lulus")}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "warga_lulus" ? "bg-emerald-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Lulus</span>
+                          {activeTab === "warga_lulus" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded Inline Accordion */}
+                  {!sidebarCollapsed && isDataWargaExpanded && (
+                    <div className="ml-3 pl-3 border-l-2 border-emerald-500/50 mt-1 space-y-1 py-1">
+                      <button
+                        onClick={() => {
+                          setListFilters({});
+                          setActiveTab("list");
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "list" ? "bg-emerald-500 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Siswa</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("warga_guru")}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "warga_guru" ? "bg-emerald-500 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Guru</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("warga_pengurus")}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "warga_pengurus" ? "bg-emerald-500 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Pengurus</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("warga_mutasi")}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "warga_mutasi" ? "bg-emerald-500 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Mutasi</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("warga_lulus")}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "warga_lulus" ? "bg-emerald-500 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Lulus</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* MENU PELANGGARAN GROUP WITH FLOATING FLYOUT SUBMENU & ACCORDION */}
+              {accessibleTabs.some(t => t.group === "PELANGGARAN") && (!sidebarSearchQuery || "pelanggaran input rekap daftar sanksi".includes(sidebarSearchQuery.toLowerCase())) && (
+                <div 
+                  className="w-full px-2.5 my-0.5 relative group/flyout"
+                  onMouseEnter={() => setHoveredFlyout("pelanggaran")}
+                  onMouseLeave={() => setHoveredFlyout(null)}
+                >
+                  <button
+                    onClick={() => setIsPelanggaranExpanded(!isPelanggaranExpanded)}
+                    title={sidebarCollapsed ? "Pelanggaran" : undefined}
+                    className={`w-full flex items-center transition-all rounded-xl ${
+                      sidebarCollapsed ? "justify-center py-2.5" : "justify-between px-3 py-2.5"
+                    } ${
+                      ["pelanggaran_input", "pelanggaran_rekap"].includes(activeTab) 
+                        ? "bg-blue-50/80 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-extrabold" 
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ShieldAlert className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      {!sidebarCollapsed && <span className="truncate tracking-wide text-xs font-bold">Pelanggaran</span>}
+                    </div>
+                    {!sidebarCollapsed && (
+                      isPelanggaranExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />
+                    )}
+                  </button>
+
+                  {/* Floating Popover / Flyout Submenu */}
+                  {(sidebarCollapsed || hoveredFlyout === "pelanggaran") && (
+                    <div className="hidden group-hover/flyout:block absolute left-full top-0 ml-2 z-50 w-56 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 pb-2 mb-2 flex items-center justify-between">
+                        <span>PELANGGARAN</span>
+                      </div>
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => setActiveTab("pelanggaran_input")}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "pelanggaran_input" ? "bg-blue-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Input Pelanggaran</span>
+                          {activeTab === "pelanggaran_input" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveTab("pelanggaran_rekap")}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                            activeTab === "pelanggaran_rekap" ? "bg-blue-600 text-white font-extrabold" : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Daftar Pelanggaran</span>
+                          {activeTab === "pelanggaran_rekap" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded Inline Accordion */}
+                  {!sidebarCollapsed && isPelanggaranExpanded && (
+                    <div className="ml-3 pl-3 border-l-2 border-blue-500/50 mt-1 space-y-1 py-1">
+                      <button
+                        onClick={() => setActiveTab("pelanggaran_input")}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "pelanggaran_input" ? "bg-blue-600 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Input Pelanggaran</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("pelanggaran_rekap")}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all ${
+                          activeTab === "pelanggaran_rekap" ? "bg-blue-600 text-white font-bold" : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>Daftar Pelanggaran</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* OTHER NAVIGATION ITEMS */}
+              {accessibleTabs.filter(t => t.id !== "dashboard" && !t.isSubmenu && (!sidebarSearchQuery || t.label.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))).map((tab) => {
+                const TabIcon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <div key={tab.id} className="w-full px-2.5">
                     <button
                       onClick={() => {
                         if (tab.id !== "form") setEditingStudent(null);
-                        if (tab.id === "list") setListFilters({});
                         setActiveTab(tab.id as any);
                       }}
                       title={sidebarCollapsed ? tab.label : undefined}
-                      className={`w-full flex items-center transition-all rounded-lg ${
+                      className={`w-full flex items-center transition-all rounded-xl ${
                         sidebarCollapsed 
-                          ? "justify-center py-3" 
-                          : "justify-between px-3 py-3"
+                          ? "justify-center py-2.5" 
+                          : "justify-between px-3 py-2.5"
                       } ${
                         isActive
-                          ? "bg-transparent text-yellow-400 font-bold"
-                          : "text-white hover:bg-white/10"
+                          ? "bg-emerald-600 text-white font-extrabold shadow-sm"
+                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800"
                       }`}
                     >
-                      <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0">
                         <TabIcon className={`w-5 h-5 shrink-0 transition-colors ${
-                          isActive ? "text-yellow-400" : "text-white"
+                          isActive ? "text-white" : "text-slate-500 dark:text-slate-400"
                         }`} />
-                        {!sidebarCollapsed && <span className="truncate tracking-wide text-[13px]">{tab.label}</span>}
+                        {!sidebarCollapsed && <span className="truncate tracking-wide text-xs">{tab.label}</span>}
                       </div>
                     </button>
                   </div>
@@ -1635,20 +1740,20 @@ export default function App() {
             </div>
           </nav>
           
-          <div className="flex flex-col gap-2 p-3 mt-auto shrink-0 border-t border-[#001d4a]">
+          <div className="flex flex-col gap-1.5 p-2.5 mt-auto shrink-0 border-t border-slate-200 dark:border-slate-800">
             {/* Theme Toggle */}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`w-full flex items-center transition-all rounded-lg ${
-                sidebarCollapsed ? "justify-center py-3" : "justify-start px-3 py-3"
-              } text-white hover:bg-white/10`}
+              className={`w-full flex items-center transition-all rounded-xl ${
+                sidebarCollapsed ? "justify-center py-2.5" : "justify-start px-3 py-2.5"
+              } text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800`}
               title={isDarkMode ? "Aktifkan Mode Siang" : "Aktifkan Mode Malam"}
             >
-              <div className="flex items-center gap-3.5 min-w-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <span className="text-base select-none w-5 h-5 flex items-center justify-center">
                   {isDarkMode ? "☀️" : "🌙"}
                 </span>
-                {!sidebarCollapsed && <span className="truncate tracking-wide text-[13px]">{isDarkMode ? "Mode Siang" : "Mode Malam"}</span>}
+                {!sidebarCollapsed && <span className="truncate tracking-wide text-xs">{isDarkMode ? "Mode Siang" : "Mode Malam"}</span>}
               </div>
             </button>
 
@@ -1660,39 +1765,159 @@ export default function App() {
                 setCurrentUser(null);
                 triggerNotification("Berhasil keluar dari sesi admin", "warning");
               }}
-              className={`w-full flex items-center transition-all rounded-lg ${
-                sidebarCollapsed ? "justify-center py-3" : "justify-start px-3 py-3"
-              } text-white hover:bg-white/10 hover:text-red-400`}
+              className={`w-full flex items-center transition-all rounded-xl ${
+                sidebarCollapsed ? "justify-center py-2.5" : "justify-start px-3 py-2.5"
+              } text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400`}
               title="Logout"
             >
-              <div className="flex items-center gap-3.5 min-w-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <LogOut className="w-5 h-5 shrink-0 transition-colors" />
-                {!sidebarCollapsed && <span className="truncate tracking-wide text-[13px]">Keluar Sesi</span>}
+                {!sidebarCollapsed && <span className="truncate tracking-wide text-xs">Keluar Sesi</span>}
               </div>
             </button>
           </div>
         </aside>
 
         {/* Content Area */}
-        <section className={`flex-1 bg-slate-50 overflow-y-auto flex flex-col ${activeTab === 'dashboard' ? '' : 'p-4 pb-20 md:p-6'}`} id="santri-sub-pages">
+        <section className="flex-1 bg-slate-50 dark:bg-[#0b0f19] overflow-y-auto flex flex-col" id="santri-sub-pages">
           
-          {/* Offline warning banner */}
-          {dbStatus !== "connected" && (
-            <div className={`mb-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-250 dark:border-amber-900/40 rounded-xl text-[11px] text-amber-800 dark:text-amber-400 leading-tight flex items-center justify-between gap-4 ${activeTab === 'dashboard' ? 'mx-4 mt-4 md:mx-6 md:mt-6' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span>⚠️</span>
-                <span>
-                  <strong>Mode Offline Aktif:</strong> Database belum terhubung ({dbErrorMsg || "Mencoba menghubungkan..."}). Data disimpan lokal di browser ini.
-                </span>
+          {/* Top Header Banner with Search Bar & Round Profile Avatar */}
+          <header className="bg-white dark:bg-[#111827] border-b border-slate-200/80 dark:border-slate-800 px-4 md:px-8 py-2.5 flex items-center justify-between gap-4 sticky top-0 z-30 shadow-2xs transition-colors duration-300">
+            {/* Left: Mobile menu toggle + Search Bar */}
+            <div className="flex items-center gap-3 flex-1 max-w-xl">
+              <button 
+                className="md:hidden p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl outline-none transition-colors cursor-pointer"
+                onClick={() => setMobileMenuOpen(true)}
+                title="Buka Menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
+              {/* Search Bar Input Column */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Cari..."
+                  value={sidebarSearchQuery}
+                  onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-8 py-2 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 rounded-full text-xs font-semibold text-slate-800 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                />
+                {sidebarSearchQuery && (
+                  <button
+                    onClick={() => setSidebarSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
+            </div>
+
+            {/* Right: DB status, Theme switcher, Bell Icon, Round Profile Avatar */}
+            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+              {/* Database Connection Pill */}
               <button
                 onClick={() => setIsDbConfigModalOpen(true)}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer uppercase tracking-wider"
+                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider shadow-2xs transition-all border outline-none cursor-pointer ${
+                  dbStatus === "connected"
+                    ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                    : dbStatus === "loading"
+                    ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                    : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/20"
+                }`}
+                title="Klik untuk konfigurasi database Supabase"
               >
-                Atur Koneksi Database
+                <span className={`w-2 h-2 rounded-full ${
+                  dbStatus === "connected"
+                    ? "bg-emerald-500 shadow-[0_0_8px_#10b981]"
+                    : dbStatus === "loading"
+                    ? "bg-amber-500 animate-pulse"
+                    : "bg-rose-500 shadow-[0_0_8px_#f43f5e]"
+                }`} />
+                <span>{dbStatus === "connected" ? "Terhubung" : dbStatus === "loading" ? "Koneksi..." : "Offline"}</span>
               </button>
+
+              {/* Day/Night Mode Toggle */}
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer text-sm shadow-2xs"
+                title={isDarkMode ? "Aktifkan Mode Siang" : "Aktifkan Mode Malam"}
+              >
+                {isDarkMode ? "☀️" : "🌙"}
+              </button>
+
+              {/* Notification Bell */}
+              <button
+                onClick={() => triggerNotification("Sistem berjalan normal", "success")}
+                className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all cursor-pointer relative shadow-2xs"
+                title="Notifikasi"
+              >
+                <Bell className="w-4 h-4" />
+                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-white dark:ring-slate-900" />
+              </button>
+
+              {/* Round Profile Avatar Circle (Samping kanan atas) */}
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="w-9 h-9 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-xs flex items-center justify-center shadow-xs hover:scale-105 transition-transform cursor-pointer border border-slate-300 dark:border-slate-700"
+                  title={currentUser?.name || "Profil User"}
+                >
+                  {getInitials(currentUser?.name)}
+                </button>
+
+                {/* Profile Card Dropdown Menu */}
+                <div className="absolute right-0 top-full mt-2 w-60 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50">
+                  <div className="flex items-center gap-3 pb-2.5 mb-2 border-b border-slate-100 dark:border-slate-800">
+                    <div className="w-10 h-10 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                      {getInitials(currentUser?.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {currentUser?.name || "Administrator"}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 capitalize truncate mt-0.5">
+                        {currentUser?.role?.replace('_', ' ') || "Admin"}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem("admin_token");
+                      localStorage.removeItem("admin_user");
+                      setCurrentUser(null);
+                      triggerNotification("Berhasil keluar dari sesi admin", "warning");
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Keluar Sesi</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          </header>
+
+          {/* Inner Content Area */}
+          <div className={`flex-1 w-full flex flex-col ${activeTab === 'dashboard' ? '' : 'p-4 pb-20 md:p-6'}`}>
+            {/* Offline warning banner */}
+            {dbStatus !== "connected" && (
+              <div className={`mb-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-250 dark:border-amber-900/40 rounded-xl text-[11px] text-amber-800 dark:text-amber-400 leading-tight flex items-center justify-between gap-4 ${activeTab === 'dashboard' ? 'mx-4 mt-4 md:mx-6 md:mt-6' : ''}`}>
+                <div className="flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>
+                    <strong>Mode Offline Aktif:</strong> Database belum terhubung ({dbErrorMsg || "Mencoba menghubungkan..."}). Data disimpan lokal di browser ini.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsDbConfigModalOpen(true)}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer uppercase tracking-wider"
+                >
+                  Atur Koneksi Database
+                </button>
+              </div>
+            )}
 
           {/* Current Router Outlet */}
           <div className="flex-1 w-full flex flex-col">
@@ -1798,6 +2023,48 @@ export default function App() {
               />
             )}
 
+            {activeTab === "warga_guru" && (
+              <div className="w-full">
+                <DaftarWargaPanel
+                  viewType="guru"
+                  onSwitchType={(type) => setActiveTab(type === "guru" ? "warga_guru" : "warga_pengurus")}
+                  onNavigateToUserManagement={userRole === "admin" ? () => setActiveTab("pengguna") : undefined}
+                />
+              </div>
+            )}
+
+            {activeTab === "warga_pengurus" && (
+              <div className="w-full">
+                <DaftarWargaPanel
+                  viewType="pengurus"
+                  onSwitchType={(type) => setActiveTab(type === "guru" ? "warga_guru" : "warga_pengurus")}
+                  onNavigateToUserManagement={userRole === "admin" ? () => setActiveTab("pengguna") : undefined}
+                />
+              </div>
+            )}
+
+            {activeTab === "warga_mutasi" && (
+              <div className="w-full">
+                <SiswaLulusMutasiPanel
+                  viewMode="mutasi"
+                  onSwitchMode={(mode) => setActiveTab(mode === "lulus" ? "warga_lulus" : "warga_mutasi")}
+                  activeStudents={displayedStudents}
+                  onDataChanged={checkConnectionAndLoad}
+                />
+              </div>
+            )}
+
+            {activeTab === "warga_lulus" && (
+              <div className="w-full">
+                <SiswaLulusMutasiPanel
+                  viewMode="lulus"
+                  onSwitchMode={(mode) => setActiveTab(mode === "lulus" ? "warga_lulus" : "warga_mutasi")}
+                  activeStudents={displayedStudents}
+                  onDataChanged={checkConnectionAndLoad}
+                />
+              </div>
+            )}
+
             {activeTab === "perizinan" && (
               <div className="w-full">
                 <PerizinanPanel
@@ -1862,12 +2129,28 @@ export default function App() {
               </div>
             )}
 
+            {(activeTab === "pelanggaran_input" || activeTab === "pelanggaran_rekap") && (
+              <div className="w-full">
+                <PelanggaranPanel
+                  viewMode={activeTab === "pelanggaran_input" ? "input" : "rekap"}
+                  onSwitchMode={(mode) => setActiveTab(mode === "input" ? "pelanggaran_input" : "pelanggaran_rekap")}
+                  students={displayedStudents}
+                  rooms={rooms}
+                  schoolClasses={schoolClasses}
+                  recitationClasses={recitationClasses}
+                  triggerNotification={triggerNotification}
+                  currentUser={currentUser}
+                />
+              </div>
+            )}
+
 
             {activeTab === "pengguna" && (
               <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
                 <ManajemenPenggunaPanel />
               </div>
             )}
+          </div>
           </div>
           
         </section>
@@ -1904,7 +2187,190 @@ export default function App() {
             
             <div className="flex-1 overflow-y-auto py-2">
               <div className="flex flex-col">
-                {accessibleTabs.map((tab) => {
+                {/* Dasbor Ringkasan */}
+                {accessibleTabs.filter(t => t.id === "dashboard").map(tab => {
+                  const TabIcon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <div key={tab.id} className="w-full">
+                      <button
+                        onClick={() => {
+                          setActiveTab("dashboard");
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-6 py-3.5 border-b border-[#dee4ec]/40 dark:border-slate-850 transition-all ${
+                          isActive
+                            ? "bg-[#c2e7ff] dark:bg-[#1a233d] text-[#001d35] dark:text-[#38bdf8] font-bold"
+                            : "text-[#444746] dark:text-slate-400 hover:bg-[#e1e9f5]/60 dark:hover:bg-[#151930]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3.5">
+                          <TabIcon className={`w-5 h-5 ${isActive ? "text-[#001d35] dark:text-[#38bdf8]" : "text-slate-500"}`} />
+                          <span className="tracking-wide text-sm">{tab.label}</span>
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* DATA WARGA GROUP WITH SUBMENU */}
+                {accessibleTabs.some(t => t.group === "DATA WARGA") && (
+                  <div className="w-full border-b border-[#dee4ec]/40 dark:border-slate-850 bg-slate-100/60 dark:bg-slate-900/40">
+                    <button
+                      type="button"
+                      onClick={() => setMobileDataWargaOpen(!mobileDataWargaOpen)}
+                      className="w-full px-6 py-3.5 flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-extrabold text-sm hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <Users className="w-5 h-5" />
+                        <span>Data Warga</span>
+                      </div>
+                      {mobileDataWargaOpen ? (
+                        <ChevronDown className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      )}
+                    </button>
+
+                    {mobileDataWargaOpen && (
+                      <div className="pl-12 pr-4 pb-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {/* Siswa */}
+                        <button
+                          onClick={() => {
+                            setListFilters({});
+                            setActiveTab("list");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "list"
+                              ? "bg-emerald-500 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Siswa</span>
+                        </button>
+
+                        {/* Guru */}
+                        <button
+                          onClick={() => {
+                            setActiveTab("warga_guru");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "warga_guru"
+                              ? "bg-emerald-500 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Guru</span>
+                        </button>
+
+                        {/* Pengurus */}
+                        <button
+                          onClick={() => {
+                            setActiveTab("warga_pengurus");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "warga_pengurus"
+                              ? "bg-emerald-500 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Pengurus</span>
+                        </button>
+
+                        {/* Mutasi */}
+                        <button
+                          onClick={() => {
+                            setActiveTab("warga_mutasi");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "warga_mutasi"
+                              ? "bg-emerald-500 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Mutasi</span>
+                        </button>
+
+                        {/* Lulus */}
+                        <button
+                          onClick={() => {
+                            setActiveTab("warga_lulus");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "warga_lulus"
+                              ? "bg-emerald-500 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Lulus</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* PELANGGARAN GROUP WITH SUBMENU (MOBILE) */}
+                {accessibleTabs.some(t => t.group === "PELANGGARAN") && (
+                  <div className="w-full border-b border-[#dee4ec]/40 dark:border-slate-850 bg-blue-50/40 dark:bg-blue-950/20">
+                    <button
+                      type="button"
+                      onClick={() => setMobilePelanggaranOpen(!mobilePelanggaranOpen)}
+                      className="w-full px-6 py-3.5 flex items-center justify-between text-blue-600 dark:text-blue-400 font-extrabold text-sm hover:bg-blue-100/50 dark:hover:bg-blue-900/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <ShieldAlert className="w-5 h-5" />
+                        <span>Pelanggaran</span>
+                      </div>
+                      {mobilePelanggaranOpen ? (
+                        <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      )}
+                    </button>
+
+                    {mobilePelanggaranOpen && (
+                      <div className="pl-12 pr-4 pb-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {/* Input Pelanggaran */}
+                        <button
+                          onClick={() => {
+                            setActiveTab("pelanggaran_input");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "pelanggaran_input"
+                              ? "bg-blue-600 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Input Pelanggaran</span>
+                        </button>
+
+                        {/* Daftar Pelanggaran */}
+                        <button
+                          onClick={() => {
+                            setActiveTab("pelanggaran_rekap");
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === "pelanggaran_rekap"
+                              ? "bg-blue-600 text-white font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span>Daftar Pelanggaran</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* OTHER ITEMS */}
+                {accessibleTabs.filter(t => t.id !== "dashboard" && !t.isSubmenu).map((tab) => {
                   const TabIcon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
@@ -1912,11 +2378,10 @@ export default function App() {
                       <button
                         onClick={() => {
                           if (tab.id !== "form") setEditingStudent(null);
-                          if (tab.id === "list") setListFilters({});
                           setActiveTab(tab.id as any);
-                          setMobileMenuOpen(false); // Close sidebar on selection
+                          setMobileMenuOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-6 py-4 border-b border-[#dee4ec]/40 dark:border-slate-850 transition-all ${
+                        className={`w-full flex items-center justify-between px-6 py-3.5 border-b border-[#dee4ec]/40 dark:border-slate-850 transition-all ${
                           isActive
                             ? "bg-[#c2e7ff] dark:bg-[#1a233d] text-[#001d35] dark:text-[#38bdf8] font-bold"
                             : "text-[#444746] dark:text-slate-400 hover:bg-[#e1e9f5]/60 dark:hover:bg-[#151930] hover:text-slate-900 dark:hover:text-white"

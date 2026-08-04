@@ -169,65 +169,9 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
   const daysList = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
 
   return (
-    <div className="flex flex-col min-h-full pb-6" id="dashboard_container_id">
-      {/* Blue Header Section */}
-      <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400 px-6 pt-6 pb-28 md:px-10 md:pt-8 md:pb-32 relative shrink-0">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Dashboard Guru Sekolah</h1>
-            <p className="text-blue-50 font-medium text-sm mt-1">{currentDateFormatted}</p>
-          </div>
-          <button 
-            onClick={onLogout}
-            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur text-white px-4 py-2 rounded shadow-sm font-bold text-sm transition-colors"
-          >
-            <LogOut className="w-4 h-4" /> Keluar
-          </button>
-        </div>
-
-        {/* Banner Card */}
-        <div className="absolute left-6 right-6 -bottom-10 md:left-10 md:right-10 md:-bottom-8 bg-gradient-to-r from-white to-blue-50/30 rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col md:flex-row overflow-hidden border border-slate-100 z-10">
-          {/* Left side text/buttons */}
-          <div className="flex-1 p-4 md:p-5 flex flex-col justify-center">
-            <h2 className="text-lg md:text-xl font-normal text-slate-900">Halo, <span className="font-bold text-[#0c66e4] uppercase">{currentUser?.name || "ADMIN"}</span></h2>
-            <p className="text-slate-500 mt-0.5 text-xs font-medium">Have a Nice {currentDayEn}!</p>
-            
-            <div className="flex flex-wrap items-center gap-2 mt-3.5">
-              <button 
-                onClick={onNavigateToAbsensiGuru}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white px-3 py-1.5 rounded font-bold text-[10px] transition-colors shadow-sm"
-              >
-                <Map className="w-3.5 h-3.5" /> Absensi Anda
-              </button>
-              <button className="flex items-center gap-1.5 bg-gradient-to-r from-[#0c66e4] to-blue-600 hover:from-blue-700 hover:to-blue-700 text-white px-3 py-1.5 rounded font-bold text-[10px] transition-colors shadow-sm">
-                <Calendar className="w-3.5 h-3.5" /> Pengumuman & Kalender
-              </button>
-              <button className="flex items-center gap-1.5 bg-gradient-to-r from-[#4285F4] to-blue-500 hover:from-blue-600 hover:to-blue-600 text-white px-3 py-1.5 rounded font-bold text-[10px] transition-colors shadow-sm">
-                <MessageCircle className="w-3.5 h-3.5" /> Grup Chat
-              </button>
-              <button className="flex items-center gap-1.5 bg-gradient-to-r from-[#FBD148] to-[#fbc531] hover:from-yellow-500 hover:to-yellow-500 text-slate-900 px-3 py-1.5 rounded font-bold text-[10px] transition-colors shadow-sm">
-                <Headphones className="w-3.5 h-3.5" /> Bantuan
-              </button>
-            </div>
-          </div>
-          
-          {/* Right side illustration area */}
-          <div className="hidden md:flex w-64 bg-gradient-to-r from-transparent to-[#e8f0fe] relative overflow-hidden shrink-0 items-center justify-end">
-             {/* Gradient overlay to smoothly blend the image with the left section */}
-            <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-blue-50/30 via-white/80 to-transparent z-10" />
-            <img 
-              src="https://img.freepik.com/free-vector/modern-business-team-working-open-office-space_74855-5541.jpg" 
-              alt="Illustration" 
-              className="h-[120%] object-cover mix-blend-multiply opacity-75 transform -translate-y-2 translate-x-4" 
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Area (Metrics etc) */}
-      <div className="px-6 mt-16 md:mt-14 md:px-10 flex-1 space-y-6">
-        {/* 2. Numerical Metrics Stats Bento-Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="stats-bento-grid">
+    <div className="flex flex-col min-h-full pb-6 pt-4 px-4 md:px-8 space-y-6" id="dashboard_container_id">
+      {/* 2. Numerical Metrics Stats Bento-Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="stats-bento-grid">
         {/* STAT 1: TOTAL */}
         <div 
           onClick={() => onNavigateToList()}
@@ -445,8 +389,8 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {recentStudents.map((s) => (
-                  <div key={s.id || s.nik} className="py-2.5 flex items-center justify-between gap-3 group/item">
+                {recentStudents.map((s, idx) => (
+                  <div key={`dash-gs-${s.id || s.nik || idx}-${idx}`} className="py-2.5 flex items-center justify-between gap-3 group/item">
                     <div className="flex items-center gap-2.5">
                       {s.foto ? (
                         <img src={s.foto} alt="" className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-150" />
@@ -577,8 +521,6 @@ export default function DashboardGuruSekolah({ students, onNavigateToForm, onNav
             </div>
           )}
         </div>
-      </div>
-
       </div>
     </div>
   );

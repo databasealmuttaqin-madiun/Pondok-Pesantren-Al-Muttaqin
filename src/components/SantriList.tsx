@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database } from "lucide-react";
+import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database, User } from "lucide-react";
 import { SantriData } from "../supabaseClient";
 
 interface SantriListProps {
@@ -104,6 +104,7 @@ export default function SantriList({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>(initialFilterCategory);
   const [filterDaerah, setFilterDaerah] = useState<string>("All");
+  const [filterGender, setFilterGender] = useState<string>("All");
   const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus);
   const [selectedStudent, setSelectedStudent] = useState<SantriData | null>(null);
   const [showCardModal, setShowCardModal] = useState(false);
@@ -122,9 +123,10 @@ export default function SantriList({
 
     const matchesCategory = filterCategory === "All" || s.kategori === filterCategory;
     const matchesDaerah = filterDaerah === "All" || s.daerah === filterDaerah;
+    const matchesGender = filterGender === "All" || s.jenis_kelamin === filterGender;
     const matchesStatus = filterStatus === "All" || (s.status || "Aktif") === filterStatus;
 
-    return matchesSearch && matchesCategory && matchesDaerah && matchesStatus;
+    return matchesSearch && matchesCategory && matchesDaerah && matchesGender && matchesStatus;
   });
 
   // Extract unique regions/daerah for filter dropdown
@@ -352,6 +354,20 @@ export default function SantriList({
               </select>
             </div>
 
+             {/* Gender Filter */}
+            <div className="flex items-center bg-slate-50 rounded px-2.5 py-1 border border-slate-200">
+              <User className="w-3.5 h-3.5 text-slate-500 mr-1.5" />
+              <select
+                value={filterGender}
+                onChange={(e) => setFilterGender(e.target.value)}
+                className="bg-transparent border-none text-[11px] font-semibold focus:outline-none text-slate-700 cursor-pointer"
+              >
+                <option value="All">Gender: Semua (Siswa & Siswi)</option>
+                <option value="L">Laki-laki (Siswa)</option>
+                <option value="P">Perempuan (Siswi)</option>
+              </select>
+            </div>
+
             {/* Status Filter */}
             <div className="flex items-center bg-slate-50 rounded px-2.5 py-1 border border-slate-200">
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></span>
@@ -381,13 +397,14 @@ export default function SantriList({
         </div>
 
         <div className="flex items-center justify-between text-[11px] text-slate-450 font-medium px-1">
-          <span>Menampilkan <strong className="text-slate-800">{filteredStudents.length}</strong> dari <strong className="text-slate-805">{students.length}</strong> santri terdaftarkan</span>
-          {searchQuery || filterCategory !== "All" || filterDaerah !== "All" || filterStatus !== "All" ? (
+          <span>Menampilkan <strong className="text-slate-800">{filteredStudents.length}</strong> dari <strong className="text-slate-805">{students.length}</strong> siswa terdaftarkan</span>
+          {searchQuery || filterCategory !== "All" || filterDaerah !== "All" || filterGender !== "All" || filterStatus !== "All" ? (
             <button
               onClick={() => {
                 setSearchQuery("");
                 setFilterCategory("All");
                 setFilterDaerah("All");
+                setFilterGender("All");
                 setFilterStatus("All");
               }}
               className="text-sky-600 hover:underline font-bold text-[11px]"
@@ -407,7 +424,7 @@ export default function SantriList({
           <div className="space-y-1.5">
             <h3 className="font-extrabold text-slate-900 text-base md:text-lg">Koneksi Berhasil, Data Masih Kosong</h3>
             <p className="text-slate-500 text-xs leading-relaxed max-w-md mx-auto">
-              Berhasil menghubungkan ke database Supabase Anda, namun tabel <code className="font-mono bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">santri</code> belum memiliki baris data atau record apa pun. Silakan tambahkan santri baru atau gunakan data simulasi offline!
+              Berhasil menghubungkan ke database Supabase Anda, namun tabel <code className="font-mono bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">santri</code> (siswa) belum memiliki baris data atau record apa pun. Silakan tambahkan siswa baru atau gunakan data simulasi offline!
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
@@ -425,9 +442,9 @@ export default function SantriList({
             <UserCheck className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-tight">Tidak Menemukan Data Santri</h3>
+            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-tight">Tidak Menemukan Data Siswa</h3>
             <p className="text-slate-500 text-[11px] max-w-sm mx-auto mt-0.5">
-              Sesuaikan kata kunci pencarian atau filter Anda, atau tambahkan santri baru dengan formulir digital pendaftaran.
+              Sesuaikan kata kunci pencarian atau filter Anda, atau tambahkan siswa baru dengan formulir digital pendaftaran.
             </p>
           </div>
         </div>
@@ -447,7 +464,7 @@ export default function SantriList({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {filteredStudents.map((s) => {
+                {filteredStudents.map((s, idx) => {
                   const studentGender = s.jenis_kelamin || inferGender(s.nama_lengkap);
                   const isPulang = (s.status || "Aktif") === "Pulang";
                   const isSakit = (s.status || "Aktif") === "Sakit";
@@ -465,7 +482,7 @@ export default function SantriList({
 
                   return (
                     <tr 
-                      key={s.id || s.nik} 
+                      key={`santri-${s.id || s.nik || idx}-${idx}`} 
                       className={`${rowBgClass} transition-colors duration-150 group`}
                     >
                       {/* Name with circular avatar */}
@@ -672,10 +689,10 @@ export default function SantriList({
                     <Trash2 className="h-6 w-6" />
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 className="text-lg leading-6 font-bold text-gray-900" id="modal-title">Hapus Data Santri</h3>
+                    <h3 className="text-lg leading-6 font-bold text-gray-900" id="modal-title">Hapus Data Siswa</h3>
                     <div className="mt-2 text-sm text-gray-500 space-y-1">
                       <p>
-                        Apakah Anda yakin ingin menghapus data santri <strong className="text-slate-900">{deleteConfirmTarget.nama_lengkap}</strong> {deleteConfirmTarget.nik ? `(NIK: ${deleteConfirmTarget.nik})` : ""} secara permanen dari database pesantren?
+                        Apakah Anda yakin ingin menghapus data siswa <strong className="text-slate-900">{deleteConfirmTarget.nama_lengkap}</strong> {deleteConfirmTarget.nik ? `(NIK: ${deleteConfirmTarget.nik})` : ""} secara permanen dari database pesantren?
                       </p>
                       <p className="text-red-600 text-xs font-semibold mt-1">
                         Tindakan ini tidak dapat dibatalkan.
@@ -715,7 +732,7 @@ export default function SantriList({
             {/* Modal Header */}
             <div className="bg-sky-900 px-6 py-4 text-white flex items-center justify-between shrink-0">
               <h3 className="font-bold text-base flex items-center gap-2">
-                <Award className="w-5 h-5 text-sky-300" /> Pratinjau Dokumen Santri
+                <Award className="w-5 h-5 text-sky-300" /> Pratinjau Dokumen Siswa
               </h3>
               <button
                 onClick={() => setShowCardModal(false)}
@@ -777,7 +794,7 @@ export default function SantriList({
                     {/* Document Title section */}
                     <div className="text-center mt-5 mb-6">
                       <h3 className="text-[#104e7a] text-sm md:text-base font-extrabold tracking-widest underline uppercase">
-                        Formulir Data Pribadi Santri
+                        Formulir Data Pribadi Siswa
                       </h3>
                       <p className="text-[10px] text-gray-500 font-semibold mt-1">
                         Nomor Induk: {selectedStudent.nisn || selectedStudent.npsn || "2509088" + String(selectedStudent.id || "").padStart(3, "0")} | Tahun Ajaran 2026/2027
@@ -996,7 +1013,7 @@ export default function SantriList({
 
                             <div className="grid grid-cols-2 gap-2">
                               <div>
-                                <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">NIK Santri</span>
+                                <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">NIK Siswa</span>
                                 <span className="font-mono text-xs text-gray-700">{selectedStudent.nik}</span>
                               </div>
                               <div>
@@ -1074,7 +1091,7 @@ export default function SantriList({
                   onClick={handlePrint}
                   className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-sm cursor-pointer"
                 >
-                  <Printer className="w-4 h-4" /> Cetak {previewTab === "formulir" ? "Formulir Santri" : "Kartu Santri"}
+                  <Printer className="w-4 h-4" /> Cetak {previewTab === "formulir" ? "Formulir Siswa" : "Kartu Siswa"}
                 </button>
               </div>
 

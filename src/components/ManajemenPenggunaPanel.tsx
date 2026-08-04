@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Edit3, Shield, User, Key, Check, AlertCircle, ChevronDown, X, Search } from "lucide-react";
+import { Plus, Trash2, Edit3, Shield, User, Key, Check, AlertCircle, ChevronDown, X, Search, FileText, Copy } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import MultiSelectTagInput from "./MultiSelectTagInput";
 
 interface PenggunaData {
   id: string;
@@ -161,11 +162,7 @@ export default function ManajemenPenggunaPanel() {
         setUsers(merged);
       }
     } catch (err: any) {
-      if (err.message?.includes("pengguna") && err.message?.includes("cache")) {
-         setErrorMessage("Tabel 'pengguna' belum ada di Cloud Database. Silakan masuk ke menu 'Koneksi & Panduan' untuk menyalin script SQL terbaru dan jalankan di Supabase.");
-      } else {
-         console.warn("Gagal mengambil data pengguna:", err.message);
-      }
+      console.warn("Gagal mengambil data pengguna:", err.message);
     } finally {
       setIsLoading(false);
     }
@@ -614,43 +611,12 @@ export default function ManajemenPenggunaPanel() {
                       <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Di Kelas Berapa?</label>
                       <span className="text-[9px] text-indigo-500 font-extrabold italic">Bisa pilih lebih dari satu kelas</span>
                     </div>
-                    {optSchoolClasses.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">Belum ada data kelas sekolah yang diatur.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-100 dark:border-slate-800 max-h-36 overflow-y-auto">
-                        {optSchoolClasses.map(sc => {
-                          const selectedList = tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean);
-                          const isSelected = selectedList.includes(sc);
-                          return (
-                            <button
-                              type="button"
-                              key={sc}
-                              onClick={() => {
-                                let current = tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean);
-                                if (current.includes(sc)) {
-                                  current = current.filter(c => c !== sc);
-                                } else {
-                                  current = [...current, sc];
-                                }
-                                setTugasKelasSekolah(current.join(", "));
-                              }}
-                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
-                                isSelected
-                                  ? "bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/10 scale-[1.02]"
-                                  : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                              }`}
-                            >
-                              {isSelected && (
-                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                                </svg>
-                              )}
-                              <span>{sc}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <MultiSelectTagInput
+                      selectedValues={tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean)}
+                      onChange={(vals) => setTugasKelasSekolah(vals.join(", "))}
+                      options={optSchoolClasses}
+                      placeholder="Pilih kelas sekolah..."
+                    />
                   </div>
                 </div>
               )}
@@ -660,17 +626,27 @@ export default function ManajemenPenggunaPanel() {
                   <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 block">Konfigurasi Wali Kelas</span>
                   <div className="space-y-1">
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Tugas Kelas Sekolah</label>
-                    <select
-                      value={tugasKelasSekolah}
-                      onChange={(e) => setTugasKelasSekolah(e.target.value)}
-                      required
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                    >
-                      <option value="">-- Pilih Kelas Sekolah --</option>
-                      {optSchoolClasses.map(sc => (
-                        <option key={sc} value={sc}>{sc}</option>
-                      ))}
-                    </select>
+                    <MultiSelectTagInput
+                      selectedValues={tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean)}
+                      onChange={(vals) => setTugasKelasSekolah(vals.join(", "))}
+                      options={optSchoolClasses}
+                      placeholder="Pilih kelas sekolah..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedJabatans.includes("guru_pondok") && (
+                <div className="space-y-2 p-3.5 bg-purple-50/50 dark:bg-purple-950/10 rounded-2xl border border-purple-100/50 dark:border-purple-950/30 animate-in fade-in duration-200">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 block">Konfigurasi Guru Pondok</span>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Tugas Kelas Pengajian</label>
+                    <MultiSelectTagInput
+                      selectedValues={tugasKelasPengajian.split(",").map(c => c.trim()).filter(Boolean)}
+                      onChange={(vals) => setTugasKelasPengajian(vals.join(", "))}
+                      options={optRecitationClasses.length > 0 ? optRecitationClasses : ["Cepatan SMP", "Lambatan SMP", "Bacaan SMP", "Pegon SMP", "Kelas Tajwid", "Kelas Makhraj"]}
+                      placeholder="Pilih kelas pengajian..."
+                    />
                   </div>
                 </div>
               )}
@@ -761,8 +737,8 @@ export default function ManajemenPenggunaPanel() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {users.map(user => (
-              <div key={user.id} className="bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col gap-3 transition-colors relative group">
+            {users.map((user, idx) => (
+              <div key={`user-${user.id || user.username || idx}-${idx}`} className="bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col gap-3 transition-colors relative group">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center shrink-0">
@@ -845,7 +821,7 @@ export default function ManajemenPenggunaPanel() {
                     </div>
                     {user.gender && user.gender !== 'Semua' && (
                       <div className="text-[10px] font-black px-2 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 rounded-md uppercase tracking-wider">
-                        {user.gender === 'L' ? 'Laki-Laki' : 'Perempuan'}
+                        {user.gender === 'L' ? 'L' : user.gender === 'P' ? 'P' : user.gender}
                       </div>
                     )}
                   </div>

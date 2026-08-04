@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop, Database, Settings, RefreshCw, Trash2 } from "lucide-react";
+import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop, Database, Settings, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import GuruRegisterModal from "./GuruRegisterModal";
 
 interface LoginFormProps {
   onSuccess: (user: { username: string; role: string; name: string; gender?: string }) => void;
@@ -16,6 +17,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   // Database Connection states
   const [showDbSettings, setShowDbSettings] = useState(false);
@@ -98,6 +100,30 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
       }
     } catch (err: any) {
       console.warn("DB login check failed", err);
+    }
+
+    // Check local registered user details fallback (instant login for registered users)
+    const cleanUsername = username.trim().toLowerCase();
+    const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
+    if (localDetails[cleanUsername] && localDetails[cleanUsername].password === password) {
+      const extra = localDetails[cleanUsername];
+      const dbUserVal = {
+        username: cleanUsername,
+        role: extra.role || "guru_sekolah",
+        name: extra.nama_lengkap || extra.nama || cleanUsername,
+        gender: extra.gender || 'Semua',
+        bagian: extra.bagian || "sekolah",
+        jabatan: extra.jabatan || "",
+        tugas_kamar: extra.tugas_kamar || "",
+        tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
+        tugas_kelas_pengajian: extra.tugas_kelas_pengajian || ""
+      };
+      setIsSuccess(true);
+      setIsLoading(false);
+      localStorage.setItem("admin_token", "session_token_registered_guru");
+      localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
+      setTimeout(() => onSuccess(dbUserVal), 2200);
+      return;
     }
 
     // Try express backend API next for backwards compatibility (the old hardcoded API login or fallback)
@@ -440,6 +466,20 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
                   <span>Sign In</span>
                 )}
               </button>
+
+              {/* Self Registration Button for Teachers / Staff */}
+              <button
+                type="button"
+                onClick={() => setShowRegisterModal(true)}
+                className={`w-full py-3 px-4 rounded-xl border font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  isDarkMode
+                    ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                }`}
+              >
+                <UserPlus className="w-4 h-4 text-emerald-500" />
+                <span>Daftar Akun Guru / Staf Baru</span>
+              </button>
             </form>
 
             {/* Info / Note */}
@@ -448,7 +488,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
                 ? "bg-[#141829] border-[#20253f] text-[#8c98bd]" 
                 : "bg-slate-50 border-slate-200/50 text-slate-500 shadow-inner"
             }`}>
-              Silakan hubungi admin pondok untuk mendapatkan hak akses login.
+              Belum punya akun? Klik &quot;Daftar Akun Guru / Staf Baru&quot; di atas untuk mendaftarkan akun dan pendataan tugas secara mandiri.
             </div>
 
             {/* Database Connection Settings Accordion */}
@@ -588,6 +628,17 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Self Registration Modal for Teachers / Staff */}
+      <GuruRegisterModal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        onSuccessLogin={(user) => {
+          setIsSuccess(true);
+          onSuccess(user);
+        }}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 }

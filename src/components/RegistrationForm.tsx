@@ -122,12 +122,7 @@ export default function RegistrationForm({
       setFormData(prev => ({ ...prev, foto: publicUrl }));
     } catch (err: any) {
       console.error("Error uploading photo:", err);
-      // If error is RLS related
-      if (err?.message?.includes("row-level security")) {
-        setUploadError("Gagal: Kebijakan Keamanan (RLS) pada tabel/bucket belum diatur. Silakan buka menu 'Koneksi Cloud' lalu jalankan SQL untuk Opsi C (RLS).");
-      } else {
-        setUploadError(`Gagal mengunggah foto. Pastikan internet stabil dan format didukung. (${err?.message || ""})`);
-      }
+      setUploadError(`Gagal mengunggah foto. Pastikan internet stabil dan format file didukung.`);
     } finally {
       setIsUploadingPhoto(false);
       if (fileInputRef.current) {
@@ -344,10 +339,10 @@ export default function RegistrationForm({
           <Sparkles size={100} />
         </div>
         <span className="bg-[#041e49]/10 border border-[#041e49]/20 text-[#041e49] text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-          {initialData ? "Edit Data Santri" : "Formulir Digital Santri"}
+          {initialData ? "Edit Data Siswa" : "Formulir Digital Siswa"}
         </span>
         <h2 className="text-base md:text-lg font-bold mt-1 uppercase tracking-tight" id="form-heading">
-          {initialData ? `Perbarui Profil: ${initialData.nama_lengkap}` : "Pendaftaran & Input Data Santri Baru"}
+          {initialData ? `Perbarui Profil: ${initialData.nama_lengkap}` : "Pendaftaran & Input Data Siswa Baru"}
         </h2>
         <p className="text-[#041e49]/80 text-[11px] mt-0.5 leading-tight">
           Harap isi informasi di bawah ini dengan lengkap dan benar sesuai KTP, KK, atau akta kelahiran yang sah.
@@ -1128,7 +1123,7 @@ export default function RegistrationForm({
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
                   />
                   <p className="text-[10px] text-slate-400">
-                    ID NFC ini diisikan dengan serial number kartu nfc masing-masing santri untuk mendukung tap presensi cepat.
+                    ID NFC ini diisikan dengan serial number kartu nfc masing-masing siswa untuk mendukung tap presensi cepat.
                   </p>
                 </div>
 
@@ -1151,7 +1146,7 @@ export default function RegistrationForm({
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 text-lg">Konfirmasi Data Santri</h3>
+                  <h3 className="font-semibold text-gray-900 text-lg">Konfirmasi Data Siswa</h3>
                   <p className="text-gray-500 text-xs">Periksa kembali data sebelum disimpan ke database</p>
                 </div>
               </div>
@@ -1279,7 +1274,7 @@ export default function RegistrationForm({
 
               {/* Informative notice */}
               <div className="p-4 bg-amber-50 rounded-xl border border-amber-250/20 text-xs text-amber-900/80 leading-relaxed">
-                📢 <strong>Pernyataan Kebenaran Data:</strong> Dengan menekan tombol Simpan, data di atas akan direkam dalam basis data digital Pondok Pesantren dan akan digunakan untuk kebutuhan administratif pelaporan santri secara resmi.
+                📢 <strong>Pernyataan Kebenaran Data:</strong> Dengan menekan tombol Simpan, data di atas akan direkam dalam basis data digital Pondok Pesantren dan akan digunakan untuk kebutuhan administratif pelaporan siswa secara resmi.
               </div>
             </motion.div>
           )}
