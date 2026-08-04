@@ -18,6 +18,7 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
   const [serialError, setSerialError] = useState<string | null>(null);
 
   const lastProcessedTimeRef = useRef<number>(0);
+  const lastProcessedTimestampRef = useRef<number>(0);
   const lastProcessedUidRef = useRef<string>("");
   const serialPortRef = useRef<any>(null);
   const serialReaderRef = useRef<any>(null);
@@ -34,6 +35,25 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
     let pollInterval: any = null;
 
     try {
+      // Always start polling /api/nfc/latest every 1000ms for solid Vercel compatibility
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch("/api/nfc/latest");
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.latestTap && json.latestTap.uid) {
+              const tap: Esp32NfcEvent = json.latestTap;
+              handleIncomingTap(tap.uid, "esp32_wifi", tap.timestamp);
+              setLastTap(tap);
+              setWifiStatus("connected");
+            }
+          }
+        } catch (pollErr) {
+          // silent catch
+        }
+      }, 1000);
+
+      // Try SSE connection first
       eventSource = new EventSource("/api/nfc/stream");
 
       eventSource.onopen = () => {
@@ -54,34 +74,14 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
       };
 
       eventSource.onerror = () => {
-        // Fallback to Polling if SSE closes or drops
-        setWifiStatus("error");
+        // SSE error is expected on Vercel serverless environment, falling back smoothly to polling
         if (eventSource) {
           eventSource.close();
           eventSource = null;
         }
-
-        // Poll /api/nfc/latest every 1 second
-        if (!pollInterval) {
-          pollInterval = setInterval(async () => {
-            try {
-              const res = await fetch("/api/nfc/latest");
-              const json = await res.json();
-              if (json && json.latestTap && json.latestTap.uid) {
-                const tap: Esp32NfcEvent = json.latestTap;
-                handleIncomingTap(tap.uid, "esp32_wifi", tap.timestamp);
-                setLastTap(tap);
-                setWifiStatus("connected");
-              }
-            } catch (pollErr) {
-              // silent catch
-            }
-          }, 1200);
-        }
       };
     } catch (err) {
       console.warn("SSE EventSource initialization error:", err);
-      setWifiStatus("error");
     }
 
     return () => {
@@ -94,18 +94,24 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
     };
   }, [enabled]);
 
-  // Debounce duplicate taps within 1200ms
+  // Debounce duplicate taps
   const handleIncomingTap = (rawUid: string, source: "esp32_wifi" | "esp32_serial", timestamp?: number) => {
     const cleanUid = String(rawUid).replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
     if (!cleanUid) return;
 
-    const now = timestamp || Date.now();
-    if (cleanUid === lastProcessedUidRef.current && now - lastProcessedTimeRef.current < 1200) {
-      return; // Ignore duplicate tap within 1.2s
+    const tapTimestamp = timestamp || Date.now();
+
+    // Skip if this exact tap timestamp has already been processed or if duplicate within 1.2s
+    if (
+      tapTimestamp === lastProcessedTimestampRef.current ||
+      (cleanUid === lastProcessedUidRef.current && Math.abs(Date.now() - lastProcessedTimeRef.current) < 1200)
+    ) {
+      return;
     }
 
     lastProcessedUidRef.current = cleanUid;
-    lastProcessedTimeRef.current = now;
+    lastProcessedTimeRef.current = Date.now();
+    lastProcessedTimestampRef.current = tapTimestamp;
 
     onCardTapped(cleanUid, source);
   };
