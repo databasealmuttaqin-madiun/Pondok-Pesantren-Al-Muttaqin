@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "../supabaseClient";
 
 interface Esp32NfcEvent {
   uid: string;
@@ -35,9 +36,10 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
     let pollInterval: any = null;
 
     try {
-      // Always start polling /api/nfc/latest every 1000ms for solid Vercel compatibility
+      // Always start polling /api/nfc/latest and Supabase nfc_taps every 1000ms
       pollInterval = setInterval(async () => {
         try {
+          // 1. Try local Express API / Vercel serverless endpoint
           const res = await fetch("/api/nfc/latest");
           if (res.ok) {
             const json = await res.json();
@@ -45,6 +47,27 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
               const tap: Esp32NfcEvent = json.latestTap;
               handleIncomingTap(tap.uid, "esp32_wifi", tap.timestamp);
               setLastTap(tap);
+              setWifiStatus("connected");
+            }
+          }
+
+          // 2. Also check Supabase nfc_taps directly for instant response
+          const { data: sbTaps } = await supabase
+            .from("nfc_taps")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          if (sbTaps && sbTaps.length > 0) {
+            const row = sbTaps[0];
+            const tapTime = new Date(row.created_at || Date.now()).getTime();
+            if (row.uid) {
+              handleIncomingTap(row.uid, "esp32_wifi", tapTime);
+              setLastTap({
+                uid: row.uid,
+                device_id: row.device_id || "ESP32_RC522",
+                timestamp: tapTime
+              });
               setWifiStatus("connected");
             }
           }

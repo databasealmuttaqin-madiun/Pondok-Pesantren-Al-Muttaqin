@@ -50,9 +50,10 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 const char* ssid     = "${wifiSsid}";
 const char* password = "${wifiPass}";
 
-// Endpoint server Vercel aplikasi SIM Al Muttaqin (Ganti ke URL Vercel Anda)
-const char* serverUrl = "${currentHost}/api/nfc/tap";
-const char* deviceId  = "ESP32_GATE_01";
+// --- KONFIGURASI SUPABASE REST API ---
+const char* supabaseUrl = "https://eflhcunxpckcynozywol.supabase.co/rest/v1/nfc_taps";
+const char* supabaseKey = "sb_publishable_fqZTO3lL9cb88K61NXjKHw_zH8O3TuZ";
+const char* deviceId    = "ESP32_GATE_01";
 
 unsigned long lastScanTime = 0;
 String lastCardUid = "";
@@ -116,26 +117,23 @@ void loop() {
   // Beep 1x
   digitalWrite(BUZZER_PIN, HIGH); delay(150); digitalWrite(BUZZER_PIN, LOW);
 
-  // Kirim data ke Server Vercel via HTTP/HTTPS POST
+  // Kirim data langsung ke Supabase REST API (Bebas Error 404 Vercel!)
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     WiFiClientSecure client;
-    client.setInsecure(); // Mendukung HTTPS Vercel tanpa perlu SSL Certificate
+    client.setInsecure(); // Mendukung HTTPS tanpa perlu SSL Certificate
 
-    if (String(serverUrl).startsWith("https")) {
-      http.begin(client, serverUrl);
-    } else {
-      http.begin(serverUrl);
-    }
-    
+    http.begin(client, supabaseUrl);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("apikey", supabaseKey);
+    http.addHeader("Authorization", String("Bearer ") + supabaseKey);
+    http.addHeader("Prefer", "return=minimal");
 
-    String jsonBody = "{\"card_uid\":\"" + cardUid + "\",\"device_id\":\"" + String(deviceId) + "\"}";
+    String jsonBody = "{\"uid\":\"" + cardUid + "\",\"device_id\":\"" + String(deviceId) + "\"}";
     int httpResponseCode = http.POST(jsonBody);
 
     if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.println("Response Server: " + String(httpResponseCode) + " -> " + response);
+      Serial.println("[HTTP CODE]: " + String(httpResponseCode) + " (Berhasil Tersambung!)");
     } else {
       Serial.println("Error HTTP POST: " + String(httpResponseCode));
     }
