@@ -1921,6 +1921,7 @@ export default function App() {
 
           {/* Current Router Outlet */}
           <div className="flex-1 w-full flex flex-col">
+            <ErrorBoundary key={activeTab}>
             {activeTab === "dashboard" && userRole === "guru_sekolah" && (
               <DashboardGuruSekolah
                 students={displayedStudents}
@@ -2084,9 +2085,7 @@ export default function App() {
 
             {activeTab === "absensi_guru" && (
               <div className="w-full">
-                <ErrorBoundary>
-                  <AbsensiGuruPanel currentUser={currentUser} />
-                </ErrorBoundary>
+                <AbsensiGuruPanel currentUser={currentUser} />
               </div>
             )}
 
@@ -2150,6 +2149,7 @@ export default function App() {
                 <ManajemenPenggunaPanel />
               </div>
             )}
+            </ErrorBoundary>
           </div>
           </div>
           

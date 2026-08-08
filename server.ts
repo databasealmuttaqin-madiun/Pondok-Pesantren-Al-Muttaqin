@@ -19,22 +19,97 @@ async function startServer() {
     const deviceId = req.body?.device_id || req.query?.device_id || "ESP32_RC522";
 
     if (!cardUid) {
-      res.status(400).json({ success: false, message: "card_uid or uid parameter required" });
+      res.status(400).json({
+        success: false,
+        message: "Kartu Tak Dikenal",
+        nama: "Tidak Dikenal"
+      });
       return;
     }
 
     const cleanUid = String(cardUid).trim().toUpperCase();
+    const noColonsUid = cleanUid.replace(/[:\s]/g, "");
+
     latestNfcTap = {
       uid: cleanUid,
       device_id: String(deviceId),
       timestamp: Date.now()
     };
 
-    // Store in Supabase rest/v1/nfc_taps to persist across Vercel serverless instances
-    try {
-      const supabaseUrl = process.env.SUPABASE_URL || "https://eflhcunxpckcynozywol.supabase.co";
-      const supabaseKey = process.env.SUPABASE_ANON_KEY || "sb_publishable_fqZTO3lL9cb88K61NXjKHw_zH8O3TuZ";
+    const supabaseUrl = process.env.SUPABASE_URL || "https://eflhcunxpckcynozywol.supabase.co";
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || "sb_publishable_fqZTO3lL9cb88K61NXjKHw_zH8O3TuZ";
 
+    let studentName: string | null = null;
+
+    // 1. Look up student in Supabase 'nfc' table first
+    try {
+      const nfcRes = await fetch(
+        `${supabaseUrl}/rest/v1/nfc?select=nama,serial_number&or=(serial_number.ilike.${cleanUid},serial_number.ilike.${noColonsUid})&limit=1`,
+        {
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`
+          }
+        }
+      );
+      if (nfcRes.ok) {
+        const rows = await nfcRes.json();
+        if (Array.isArray(rows) && rows.length > 0 && rows[0].nama) {
+          studentName = rows[0].nama;
+        }
+      }
+    } catch (err) {
+      console.warn("Supabase NFC lookup error:", err);
+    }
+
+    // 2. Look up student in Supabase 'santri' table if not found in 'nfc'
+    if (!studentName) {
+      try {
+        const santriRes = await fetch(
+          `${supabaseUrl}/rest/v1/santri?select=nama_lengkap,nama_panggilan,nfc_id&or=(nfc_id.ilike.${cleanUid},nfc_id.ilike.${noColonsUid})&limit=1`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`
+            }
+          }
+        );
+        if (santriRes.ok) {
+          const rows = await santriRes.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            studentName = rows[0].nama_lengkap || rows[0].nama_panggilan || null;
+          }
+        }
+      } catch (err) {
+        console.warn("Supabase santri lookup error:", err);
+      }
+    }
+
+    // 3. Fallback search with wildcard in case nfc_id has internal formatting/spaces
+    if (!studentName && noColonsUid.length >= 4) {
+      try {
+        const fallbackRes = await fetch(
+          `${supabaseUrl}/rest/v1/santri?select=nama_lengkap,nama_panggilan,nfc_id&nfc_id=ilike.*${noColonsUid}*&limit=1`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`
+            }
+          }
+        );
+        if (fallbackRes.ok) {
+          const rows = await fallbackRes.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            studentName = rows[0].nama_lengkap || rows[0].nama_panggilan || null;
+          }
+        }
+      } catch (err) {
+        // Ignore fallback error
+      }
+    }
+
+    // 4. Save event into Supabase 'nfc_taps' table
+    try {
       await fetch(`${supabaseUrl}/rest/v1/nfc_taps`, {
         method: "POST",
         headers: {
@@ -46,15 +121,20 @@ async function startServer() {
         body: JSON.stringify({
           uid: cleanUid,
           device_id: String(deviceId),
+          nama: studentName || "Tidak Dikenal",
           created_at: new Date().toISOString()
         })
       });
     } catch (err) {
-      // Ignore if database sync fails, fallback to memory
+      // Ignore sync error
     }
 
-    // Broadcast to all SSE connected browsers instantly
-    const sseData = `data: ${JSON.stringify(latestNfcTap)}\n\n`;
+    // Broadcast to SSE clients
+    const ssePayload = {
+      ...latestNfcTap,
+      nama: studentName || "Tidak Dikenal"
+    };
+    const sseData = `data: ${JSON.stringify(ssePayload)}\n\n`;
     for (let i = sseClients.length - 1; i >= 0; i--) {
       try {
         sseClients[i].write(sseData);
@@ -63,16 +143,29 @@ async function startServer() {
       }
     }
 
-    console.log(`[ESP32 NFC] Card Tapped: ${cleanUid} from ${deviceId}`);
-    res.json({
-      success: true,
-      status: true,
-      message: "Berhasil Membaca Kartu",
-      card_uid: cleanUid,
-      uid: cleanUid,
-      device_id: deviceId,
-      timestamp: latestNfcTap.timestamp
-    });
+    console.log(`[ESP32 NFC Tap] Card UID: ${cleanUid} | Student: ${studentName || "Tidak Dikenal"}`);
+
+    if (studentName) {
+      res.json({
+        success: true,
+        message: "Presensi Berhasil",
+        nama: studentName,
+        card_uid: cleanUid,
+        uid: cleanUid,
+        device_id: deviceId,
+        timestamp: latestNfcTap.timestamp
+      });
+    } else {
+      res.json({
+        success: false,
+        message: "Kartu Tak Dikenal",
+        nama: "Tidak Dikenal",
+        card_uid: cleanUid,
+        uid: cleanUid,
+        device_id: deviceId,
+        timestamp: latestNfcTap.timestamp
+      });
+    }
   };
 
   app.post("/api/nfc/tap", handleNfcTap);

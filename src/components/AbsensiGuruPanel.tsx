@@ -1545,7 +1545,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                           <>
                             <Phone className="w-3 h-3 text-emerald-500" />
                             <a 
-                              href={`https://wa.me/${profile.nomor_seluler.replace(/[^0-9]/g, "")}`} 
+                              href={`https://wa.me/${String(profile.nomor_seluler || "").replace(/[^0-9]/g, "")}`} 
                               target="_blank" 
                               rel="noreferrer" 
                               className="text-emerald-600 hover:underline"
@@ -2919,7 +2919,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                       <p className="text-[9px] text-slate-400 font-bold uppercase">No. Telepon / WA</p>
                       {guru.nomor_seluler ? (
                         <a 
-                          href={`https://wa.me/${guru.nomor_seluler.replace(/[^0-9]/g, "")}`}
+                          href={`https://wa.me/${String(guru.nomor_seluler || "").replace(/[^0-9]/g, "")}`}
                           target="_blank" 
                           rel="noreferrer"
                           className="font-bold text-emerald-600 hover:underline flex items-center gap-1"
