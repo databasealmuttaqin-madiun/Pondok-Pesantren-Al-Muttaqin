@@ -21,6 +21,7 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
   const lastProcessedTimeRef = useRef<number>(0);
   const lastProcessedTimestampRef = useRef<number>(0);
   const lastProcessedUidRef = useRef<string>("");
+  const mountTimeRef = useRef<number>(Date.now());
   const serialPortRef = useRef<any>(null);
   const serialReaderRef = useRef<any>(null);
 
@@ -29,6 +30,11 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
     if (!enabled) {
       setWifiStatus("disconnected");
       return;
+    }
+
+    // Set initial baseline timestamp to now minus 1s so old historic taps from past sessions don't trigger
+    if (lastProcessedTimestampRef.current === 0) {
+      lastProcessedTimestampRef.current = Date.now() - 1000;
     }
 
     setWifiStatus("connecting");
@@ -97,7 +103,6 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
       };
 
       eventSource.onerror = () => {
-        // SSE error is expected on Vercel serverless environment, falling back smoothly to polling
         if (eventSource) {
           eventSource.close();
           eventSource = null;
@@ -117,17 +122,22 @@ export function useEsp32NfcListener({ onCardTapped, enabled = true }: UseEsp32Nf
     };
   }, [enabled]);
 
-  // Debounce duplicate taps
+  // Handle incoming tap events
   const handleIncomingTap = (rawUid: string, source: "esp32_wifi" | "esp32_serial", timestamp?: number) => {
     const cleanUid = String(rawUid).replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
     if (!cleanUid) return;
 
     const tapTimestamp = timestamp || Date.now();
 
-    // Skip if this exact tap timestamp has already been processed or if duplicate within 1.2s
+    // If tap is older than or equal to our last processed timestamp, ignore it
+    if (tapTimestamp <= lastProcessedTimestampRef.current) {
+      return;
+    }
+
+    // Debounce exact same card within 1.2 seconds
     if (
-      tapTimestamp === lastProcessedTimestampRef.current ||
-      (cleanUid === lastProcessedUidRef.current && Math.abs(Date.now() - lastProcessedTimeRef.current) < 1200)
+      cleanUid === lastProcessedUidRef.current &&
+      Math.abs(Date.now() - lastProcessedTimeRef.current) < 1200
     ) {
       return;
     }

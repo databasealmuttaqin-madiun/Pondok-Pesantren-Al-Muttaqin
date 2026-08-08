@@ -265,7 +265,7 @@ void loop() {
     http.begin(client, serverApiUrl);
     http.addHeader("Content-Type", "application/json");
 
-    String jsonBody = "{\\\"card_uid\\\":\\\"" + cardUid + "\\\",\\\"device_id\\\":\\\"" + String(deviceId) + "\\\"}";
+    String jsonBody = "{\\"card_uid\\":\\"" + cardUid + "\\",\\"device_id\\":\\"" + String(deviceId) + "\\"}";
     int httpResponseCode = http.POST(jsonBody);
 
     if (httpResponseCode > 0) {
@@ -274,13 +274,14 @@ void loop() {
       Serial.println("[RESPONSE]: " + response);
 
       lcd.clear();
-      if (response.indexOf("\\\"success\\\":true") >= 0) {
-        // Ekstrak Nama Siswa dari Response JSON
-        int namaIdx = response.indexOf("\\\"nama\\\":\\\"");
+      if (httpResponseCode == 200 && response.indexOf("true") >= 0) {
         String namaSiswa = "Siswa Ditemukan";
+        int namaIdx = response.indexOf("nama");
         if (namaIdx >= 0) {
-          int startName = namaIdx + 8;
-          int endName = response.indexOf("\\\"", startName);
+          int startName = response.indexOf(":", namaIdx) + 1;
+          while (startName < response.length() && (response[startName] == ' ' || response[startName] == '"')) startName++;
+          int endName = startName;
+          while (endName < response.length() && response[endName] != '"' && response[endName] != ',' && response[endName] != '}') endName++;
           if (endName > startName) {
             namaSiswa = response.substring(startName, endName);
           }
