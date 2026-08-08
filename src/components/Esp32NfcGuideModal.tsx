@@ -31,6 +31,8 @@ export default function Esp32NfcGuideModal({
   Library Wajib Dihubungkan di Arduino IDE (Library Manager):
   1. MFRC522 (oleh Miguel Balboa)
   2. LiquidCrystal_I2C (oleh Frank de Brabander / Marco Schwartz)
+     * Catatan: Abaikan WARNING "library claims to run on avr architecture", 
+       LiquidCrystal_I2C tetap berjalan normal di ESP32 dengan Wire.h.
   3. WiFi & HTTPClient (Bawaan ESP32 Board Manager)
 
   =============================================================
@@ -90,7 +92,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 const char* ssid         = "${wifiSsid}";
 const char* password     = "${wifiPass}";
 
-// Endpoint API Express / Vercel (Atau ganti dengan IP Server Lokal http://192.168.x.x:3000/api/nfc/tap)
+// Endpoint API Express / Cloud Run
 const char* serverApiUrl = "https://ais-dev-7iq2pu7x3nfewkb6nyaboc-253474951008.asia-east1.run.app/api/nfc/tap";
 const char* deviceId     = "WEMOS_GATE_01";
 
@@ -130,7 +132,8 @@ void setup() {
   SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
   mfrc522.PCD_Init();
 
-  Serial.println("\n===========================================");
+  Serial.println("");
+  Serial.println("===========================================");
   Serial.println(" WEMOS D1 R32 + RC522 + LCD I2C + BUZZER");
   Serial.println(" SIM Pondok Pesantren Al Muttaqin");
   Serial.println("===========================================");
@@ -154,7 +157,8 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Terhubung!");
+    Serial.println("");
+    Serial.println("WiFi Terhubung!");
     Serial.print("IP ESP32: ");
     Serial.println(WiFi.localIP());
 
@@ -165,7 +169,8 @@ void setup() {
     lcd.print(WiFi.localIP());
     delay(1500);
   } else {
-    Serial.println("\nWiFi Disconnected (Mode Lokal/Serial)");
+    Serial.println("");
+    Serial.println("WiFi Disconnected (Mode Lokal/Serial)");
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("WiFi Disconnected");
@@ -186,7 +191,8 @@ void loop() {
   int btnVal = digitalRead(BUTTON_PIN);
   if (btnVal == LOW && lastBtnState == HIGH && (millis() - lastDebounceBtn > 300)) {
     lastDebounceBtn = millis();
-    Serial.println("\n[TOMBOL TEKAN]: Trigger Manual Ditekan");
+    Serial.println("");
+    Serial.println("[TOMBOL TEKAN]: Trigger Manual Ditekan");
     
     digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
     
@@ -201,8 +207,22 @@ void loop() {
   lastBtnState = btnVal;
 
   // --- CEK TAP KARTU RFID RC522 ---
-  if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    // Reset cache kartu terakhir jika tidak ada kartu selama > 2.5 detik
+    if (millis() - lastScanTime > 2500) {
+      lastCardUid = "";
+    }
+    return;
+  }
+
+  // Bersihkan buffer memori UID sebelum membaca
+  memset(mfrc522.uid.uidByte, 0, sizeof(mfrc522.uid.uidByte));
+  mfrc522.uid.size = 0;
+
+  if (!mfrc522.PICC_ReadCardSerial() || mfrc522.uid.size == 0) {
+    mfrc522.PICC_HaltA();
+    return;
+  }
 
   // Format UID ke String Hex (Contoh: 12A3B4C5)
   String cardUid = "";
@@ -212,16 +232,19 @@ void loop() {
   }
   cardUid.toUpperCase();
 
-  // Debounce kartu yang sama dalam 2 detik
+  // Debounce: Jika KARTU SAMA ditap berturut-turut dalam 2 detik, abaikan
   if (cardUid == lastCardUid && (millis() - lastScanTime < 2000)) {
     mfrc522.PICC_HaltA();
+    mfrc522.PCD_StopCrypto1();
     return;
   }
 
   lastCardUid = cardUid;
   lastScanTime = millis();
 
-  Serial.println("\n[KARTU DITAP]: " + cardUid);
+  Serial.println("");
+  Serial.print("[KARTU DITAP]: ");
+  Serial.println(cardUid);
 
   // Tampilkan di LCD I2C
   lcd.clear();
@@ -242,7 +265,7 @@ void loop() {
     http.begin(client, serverApiUrl);
     http.addHeader("Content-Type", "application/json");
 
-    String jsonBody = "{\"card_uid\":\"" + cardUid + "\",\"device_id\":\"" + String(deviceId) + "\"}";
+    String jsonBody = "{\\\"card_uid\\\":\\\"" + cardUid + "\\\",\\\"device_id\\\":\\\"" + String(deviceId) + "\\\"}";
     int httpResponseCode = http.POST(jsonBody);
 
     if (httpResponseCode > 0) {
@@ -251,13 +274,13 @@ void loop() {
       Serial.println("[RESPONSE]: " + response);
 
       lcd.clear();
-      if (response.indexOf("\"success\":true") >= 0) {
+      if (response.indexOf("\\\"success\\\":true") >= 0) {
         // Ekstrak Nama Siswa dari Response JSON
-        int namaIdx = response.indexOf("\"nama\":\"");
+        int namaIdx = response.indexOf("\\\"nama\\\":\\\"");
         String namaSiswa = "Siswa Ditemukan";
         if (namaIdx >= 0) {
           int startName = namaIdx + 8;
-          int endName = response.indexOf("\"", startName);
+          int endName = response.indexOf("\\\"", startName);
           if (endName > startName) {
             namaSiswa = response.substring(startName, endName);
           }
@@ -296,8 +319,11 @@ void loop() {
   delay(1200);
   updateLcdStandby();
 
+  // Reset RC522 State & Re-Init agar siap membaca tap berikutnya
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
+  delay(100);
+  mfrc522.PCD_Init(); // Re-Init hardware RC522
 }
 `;
 
@@ -372,8 +398,20 @@ void loop() {
   }
   lastBtnState = btnVal;
 
-  if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    if (millis() - lastScanTime > 2500) {
+      lastCardUid = "";
+    }
+    return;
+  }
+
+  memset(mfrc522.uid.uidByte, 0, sizeof(mfrc522.uid.uidByte));
+  mfrc522.uid.size = 0;
+
+  if (!mfrc522.PICC_ReadCardSerial() || mfrc522.uid.size == 0) {
+    mfrc522.PICC_HaltA();
+    return;
+  }
 
   String cardUid = "";
   for (byte i = 0; i < mfrc522.uid.size; i++) {
@@ -384,6 +422,7 @@ void loop() {
 
   if (cardUid == lastCardUid && (millis() - lastScanTime < 1500)) {
     mfrc522.PICC_HaltA();
+    mfrc522.PCD_StopCrypto1();
     return;
   }
 
@@ -407,6 +446,8 @@ void loop() {
 
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
+  delay(50);
+  mfrc522.PCD_Init();
 }
 `;
 

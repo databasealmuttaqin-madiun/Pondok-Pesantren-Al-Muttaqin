@@ -28,7 +28,7 @@ async function startServer() {
     }
 
     const cleanUid = String(cardUid).trim().toUpperCase();
-    const noColonsUid = cleanUid.replace(/[:\s]/g, "");
+    const rawNoColons = cleanUid.replace(/[^A-F0-9]/gi, "");
 
     latestNfcTap = {
       uid: cleanUid,
@@ -41,10 +41,10 @@ async function startServer() {
 
     let studentName: string | null = null;
 
-    // 1. Look up student in Supabase 'nfc' table first
+    // 1. Search 'nfc' table with client-side normalization for max reliability
     try {
       const nfcRes = await fetch(
-        `${supabaseUrl}/rest/v1/nfc?select=nama,serial_number&or=(serial_number.ilike.${cleanUid},serial_number.ilike.${noColonsUid})&limit=1`,
+        `${supabaseUrl}/rest/v1/nfc?select=nama,serial_number`,
         {
           headers: {
             "apikey": supabaseKey,
@@ -54,19 +54,26 @@ async function startServer() {
       );
       if (nfcRes.ok) {
         const rows = await nfcRes.json();
-        if (Array.isArray(rows) && rows.length > 0 && rows[0].nama) {
-          studentName = rows[0].nama;
+        if (Array.isArray(rows)) {
+          const match = rows.find((r: any) => {
+            if (!r.serial_number) return false;
+            const snNorm = String(r.serial_number).replace(/[^A-F0-9]/gi, "").toUpperCase();
+            return snNorm === rawNoColons || String(r.serial_number).trim().toUpperCase() === cleanUid;
+          });
+          if (match && match.nama) {
+            studentName = match.nama;
+          }
         }
       }
     } catch (err) {
-      console.warn("Supabase NFC lookup error:", err);
+      console.warn("Supabase NFC table query error:", err);
     }
 
-    // 2. Look up student in Supabase 'santri' table if not found in 'nfc'
+    // 2. Search 'santri' table if not found in 'nfc'
     if (!studentName) {
       try {
         const santriRes = await fetch(
-          `${supabaseUrl}/rest/v1/santri?select=nama_lengkap,nama_panggilan,nfc_id&or=(nfc_id.ilike.${cleanUid},nfc_id.ilike.${noColonsUid})&limit=1`,
+          `${supabaseUrl}/rest/v1/santri?select=nama_lengkap,nama_panggilan,nfc_id`,
           {
             headers: {
               "apikey": supabaseKey,
@@ -76,35 +83,19 @@ async function startServer() {
         );
         if (santriRes.ok) {
           const rows = await santriRes.json();
-          if (Array.isArray(rows) && rows.length > 0) {
-            studentName = rows[0].nama_lengkap || rows[0].nama_panggilan || null;
-          }
-        }
-      } catch (err) {
-        console.warn("Supabase santri lookup error:", err);
-      }
-    }
-
-    // 3. Fallback search with wildcard in case nfc_id has internal formatting/spaces
-    if (!studentName && noColonsUid.length >= 4) {
-      try {
-        const fallbackRes = await fetch(
-          `${supabaseUrl}/rest/v1/santri?select=nama_lengkap,nama_panggilan,nfc_id&nfc_id=ilike.*${noColonsUid}*&limit=1`,
-          {
-            headers: {
-              "apikey": supabaseKey,
-              "Authorization": `Bearer ${supabaseKey}`
+          if (Array.isArray(rows)) {
+            const match = rows.find((r: any) => {
+              if (!r.nfc_id) return false;
+              const nfcNorm = String(r.nfc_id).replace(/[^A-F0-9]/gi, "").toUpperCase();
+              return nfcNorm === rawNoColons || String(r.nfc_id).trim().toUpperCase() === cleanUid;
+            });
+            if (match) {
+              studentName = match.nama_lengkap || match.nama_panggilan || null;
             }
           }
-        );
-        if (fallbackRes.ok) {
-          const rows = await fallbackRes.json();
-          if (Array.isArray(rows) && rows.length > 0) {
-            studentName = rows[0].nama_lengkap || rows[0].nama_panggilan || null;
-          }
         }
       } catch (err) {
-        // Ignore fallback error
+        console.warn("Supabase santri table query error:", err);
       }
     }
 
