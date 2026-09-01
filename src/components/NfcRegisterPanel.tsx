@@ -1,19 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 import { SantriData } from "../supabaseClient";
-import { Fingerprint, Search, User, Home, HelpCircle, Check, AlertTriangle, Trash2, Shield, RefreshCw, Cpu, Wifi, Usb, Radio } from "lucide-react";
+import { Fingerprint, Search, User, Home, HelpCircle, Check, AlertTriangle, Trash2, Shield, RefreshCw, Cpu, Wifi, Usb, Radio, ArrowRightLeft, Copy, Sparkles, CheckCircle2 } from "lucide-react";
 import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
+import NfcUidConverterModal from "./NfcUidConverterModal";
+import { isNfcMatch, convertNfcUid, cleanCodeString, NfcConversionResult } from "../utils/nfcConverter";
 
 /**
  * Normalizes an NFC token or UID (serial number) to prevent mismatch due to colons, spaces, or casing
  */
 export function normalizeNfcId(id: string): string {
   if (!id) return "";
-  return id.replace(/:/g, "").replace(/\s/g, "").trim().toUpperCase();
+  return cleanCodeString(id);
 }
 
 /**
  * Resolves scanned code, checks if it is a Google Form URL or has a student name populated
+ * Uses bidirectional multi-format matching (Hex, Decimal Big-Endian, Decimal Little-Endian)
  */
 export function parseNfcPayload(code: string, students: SantriData[]) {
   const cleanCode = code.trim();
@@ -31,7 +34,6 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
     try {
       const decodedUrl = decodeURIComponent(cleanCode);
       // Attempt to extract from standard google form entry URL queries
-      // e.g., entry.2107021361=SALMAN+FAJRIN+ASABEKT or &entry.2107021361=SALMAN FAJRIN ASABEKT
       const matches = decodedUrl.match(/entry\.\d+=([^&?]+)/gi);
       if (matches) {
         for (const match of matches) {
@@ -54,7 +56,6 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
                   matchedStudent: matchedByName,
                 };
               } else {
-                // Keep extractedName for reference even if not found in db
                 extractedName = val;
               }
             }
@@ -66,18 +67,16 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
     }
   }
 
-  // Exact matching against nfc_id or nik with normalization
-  const cleanCodeNormalized = normalizeNfcId(cleanCode);
+  // Bidirectional universal matching against nfc_id (Hex & Decimal both Little-Endian / Big-Endian) or nik
   let matchedStudent = students.find((s) => {
-    const studentNfcNormalized = normalizeNfcId(s.nfc_id || "");
+    if (s.nfc_id && isNfcMatch(cleanCode, s.nfc_id)) {
+      return true;
+    }
     const studentNikNormalized = s.nik ? s.nik.trim().toUpperCase() : "";
-    return (
-      (studentNfcNormalized !== "" && studentNfcNormalized === cleanCodeNormalized) ||
-      (studentNikNormalized !== "" && studentNikNormalized === cleanCode.toUpperCase())
-    );
+    return studentNikNormalized !== "" && studentNikNormalized === cleanCode.toUpperCase();
   });
 
-  // FALLBACK: If not matched by card ID / NIK, match directly against student name or nickname (e.g., from custom text QR Code)
+  // FALLBACK: If not matched by card ID / NIK, match directly against student name or nickname
   if (!matchedStudent && cleanCode.length > 2) {
     const cleanAndNormalizeString = (str: string) => {
       return str.trim().toLowerCase().replace(/\s+/g, " ");
@@ -131,6 +130,7 @@ export default function NfcRegisterPanel({
 
   // Search filter for Registered Database Tab
   const [dbSearch, setDbSearch] = useState<string>("");
+  const [dbStatusFilter, setDbStatusFilter] = useState<"Aktif" | "Mubaligh" | "Nonaktif">("Aktif");
 
   // Web NFC Support checks
   const isNfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
@@ -142,6 +142,10 @@ export default function NfcRegisterPanel({
 
   // ESP32 RC522 Reader Integration
   const [showEsp32GuideModal, setShowEsp32GuideModal] = useState<boolean>(false);
+
+  // UID Converter Modal
+  const [showConverterModal, setShowConverterModal] = useState<boolean>(false);
+  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
 
   const {
     wifiStatus,
@@ -319,8 +323,25 @@ export default function NfcRegisterPanel({
     (s) => s.nfc_id && s.nfc_id.trim() !== ""
   );
 
-  // Filter registered NFC cards for Database View
+  // Filter registered NFC cards for Database View based on status filter & search
   const filteredDbList = studentsWithNfc.filter((s) => {
+    const katStr = String(s.kategori || "");
+    const statusStr = String((s as any).status || "");
+
+    // 1. Status Filter
+    if (dbStatusFilter === "Aktif") {
+      const isMubaligh = katStr === "Mubaligh" || katStr.toLowerCase().includes("mubaligh") || statusStr === "Mubaligh";
+      const isNonaktif = statusStr === "Nonaktif" || statusStr === "Mutasi" || statusStr === "Lulus";
+      if (isMubaligh || isNonaktif) return false;
+    } else if (dbStatusFilter === "Mubaligh") {
+      const isMubaligh = katStr === "Mubaligh" || katStr.toLowerCase().includes("mubaligh") || statusStr === "Mubaligh";
+      if (!isMubaligh) return false;
+    } else if (dbStatusFilter === "Nonaktif") {
+      const isNonaktif = statusStr === "Nonaktif" || statusStr === "Mutasi" || statusStr === "Lulus";
+      if (!isNonaktif) return false;
+    }
+
+    // 2. Text Search
     const query = dbSearch.toLowerCase();
     return (
       s.nama_lengkap.toLowerCase().includes(query) ||
@@ -335,7 +356,7 @@ export default function NfcRegisterPanel({
       {/* Header Banner */}
       <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-[2rem] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in relative overflow-hidden" id="nfc_main_header">
         <div className="flex items-center gap-4">
-          <div className="w-[54px] h-[54px] rounded-2xl bg-indigo-50 dark:bg-slate-900 flex items-center justify-center text-indigo-505 dark:text-indigo-400 shrink-0">
+          <div className="w-[54px] h-[54px] rounded-2xl bg-indigo-50 dark:bg-slate-900 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
             <Fingerprint className="w-6 h-6 animate-pulse" />
           </div>
           <div>
@@ -343,552 +364,378 @@ export default function NfcRegisterPanel({
               Registrasi & Manajemen Kartu NFC
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
-              Sistem pendaftaran kartu RFID / NFC dengan keyboard hardware emulator pembaca kartu.
+              Sistem pendaftaran kartu RFID / NFC terhubung ke database santri secara otomatis.
             </p>
           </div>
         </div>
 
         {/* Tab Switcher inside Header */}
-        <div className="bg-slate-50 dark:bg-slate-900/60 p-1 border border-slate-200/50 dark:border-slate-800 rounded-2xl h-fit flex items-center shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setActiveSubTab("scan")}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 select-none cursor-pointer ${
-              activeSubTab === "scan"
-                ? "bg-indigo-600 text-white shadow-sm scale-[1.01]"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
+            type="button"
+            onClick={() => setShowConverterModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-sm"
           >
-            Pindai & Daftar
+            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>Kalkulator UID</span>
           </button>
-          <button
-            onClick={() => setActiveSubTab("database")}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 select-none cursor-pointer ${
-              activeSubTab === "database"
-                ? "bg-indigo-600 text-white shadow-sm scale-[1.01]"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
-          >
-            Database Kartu ({studentsWithNfc.length})
-          </button>
+
+          <div className="bg-slate-50 dark:bg-slate-900/60 p-1 border border-slate-200/50 dark:border-slate-800 rounded-2xl h-fit flex items-center shrink-0">
+            <button
+              onClick={() => setActiveSubTab("scan")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer ${
+                activeSubTab === "scan"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+              }`}
+            >
+              Daftar
+            </button>
+            <button
+              onClick={() => setActiveSubTab("database")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer ${
+                activeSubTab === "database"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+              }`}
+            >
+              Database Kartu ({studentsWithNfc.length})
+            </button>
+          </div>
         </div>
       </div>
 
       {activeSubTab === "scan" ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" id="nfc-scan-tab">
-          {/* Card Reader Status / Emulation: Left Column (5 columns) */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
-              <h3 className="font-bold text-slate-800 dark:text-white text-xs uppercase tracking-wider border-b border-slate-100 dark:border-slate-800/80 pb-3 flex items-center justify-between">
-                <span>STATUS PEMBACA KARTU</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold flex items-center gap-1 border ${
-                  isListening 
-                    ? "bg-emerald-50 text-[#10b981] border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800" 
-                    : "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/20 dark:border-amber-805"
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${isListening ? "bg-[#10b981] animate-ping" : "bg-amber-500"}`}></span>
-                  {isListening ? "RFID PEMBACA AKTIF" : "PAUSED"}
-                </span>
-              </h3>
-
-              {/* Physical Scanning Area Ripple Visual */}
-              <div 
-                className={`relative h-44 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-4 text-center overflow-hidden transition-all duration-300 ${
-                  isListening || isNfcActive
-                    ? "bg-indigo-50/20 border-indigo-200 dark:bg-slate-900/10 dark:border-indigo-800/50 hover:bg-indigo-50/40"
-                    : "bg-slate-50 border-slate-200 dark:bg-slate-900/50 dark:border-slate-850"
-                }`}
-              >
-                {/* Simulated Radar Wave / Ripple */}
-                {(isListening || isNfcActive) && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <span className="w-36 h-36 border border-indigo-400/25 rounded-full animate-ping absolute"></span>
-                    <span className="w-24 h-24 border border-indigo-400/15 rounded-full animate-ping delay-500 absolute"></span>
-                  </div>
-                )}
-
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-inner relative z-10 mb-3 transition-colors duration-300 ${
-                  isListening || isNfcActive ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-400" : "bg-slate-200 text-slate-400"
-                }`}>
-                  <Fingerprint className="w-7 h-7" />
+        <div className="w-full" id="nfc-scan-tab">
+          {/* Main Registration & Allocation Card */}
+          <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm min-h-[420px] flex flex-col justify-between">
+            
+            {!scannedCode ? (
+              /* Waiting / Ready State */
+              <div className="my-auto text-center py-10 space-y-5 max-w-xl mx-auto">
+                <div className="w-20 h-20 rounded-3xl bg-blue-50 dark:bg-slate-900 border border-blue-100 dark:border-slate-800 flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto shadow-xs">
+                  <Fingerprint className="w-10 h-10 animate-pulse" />
                 </div>
-
-                <p className="text-xs font-extrabold text-slate-700 dark:text-slate-300 relative z-10 break-all px-2">
-                  {scannedCode ? `NFC TERDETEKSI: ${scannedCode}` : "Tempelkan Kartu RFID/NFC ke Reader"}
-                </p>
-                <p className="text-[9.5px] text-slate-550 dark:text-slate-400 mt-1 max-w-[240px] leading-relaxed relative z-10">
-                  {isNfcActive 
-                    ? "NFC HP Aktif: Tempelkan kartu di belakang body HP Anda." 
-                    : isListening 
-                    ? "Siap membaca ketikan USB Reader (Fokus bebas). Jangan klik kolom input saat nempelkannya." 
-                    : "Sensor scanner paused."}
-                </p>
-              </div>
-
-              {/* ESP32 + RC522 Hardware Reader Control Block */}
-              <div className="bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100/60 dark:border-emerald-900/40 p-3.5 rounded-2xl space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Cpu className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <h4 className="text-[10.5px] font-black uppercase text-emerald-900 dark:text-emerald-300 tracking-wider">
-                      Hardware ESP32 + RC522 Reader
-                    </h4>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold flex items-center gap-1 border ${
-                    wifiStatus === "connected" || isSerialConnected
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/60 dark:text-emerald-300"
-                      : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400"
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${wifiStatus === "connected" || isSerialConnected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`}></span>
-                    {wifiStatus === "connected" ? "WiFi Ready" : isSerialConnected ? "USB Serial" : "Standby"}
-                  </span>
-                </div>
-
-                <p className="text-[9.5px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {wifiStatus === "connected"
-                    ? "ESP32 WiFi HTTP Reader aktif! Tempelkan kartu pada modul RC522."
-                    : isSerialConnected
-                    ? "ESP32 USB Serial terhubung ke browser!"
-                    : "Terhubung otomatis via WiFi Server (`/api/nfc/tap`) atau kabel USB Serial."}
-                </p>
-
-                {serialError && (
-                  <p className="text-[9.5px] text-rose-500 font-semibold bg-rose-50 dark:bg-rose-950/20 px-2.5 py-1 rounded-lg border border-rose-100 dark:border-rose-900">
-                    {serialError}
-                  </p>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isSerialConnected) {
-                        disconnectWebSerial();
-                      } else {
-                        connectWebSerial();
-                      }
-                    }}
-                    className={`flex-1 py-1.5 px-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                      isSerialConnected
-                        ? "bg-rose-500 hover:bg-rose-600 border-rose-500 text-white shadow-xs"
-                        : "bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white shadow-xs"
-                    }`}
-                  >
-                    <Usb className="w-3.5 h-3.5" />
-                    <span>{isSerialConnected ? "Putuskan Serial" : "Koneksi USB Serial"}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowEsp32GuideModal(true)}
-                    className="py-1.5 px-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-all cursor-pointer flex items-center gap-1"
-                  >
-                    <Cpu className="w-3.5 h-3.5" />
-                    <span>Script & Pinout</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* WebNFC mobile sensor controls */}
-              {isNfcSupported ? (
-                <div className="bg-indigo-50/40 dark:bg-slate-900/40 border border-indigo-100/40 dark:border-indigo-950 p-3.5 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-[10.5px] font-black uppercase text-indigo-850 dark:text-indigo-400 tracking-wider">
-                        Sensor NFC HP Internal
-                      </h4>
-                      <p className="text-[9.5px] text-indigo-600/70 dark:text-slate-450">
-                        Pindai serial ID langsung menggunakan sensor belakang HP Anda.
-                      </p>
-                    </div>
-                    <span className={`w-2.5 h-2.5 rounded-full ${isNfcActive ? "bg-emerald-500 animate-pulse" : "bg-slate-405"}`}></span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsNfcActive(!isNfcActive);
-                      if (!isNfcActive) {
-                        setIsListening(false); // disable keyboard listener while phone sensor is on to avoid layout double-intercept
-                      }
-                    }}
-                    className={`w-full py-2 rounded-xl text-[10.5px] font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${
-                      isNfcActive
-                        ? "bg-rose-500 hover:bg-rose-600 text-white shadow-sm"
-                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-                    }`}
-                  >
-                    {isNfcActive ? "🔴 Matikan Sensor NFC HP" : "🟢 Aktifkan Sensor NFC HP"}
-                  </button>
-
-                  {webNfcError && (
-                    <p className="text-[10px] text-rose-500 font-semibold leading-normal bg-rose-50 dark:bg-rose-950/20 px-2.5 py-1.5 rounded-lg border border-rose-100 dark:border-rose-900">
-                      {webNfcError}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-[#f8fafc] dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-150 dark:border-slate-850">
-                  <h4 className="text-[10.5px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">
-                    Sensor NFC HP Internal
+                
+                <div className="space-y-2">
+                  <h4 className="text-base font-bold text-slate-800 dark:text-white">
+                    Siap Membaca Kartu RFID / NFC
                   </h4>
-                  <p className="text-[9.5px] text-slate-500/80 leading-relaxed mt-1">
-                    Gunakan **Google Chrome di HP Android** untuk scan serial nomor langsung lewat body handphone.
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Silakan tempelkan kartu pada USB Reader atau masukkan kode serial kartu di bawah untuk mendaftarkan dan menghubungkan kartu ke santri.
                   </p>
                 </div>
-              )}
 
-              {/* USB physical hardware Reader controls */}
-              <div className="space-y-2 border-t border-slate-100 dark:border-slate-800/85 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10.5px] font-bold text-slate-600 dark:text-slate-400">USB Reader (Keyboard Emulator)</span>
-                  <span className={`w-2.5 h-2.5 rounded-full ${isListening ? "bg-emerald-500" : "bg-slate-400"}`}></span>
+                {/* Input manual / simulasi cepat */}
+                <div className="pt-3 max-w-md mx-auto">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={simulationCode}
+                      onChange={(e) => setSimulationCode(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && simulationCode.trim()) {
+                          processScan(simulationCode);
+                        }
+                      }}
+                      placeholder="Ketik/tempel kode serial kartu..."
+                      className="flex-1 text-xs px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-white shadow-inner"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (simulationCode.trim()) {
+                          processScan(simulationCode);
+                        }
+                      }}
+                      disabled={!simulationCode.trim()}
+                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                    >
+                      Proses Kartu
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsListening(!isListening);
-                      if (!isListening) {
-                        setIsNfcActive(false); // shut down mobile sensor if enabling keyboard listener
-                      }
-                    }}
-                    className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all duration-150 select-none cursor-pointer ${
-                      isListening
-                        ? "bg-white dark:bg-[#111c44] hover:bg-slate-50 border-slate-250 dark:border-slate-800 text-slate-650 dark:text-slate-400"
-                        : "bg-slate-700 hover:bg-slate-800 border-slate-700 text-white shadow-sm"
-                    }`}
-                  >
-                    {isListening ? "Pause USB Listener" : "Aktifkan USB Listener"}
-                  </button>
+              </div>
+            ) : (
+              /* Active State: Card is scanned, perform logic checks */
+              <div className="space-y-6">
+                {/* Reset / Scan Ulang Bar */}
+                <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => {
                       setScannedCode("");
+                      setSimulationCode("");
                       setKeyBuffer("");
-                      setWebNfcError(null);
                     }}
-                    className="px-3.5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-slate-250 dark:border-slate-800 bg-white dark:bg-[#111c44] text-slate-500 hover:text-slate-700 dark:text-slate-400 transition-all cursor-pointer"
+                    className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
                   >
-                    Reset
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Test Simulation Section */}
-            <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-4">
-              <h4 className="font-bold text-slate-700 dark:text-slate-300 text-[10px] uppercase tracking-wider flex items-center gap-1 border-b border-slate-50 dark:border-slate-800/80 pb-2">
-                <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Alat Simulasi Pasang Kartu</span>
-              </h4>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                Gunakan panel simulasi ini jika Anda tidak memiliki hardware card reader fisik untuk menguji. Silakan ketik atau pilih kode contoh:
-              </p>
-
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={simulationCode}
-                    onChange={(e) => setSimulationCode(e.target.value)}
-                    placeholder="Contoh: 12345678"
-                    className="flex-1 text-[11px] px-3 py-2 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (simulationCode.trim()) {
-                        processScan(simulationCode);
-                      } else {
-                        const randomCode = Math.floor(100000000 + Math.random() * 900000000).toString();
-                        setSimulationCode(randomCode);
-                        processScan(randomCode);
-                      }
-                    }}
-                    className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900 text-[10.5px] font-bold rounded-xl hover:bg-indigo-100 transition-all cursor-pointer whitespace-nowrap"
-                  >
-                    Simulasikan Tap
+                    Ganti / Scan Ulang
                   </button>
                 </div>
 
-                {/* Predefined mock card IDs quick selections */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {["882940212", "501928372", "948102391"].map((code) => (
-                    <button
-                      key={code}
-                      onClick={() => {
-                        setSimulationCode(code);
-                        processScan(code);
-                      }}
-                      className="px-2 py-1 bg-slate-55 dark:bg-slate-900 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-405 text-[9px] font-bold rounded border border-slate-200/40 dark:border-slate-800 transition-all"
-                    >
-                      Code: {code}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Registration Details & Form Panel: Right Column (7 columns) */}
-          <div className="lg:col-span-7">
-            <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm min-h-[400px] flex flex-col justify-between">
-              
-              {!scannedCode ? (
-                /* Static State: No Scans Yet */
-                <div className="my-auto text-center py-12 space-y-4">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-150 dark:border-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-600 mx-auto">
-                    <Fingerprint className="w-8 h-8" />
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-700 dark:text-slate-350">Belum Ada Kartu NFC Terbaca</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
-                    Tempelkan kartu RFID / NFC pada reader Anda atau simulasikan ketukan kartu di sebelah kiri. Sistem akan langsung mencocokkan kode kartu dengan database kesiswaan secara real-time.
-                  </p>
-                </div>
-              ) : (
-                /* Active State: Card is scanned, perform logic checks */
-                <div className="space-y-6">
-                  {/* Card Serial Tag Badge */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-indigo-50/50 dark:bg-indigo-950/20 px-4 py-3 border border-indigo-100/50 dark:border-indigo-900 rounded-2xl select-all font-mono">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
-                      <span className="text-[10px] uppercase font-black tracking-wider text-indigo-755 dark:text-indigo-400">SERIAL ID KARTU TERDETEKSI:</span>
+                {parsedResult?.isUrl && (
+                  <div className="bg-blue-50/60 dark:bg-blue-950/15 border border-blue-100 dark:border-blue-900 rounded-2xl p-4 flex gap-3 text-left">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 font-extrabold text-sm shadow-sm">i</div>
+                    <div className="space-y-1">
+                      <h4 className="text-[11px] font-bold uppercase text-blue-800 dark:text-blue-400 tracking-wider">FORMAT PRE-FILL GOOGLE FORM TERDETEKSI</h4>
+                      <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                        Pembaca NFC memindai data tertulis berupa Link Google Form. 
+                        {parsedResult.extractedName ? (
+                          <> Terdeteksi nama santri <strong className="text-blue-900 dark:text-blue-100">"{parsedResult.extractedName}"</strong> di dalam parameter link tersebut!</>
+                        ) : (
+                          <> Menyimpan parameter unik ini sebagai identitas kartu NFC.</>
+                        )}
+                      </p>
                     </div>
-                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-300 break-all" title={scannedCode}>
-                      {scannedCode.length > 40 ? scannedCode.substring(0, 20) + "..." + scannedCode.substring(scannedCode.length - 20) : scannedCode}
-                    </span>
                   </div>
+                )}
 
-                  {parsedResult?.isUrl && (
-                    <div className="bg-blue-50/60 dark:bg-blue-950/15 border border-blue-100 dark:border-blue-900 rounded-2xl p-4 flex gap-3 text-left">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 font-extrabold text-sm shadow-sm">i</div>
-                      <div className="space-y-1">
-                        <h4 className="text-[11px] font-black uppercase text-blue-800 dark:text-blue-400 tracking-wider">FORMAT PRE-FILL GOOGLE FORM TERDETEKSI</h4>
-                        <p className="text-[10.5px] text-blue-650 dark:text-blue-400 leading-relaxed font-semibold">
-                          Pembaca NFC Anda memindai data tertulis di kartu berupa Link Google Form. 
-                          {parsedResult.extractedName ? (
-                            <> Sistem mendeteksi nama santri <strong className="text-blue-900 dark:text-blue-200">"{parsedResult.extractedName}"</strong> di dalam parameter link tersebut dan otomatis mencocokkannya!</>
-                          ) : (
-                            <> Kami akan menyimpan URL unik ini sebagai identitas kartu NFC santri.</>
-                          )}
+                {matchedStudent ? (
+                  /* CASE A: Card is already registered to a student */
+                  <div className="space-y-6">
+                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-4 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                        <Check className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-emerald-800 dark:text-emerald-400">KARTU SUDAH TERDAFTAR</h4>
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-500 leading-normal mt-0.5">
+                          Serial kartu NFC ini sudah terpasang dan valid milik santri di bawah ini.
                         </p>
                       </div>
                     </div>
-                  )}
 
-                  {matchedStudent ? (
-                    /* CASE A: Card is already registered to a student */
-                    <div className="space-y-6">
-                      <div className="bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900 rounded-2xl p-4 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#10b981] flex items-center justify-center text-white shrink-0 shadow">
-                          <Check className="w-4 h-4 text-white" />
-                        </div>
+                    {/* Display Profile card of registered student */}
+                    <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+                      
+                      {/* Student Photo */}
+                      <div className="w-24 h-32 bg-[#c22026] rounded-xl border border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                        {matchedStudent.foto ? (
+                          <img src={matchedStudent.foto} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-4xl">
+                            {matchedStudent.jenis_kelamin === "P" ? "🧕" : "👳"}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Student Credentials details */}
+                      <div className="flex-1 space-y-3 text-center sm:text-left">
                         <div>
-                          <h4 className="text-xs font-bold text-emerald-800 dark:text-emerald-400">KARTU TERDAFTAR (OK)</h4>
-                          <p className="text-[10.5px] text-emerald-650 dark:text-emerald-500 leading-normal mt-0.5">
-                            Serial kartu NFC ini sudah terdaftar valid milik salah satu siswa atau siswi kami.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Display beautiful Profile card of registered student */}
-                      <div className="bg-[#f8fafc] dark:bg-slate-900 p-5 rounded-[1.5rem] border border-slate-205 dark:border-slate-800/80 flex flex-col sm:flex-row gap-5 items-center sm:items-start relative overflow-hidden">
-                        
-                        {/* Student Photo */}
-                        <div className="w-24 h-32 bg-[#c22026] rounded border border-slate-350 dark:border-slate-850 flex items-center justify-center overflow-hidden shrink-0 shadow-sm relative">
-                          {matchedStudent.foto ? (
-                            <img src={matchedStudent.foto} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-4xl">
-                              {matchedStudent.jenis_kelamin === "P" ? "🧕" : "👳"}
-                            </span>
-                          )}
+                          <span className="px-2.5 py-0.5 rounded-md text-[9.5px] font-bold uppercase tracking-wider bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800">
+                            {matchedStudent.kategori}
+                          </span>
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-white mt-1.5 leading-tight">
+                            {matchedStudent.nama_lengkap}
+                          </h3>
                         </div>
 
-                        {/* Student Credentials details */}
-                        <div className="flex-1 space-y-3.5 text-center sm:text-left">
-                          <div>
-                            <span className="px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-405 border border-indigo-100 dark:border-indigo-900">
-                              {matchedStudent.kategori}
-                            </span>
-                            <h3 className="text-base font-black text-slate-800 dark:text-white mt-2 leading-tight">
-                              {matchedStudent.nama_lengkap}
-                            </h3>
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs font-medium text-slate-600 dark:text-slate-400">
+                          <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+                            <Home className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span>Kamar: <strong className="text-slate-800 dark:text-slate-200">{matchedStudent.kamar || "Belum diplot"}</strong></span>
                           </div>
-
-                          <div className="grid grid-cols-2 gap-y-2.5 gap-x-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            <div className="flex items-center gap-1.5 justify-center sm:justify-start">
-                              <Home className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>Kamar: <strong className="text-slate-850 dark:text-slate-300">{matchedStudent.kamar || "Belum diplot"}</strong></span>
-                            </div>
-                            <div className="flex items-center gap-1.5 justify-center sm:justify-start">
-                              <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>Jenkel: <strong className="text-slate-850 dark:text-slate-300">{matchedStudent.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"}</strong></span>
-                            </div>
-                            <div className="col-span-2 text-center sm:text-left font-mono text-[10px] text-slate-400">
-                              NIK: {matchedStudent.nik || "-"}
-                            </div>
+                          <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+                            <User className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span>Jenkel: <strong className="text-slate-800 dark:text-slate-200">{matchedStudent.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"}</strong></span>
+                          </div>
+                          <div className="col-span-2 text-center sm:text-left font-mono text-xs text-slate-400">
+                            NIK: {matchedStudent.nik || "-"}
                           </div>
                         </div>
                       </div>
+                    </div>
 
-                      {/* Deassign action */}
-                      <div className="pt-3 border-t border-slate-100 dark:border-slate-850 flex justify-end">
+                    {/* Deassign action */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleDeassignCard(matchedStudent.id!, matchedStudent.nama_lengkap)}
+                        className="px-4 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 dark:bg-rose-950/20 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Hapus Sambungan Kartu
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* CASE B: Card is unregistered. Offer option to register */
+                  <div className="space-y-5 animate-slide-up">
+                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                        <AlertTriangle className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400">KARTU BELUM TERDAFTAR</h4>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-500 leading-normal mt-0.5">
+                          Serial kartu NFC ini belum terhubung ke santri manapun. Silakan pilih santri untuk mengalokasikannya.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Room and Student Selectors Registration Form */}
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider">
+                        ALOKASIKAN KARTU KE SANTRI
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Step 1: Select Room (kamar) */}
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                            1. Pilih Kamar / Rayon
+                          </label>
+                          <select
+                            value={selectedRoom}
+                            onChange={(e) => {
+                              setSelectedRoom(e.target.value);
+                              setSelectedStudentId(""); // reset selected student when room changes
+                            }}
+                            className="w-full text-xs font-medium px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-white transition-all shadow-inner"
+                          >
+                            <option value="">-- SEMUA KAMAR --</option>
+                            {derivedRooms.map((r) => (
+                              <option key={r} value={r}>
+                                KAMAR: {r}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Step 2: Search and Select Student */}
+                        <div className="space-y-1 relative">
+                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                            2. Cari & Pilih Santri
+                          </label>
+                          <div className="relative w-full">
+                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+                              <Search className="w-3.5 h-3.5" />
+                            </span>
+                            <input
+                              type="text"
+                              placeholder="Ketik nama santri..."
+                              value={assignSearch}
+                              onChange={(e) => {
+                                setAssignSearch(e.target.value);
+                                setIsDropdownOpen(true);
+                                setSelectedStudentId("");
+                              }}
+                              onFocus={() => setIsDropdownOpen(true)}
+                              onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+                              className="w-full text-xs font-medium pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-white transition-all shadow-inner"
+                              required={!selectedStudentId}
+                            />
+                            
+                            {isDropdownOpen && (
+                              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
+                                {filteredStudentsForAssign.length > 0 ? (
+                                  filteredStudentsForAssign.map((s) => {
+                                    const isSelected = selectedStudentId === String(s.id);
+                                    return (
+                                      <div
+                                        key={s.id}
+                                        onClick={() => {
+                                          setSelectedStudentId(String(s.id));
+                                          setAssignSearch(`${s.nama_lengkap} ${s.kamar ? `(Kamar: ${s.kamar})` : ""}`);
+                                          setIsDropdownOpen(false);
+                                        }}
+                                        className={`p-2.5 text-xs font-semibold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-0 ${isSelected ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" : "text-slate-700 dark:text-slate-300"}`}
+                                      >
+                                        {s.nama_lengkap} <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">{s.kamar ? `(Kamar: ${s.kamar})` : ""}</span>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="p-3 text-xs text-center text-slate-500 font-medium">Tidak ada nama santri yang cocok</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Guidance note */}
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl flex items-start gap-2">
+                        <span className="text-blue-500 text-sm">💡</span>
+                        <span>
+                          Setelah menekan tombol simpan, kode NFC <strong className="font-mono text-slate-800 dark:text-slate-200">{scannedCode}</strong> akan otomatis tersimpan dan aktif untuk presensi maupun perizinan santri.
+                        </span>
+                      </div>
+
+                      {/* Submit Button */}
+                      <div className="pt-2">
                         <button
                           type="button"
-                          onClick={() => handleDeassignCard(matchedStudent.id!, matchedStudent.nama_lengkap)}
-                          className="px-4 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 dark:bg-rose-950/20 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                          onClick={handleAssignCard}
+                          disabled={isRegistering || !selectedStudentId}
+                          className={`w-full py-3 rounded-2xl text-xs font-bold transition-all shadow-md mt-1 cursor-pointer select-none ${
+                            !selectedStudentId
+                              ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200 dark:border-slate-700"
+                              : "bg-blue-600 hover:bg-blue-700 text-white"
+                          }`}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Hapus Sambungan Kartu
+                          {isRegistering ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              Menyinkronkan ke Database...
+                            </span>
+                          ) : (
+                            "Hubungkan & Daftarkan Kartu ini"
+                          )}
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    /* CASE B: Card is unregistered. Offer option to register */
-                    <div className="space-y-5 animate-slide-up">
-                      <div className="bg-amber-50 dark:bg-amber-950/10 border border-amber-100 dark:border-amber-900 rounded-2xl p-4 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white shrink-0 shadow">
-                          <AlertTriangle className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400">KARTU BELUM TERDAFTAR (BARU)</h4>
-                          <p className="text-[10.5px] text-amber-650 dark:text-amber-500 leading-normal mt-0.5">
-                            Serial kartu NFC ini masih kosong. Silakan pasangkan kartu ke salah satu siswa di bawah ini.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Room and Student Selectors Registration Form */}
-                      <div className="space-y-4">
-                        <h4 className="font-bold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider">
-                          ALOKASIKAN KARTU KE SANTRI
-                        </h4>
-
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {/* Step 1: Select Room (kamar) */}
-                            <div className="space-y-1">
-                              <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                                1. Pilih Kamar / Rayon
-                              </label>
-                              <select
-                                value={selectedRoom}
-                                onChange={(e) => {
-                                  setSelectedRoom(e.target.value);
-                                  setSelectedStudentId(""); // reset selected student when room changes
-                                }}
-                                className="w-full text-xs font-semibold px-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 dark:text-white transition-all shadow-inner"
-                              >
-                                <option value="">-- SEMUA KAMAR --</option>
-                                {derivedRooms.map((r) => (
-                                  <option key={r} value={r}>
-                                    KAMAR: {r}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            {/* Step 2: Search and Select Student */}
-                            <div className="space-y-1 relative">
-                              <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                                2. Cari & Pilih Santri
-                              </label>
-                              <div className="relative w-full">
-                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
-                                  <Search className="w-3.5 h-3.5" />
-                                </span>
-                                <input
-                                  type="text"
-                                  placeholder="Ketik nama santri..."
-                                  value={assignSearch}
-                                  onChange={(e) => {
-                                    setAssignSearch(e.target.value);
-                                    setIsDropdownOpen(true);
-                                    setSelectedStudentId("");
-                                  }}
-                                  onFocus={() => setIsDropdownOpen(true)}
-                                  onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
-                                  className="w-full text-xs font-medium pl-9 pr-3 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-850 text-slate-800 dark:text-white transition-all shadow-inner"
-                                  required={!selectedStudentId}
-                                />
-                                
-                                {isDropdownOpen && (
-                                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
-                                    {filteredStudentsForAssign.length > 0 ? (
-                                      filteredStudentsForAssign.map((s) => {
-                                        const isSelected = selectedStudentId === String(s.id);
-                                        return (
-                                          <div
-                                            key={s.id}
-                                            onClick={() => {
-                                              setSelectedStudentId(String(s.id));
-                                              setAssignSearch(`${s.nama_lengkap} ${s.kamar ? `(Kamar: ${s.kamar})` : ""}`);
-                                              setIsDropdownOpen(false);
-                                            }}
-                                            className={`p-2.5 text-xs font-bold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-50 dark:border-slate-800 last:border-0 ${isSelected ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-slate-700 dark:text-slate-300"}`}
-                                          >
-                                            {s.nama_lengkap} <span className="text-slate-400 dark:text-slate-500 font-medium ml-1">{s.kamar ? `(Kamar: ${s.kamar})` : ""}</span>
-                                          </div>
-                                        );
-                                      })
-                                    ) : (
-                                      <div className="p-3 text-xs text-center text-slate-500 font-medium">Tidak ada nama santri yang cocok</div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Extra Guidance */}
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed bg-slate-50 dark:bg-slate-900/40 border border-slate-150 dark:border-slate-850 p-3 rounded-xl flex items-start gap-2">
-                          <span className="text-amber-500 text-xs">💡</span>
-                          <span>
-                            Setelah memilih santri dan menekan tombol simpan, kode NFC <strong className="font-mono">{scannedCode}</strong> akan otomatis dikunci ke santri tersebut. Anda bisa memakai kartu ini langsung untuk pencatatan absensi harian dan sholat.
-                          </span>
-                        </div>
-
-                        {/* Submit Button */}
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={handleAssignCard}
-                            disabled={isRegistering || !selectedStudentId}
-                            className={`w-full py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md mt-1 cursor-pointer select-none ${
-                              !selectedStudentId
-                                ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-650 cursor-not-allowed border border-slate-200/20"
-                                : "bg-indigo-600 hover:bg-slate-850 text-white hover:bg-indigo-700"
-                            }`}
-                          >
-                            {isRegistering ? (
-                              <span className="flex items-center justify-center gap-2">
-                                <RefreshCw className="w-4 h-4 animate-spin" />
-                                Menyinkronkan ke Database...
-                              </span>
-                            ) : (
-                              "Hubungkan & Daftarkan Kartu ini"
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (
         /* DATABASE TAB VIEW */
         <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5 animate-fade-in" id="nfc-database-tab">
           
-          {/* Filters Bar */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 justify-between">
-            <h3 className="font-extrabold text-slate-800 dark:text-white text-xs uppercase tracking-wider self-start sm:self-center">
-              Daftar Kepemilikan Kartu RFID / NFC ({studentsWithNfc.length})
-            </h3>
+          {/* Header & Status Filter Pills & Search Bar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Status Pills Matching User Reference Image */}
+            <div className="inline-flex items-center p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 shadow-xs self-start">
+              <button
+                type="button"
+                onClick={() => setDbStatusFilter("Aktif")}
+                className={`px-4 py-1.5 rounded-xl text-xs transition-all cursor-pointer select-none ${
+                  dbStatusFilter === "Aktif"
+                    ? "bg-[#edf5ff] dark:bg-blue-950/60 text-[#1a73e8] dark:text-blue-400 font-semibold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium"
+                }`}
+              >
+                Aktif
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDbStatusFilter("Mubaligh")}
+                className={`px-4 py-1.5 rounded-xl text-xs transition-all cursor-pointer select-none ${
+                  dbStatusFilter === "Mubaligh"
+                    ? "bg-[#edf5ff] dark:bg-blue-950/60 text-[#1a73e8] dark:text-blue-400 font-semibold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium"
+                }`}
+              >
+                Mubaligh
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDbStatusFilter("Nonaktif")}
+                className={`px-4 py-1.5 rounded-xl text-xs transition-all cursor-pointer select-none ${
+                  dbStatusFilter === "Nonaktif"
+                    ? "bg-[#edf5ff] dark:bg-blue-950/60 text-[#1a73e8] dark:text-blue-400 font-semibold shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium"
+                }`}
+              >
+                Nonaktif
+              </button>
+            </div>
 
             {/* Simple Search */}
             <div className="relative w-full sm:w-72">
@@ -900,15 +747,16 @@ export default function NfcRegisterPanel({
                 value={dbSearch}
                 onChange={(e) => setDbSearch(e.target.value)}
                 placeholder="Cari nama, kamar, or nfc..."
-                className="w-full text-xs pl-9 pr-4 py-2 bg-[#f8fafc] dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-505 text-slate-800 dark:text-white"
+                className="w-full text-xs pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-white"
               />
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-850">
+          {/* Data Table */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#f8fafc] dark:bg-slate-900 border-b border-slate-200/50 dark:border-slate-850 text-slate-550 dark:text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                   <th className="p-4">Foto</th>
                   <th className="p-4">Nama Santri</th>
                   <th className="p-4">Kategori</th>
@@ -917,12 +765,12 @@ export default function NfcRegisterPanel({
                   <th className="p-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredDbList.length > 0 ? (
                   filteredDbList.map((s) => (
                     <tr 
                       key={s.id} 
-                      className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-350 transition-all font-semibold"
+                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300 transition-all font-medium"
                     >
                       {/* Photo Thumbnail */}
                       <td className="p-4">
@@ -939,26 +787,26 @@ export default function NfcRegisterPanel({
 
                       {/* Name */}
                       <td className="p-4">
-                        <div className="font-extrabold text-slate-850 dark:text-white text-xs">{s.nama_lengkap}</div>
+                        <div className="font-bold text-slate-850 dark:text-white text-xs">{s.nama_lengkap}</div>
                         <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Panggilan: {s.nama_panggilan}</div>
                       </td>
 
                       {/* Category */}
                       <td className="p-4">
-                        <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-slate-100 dark:bg-slate-850 text-slate-600 dark:text-slate-400 border border-slate-200/25">
+                        <span className="px-2 py-0.5 rounded text-[9.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/50">
                           {s.kategori}
                         </span>
                       </td>
 
                       {/* Room */}
                       <td className="p-4">
-                        <span className="font-extrabold text-slate-800 dark:text-slate-300">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
                           {s.kamar || "Belum Plotting"}
                         </span>
                       </td>
 
                       {/* NFC Card ID (mono space code) */}
-                      <td className="p-4 font-mono font-bold text-indigo-650 dark:text-indigo-405 select-all">
+                      <td className="p-4 font-mono font-bold text-blue-600 dark:text-blue-400 select-all">
                         {s.nfc_id}
                       </td>
 
@@ -978,7 +826,7 @@ export default function NfcRegisterPanel({
                 ) : (
                   <tr>
                     <td colSpan={6} className="text-center py-12 text-slate-500 dark:text-slate-400 font-medium">
-                      {dbSearch ? "Hasil pencarian tidak ditemukan." : "Belum ada kartu NFC yang didaftarkan ke Database."}
+                      {dbSearch ? "Hasil pencarian tidak ditemukan." : `Belum ada kartu NFC pada kategori ${dbStatusFilter}.`}
                     </td>
                   </tr>
                 )}
@@ -993,6 +841,15 @@ export default function NfcRegisterPanel({
         isOpen={showEsp32GuideModal}
         onClose={() => setShowEsp32GuideModal(false)}
         onSimulateTap={(uid) => processScan(uid)}
+      />
+
+      {/* NFC UID Format Converter Modal (Hex ⇄ Decimal USB Reader) */}
+      <NfcUidConverterModal
+        isOpen={showConverterModal}
+        onClose={() => setShowConverterModal(false)}
+        students={students}
+        initialUid={scannedCode || "08:08:A1:B2"}
+        onApplyUid={(uid) => processScan(uid)}
       />
     </div>
   );

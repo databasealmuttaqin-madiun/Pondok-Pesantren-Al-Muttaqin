@@ -26,14 +26,21 @@ import {
   MessageSquare,
   Trash2,
   Send,
-  Cpu
+  Cpu,
+  ArrowRightLeft,
+  Usb,
+  Sparkles
 } from "lucide-react";
 import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
+import NfcUidConverterModal from "./NfcUidConverterModal";
+import { convertNfcUid } from "../utils/nfcConverter";
 
 interface PresensiPanelProps {
   students: SantriData[];
   rooms?: string[];
+  viewMode?: "absensi" | "rekap";
+  defaultTab?: "input" | "rekap" | "statistik" | "whatsapp";
   activeMenu?: string; // made optional to support seamless transition to unified absensi menu
 }
 
@@ -136,9 +143,8 @@ function mapDbSessionToLocalSession(dbSesi: string, dbPresensi: string | undefin
   return dbSesi;
 }
 
-export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
-  // Configured date & viewMode
-  const [viewMode, setViewMode] = useState<"selection" | "attendance">("attendance");
+export default function PresensiPanel({ students, rooms, viewMode = "absensi", defaultTab }: PresensiPanelProps) {
+  // Configured date
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
     const year = today.getFullYear();
@@ -248,7 +254,17 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
   const [roomFilter, setRoomFilter] = useState<string>("All");
 
   // Sub-tabs
-  const [attendanceSubTab, setAttendanceSubTab] = useState<"input" | "rekap" | "statistik" | "whatsapp">("input");
+  const [attendanceSubTab, setAttendanceSubTab] = useState<"input" | "rekap" | "statistik" | "whatsapp">(
+    defaultTab || (viewMode === "rekap" ? "rekap" : "input")
+  );
+
+  useEffect(() => {
+    if (viewMode === "rekap" && attendanceSubTab === "input") {
+      setAttendanceSubTab("rekap");
+    } else if (viewMode === "absensi" && attendanceSubTab !== "input") {
+      setAttendanceSubTab("input");
+    }
+  }, [viewMode]);
   
   // WhatsApp notification configuration & logs
   const [waGatewayType, setWaGatewayType] = useState<"manual" | "fonnte" | "custom">(() => {
@@ -315,6 +331,8 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
 
   // ESP32 RC522 Reader State & Hook for attendance scanning
   const [showEsp32GuideModal, setShowEsp32GuideModal] = useState(false);
+  const [showConverterModal, setShowConverterModal] = useState(false);
+  const [converterInitialUid, setConverterInitialUid] = useState("08:08:A1:B2");
 
   const { wifiStatus, isSerialConnected } = useEsp32NfcListener({
     onCardTapped: (uid) => {
@@ -350,6 +368,18 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
     cardCode?: string;
     customMessage?: string;
   } | null>(null);
+
+  // Auto-close attendance popup after 1.5 seconds (1500ms)
+  // If next person scans, attendancePopup state changes immediately, replacing with the new student
+  useEffect(() => {
+    if (!attendancePopup?.isOpen) return;
+
+    const timer = setTimeout(() => {
+      setAttendancePopup(null);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [attendancePopup]);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>("");
@@ -1043,12 +1073,19 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
 
   const isIqomahActive = !!iqomahDb[`${selectedDate}_absensi_${activeSession}`];
 
-  // Raw keyboard simulator scan
+  // Raw keyboard simulator scan for USB NFC/RFID Reader (HID Keyboard Emulator)
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "SELECT") {
+    let keyTimer: NodeJS.Timeout | null = null;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Avoid capturing deliberate typing inside input elements
+      if (
+        document.activeElement?.tagName === "INPUT" || 
+        document.activeElement?.tagName === "SELECT" || 
+        document.activeElement?.tagName === "TEXTAREA"
+      ) {
         return; 
       }
+
       if (e.key === "Enter") {
         if (scannerInputVal.trim()) {
           executeScan(scannerInputVal.trim(), "keyboard_mimic");
@@ -1056,10 +1093,18 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
         }
       } else if (e.key.length === 1) {
         setScannerInputVal(prev => prev + e.key);
+        // Reset typing buffer if user stopped mid-way (e.g. accidental key hits)
+        if (keyTimer) clearTimeout(keyTimer);
+        keyTimer = setTimeout(() => {
+          setScannerInputVal("");
+        }, 1200);
       }
     };
-    window.addEventListener("keypress", handleKeyPress);
-    return () => window.removeEventListener("keypress", handleKeyPress);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (keyTimer) clearTimeout(keyTimer);
+    };
   }, [scannerInputVal, activeSession, selectedDate]);
 
   // Execute NFC / Barcode Logic
@@ -1608,43 +1653,49 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 select-none pt-2" id="attendance_brand_header">
         <div>
           <h2 className="text-3xl font-black text-[#1d2757] dark:text-white font-display tracking-tight leading-none">
-            Absensi Santri Digital
+            {viewMode === "rekap" ? "Rekap Presensi Santri" : "Absensi Siswa"}
           </h2>
           <p className="text-xs text-[#566580] dark:text-slate-400 font-bold mt-2.5 flex flex-wrap items-center justify-start gap-1.5 uppercase tracking-wide">
-            <span>Pondok Pesantren</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping"></span>
-            <span className="text-[#3b82f6]">Al Muttaqin</span>
-            {supabaseSyncStatus === "connected" && (
+            {viewMode === "rekap" ? (
+              <span>Laporan Kehadiran Santri Harian, Mingguan, Bulanan & Ekspor PDF</span>
+            ) : (
               <>
-                <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                <span className="text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-sky-100 flex items-center gap-1 shadow-sm">
-                  <span className="w-1 h-1 rounded-full bg-sky-500 animate-pulse"></span>
-                  SINKRON ONLINE (CLOUD)
-                </span>
-              </>
-            )}
-            {supabaseSyncStatus === "loading" && (
-              <>
-                <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                <span className="text-slate-500 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-slate-100 dark:border-slate-800 flex items-center gap-1 animate-pulse shadow-sm">
-                  🔄 MENYELARASKAN...
-                </span>
-              </>
-            )}
-            {supabaseSyncStatus === "disabled" && (
-              <>
-                <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                <span className="text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-amber-100 shadow-sm" title="Tabel 'absensi' belum aktif di Supabase. Sistem otomatis menyimpannya secara offline aman di Browser Storage Anda.">
-                  LOKAL (OFFLINE-OK)
-                </span>
-              </>
-            )}
-            {supabaseSyncStatus === "error" && (
-              <>
-                <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                <span className="text-rose-700 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-rose-100 shadow-sm flex items-center gap-1" title="Masalah jaringan database Supabase. Hubungkan wifi/paket data kembali.">
-                  ⚠️ KONEKSI TERBATAS
-                </span>
+                <span>Pondok Pesantren</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping"></span>
+                <span className="text-[#3b82f6]">Al Muttaqin</span>
+                {supabaseSyncStatus === "connected" && (
+                  <>
+                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
+                    <span className="text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-sky-100 flex items-center gap-1 shadow-sm">
+                      <span className="w-1 h-1 rounded-full bg-sky-500 animate-pulse"></span>
+                      SINKRON ONLINE (CLOUD)
+                    </span>
+                  </>
+                )}
+                {supabaseSyncStatus === "loading" && (
+                  <>
+                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
+                    <span className="text-slate-500 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-slate-100 dark:border-slate-800 flex items-center gap-1 animate-pulse shadow-sm">
+                      🔄 MENYELARASKAN...
+                    </span>
+                  </>
+                )}
+                {supabaseSyncStatus === "disabled" && (
+                  <>
+                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
+                    <span className="text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-amber-100 shadow-sm" title="Tabel 'absensi' belum aktif di Supabase. Sistem otomatis menyimpannya secara offline aman di Browser Storage Anda.">
+                      LOKAL (OFFLINE-OK)
+                    </span>
+                  </>
+                )}
+                {supabaseSyncStatus === "error" && (
+                  <>
+                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
+                    <span className="text-rose-700 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-rose-100 shadow-sm flex items-center gap-1" title="Masalah jaringan database Supabase. Hubungkan wifi/paket data kembali.">
+                      ⚠️ KONEKSI TERBATAS
+                    </span>
+                  </>
+                )}
               </>
             )}
           </p>
@@ -1672,468 +1723,173 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
         </div>
       )}
 
-      {/* 2. TAB CONTROLS switcher - PRESENSI, REKAP DATA, STATISTIK */}
-      <div className="bg-white dark:bg-[#111c44] p-1 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-sm flex items-center select-none" id="attendance_tab_selector">
-        <button
-          onClick={() => setAttendanceSubTab("input")}
-          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-            attendanceSubTab === "input"
-              ? "bg-[#3e46ca] text-white shadow"
-              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-          }`}
-        >
-          Presensi
-        </button>
-        <button
-          onClick={() => setAttendanceSubTab("rekap")}
-          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-            attendanceSubTab === "rekap"
-              ? "bg-[#3e46ca] text-white shadow"
-              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-          }`}
-        >
-          Rekap Data
-        </button>
-        <button
-          onClick={() => setAttendanceSubTab("statistik")}
-          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-            attendanceSubTab === "statistik"
-              ? "bg-[#3e46ca] text-white shadow"
-              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-          }`}
-        >
-          Statistik
-        </button>
-        <button
-          onClick={() => setAttendanceSubTab("whatsapp")}
-          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-            attendanceSubTab === "whatsapp"
-              ? "bg-[#3e46ca] text-white shadow"
-              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-          }`}
-        >
-          WhatsApp
-        </button>
-      </div>
-
-      {/* 3. SESSION CARD INDIVIDUAL LISTENER */}
-      <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-[2rem] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in relative overflow-hidden" id="session_card_header">
-        <div className="flex items-center gap-4 select-none">
-          {/* Clock squircle box */}
-          <div className="w-[54px] h-[54px] rounded-2xl bg-[#eef2ff] dark:bg-slate-900 flex items-center justify-center text-[#5b51ff] shrink-0">
-            <Clock className="w-6 h-6 stroke-[2.2]" />
-          </div>
-
-          <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-extrabold text-[#94a3b8] tracking-[0.1em] leading-none mb-1.5">
-              Sesi Aktif
-            </span>
-            <div className="text-2xl font-black text-[#1e1b4b] dark:text-white leading-none tracking-tight flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {activeSession !== "none" ? (
-                <>
-                  <span>{activeSessionObj.label}</span>
-                  <span className="text-xs uppercase font-extrabold px-2.5 py-1 rounded-xl font-mono bg-indigo-50/60 dark:bg-purple-950/30 border border-indigo-100/50 dark:border-slate-800 text-[#3e46ca] dark:text-indigo-300 ml-1.5 shadow-xs">
-                    {activeSessionObj.time}
-                  </span>
-                </>
-              ) : (
-                <span className="text-slate-400 dark:text-slate-500 font-bold text-lg flex items-center gap-1.5">
-                  ⛔ Tidak ada sesi
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right status pills inside session bar */}
-        <div className="flex flex-wrap items-center gap-3 select-none">
-          {/* NFC Hardware Support Status Widget */}
-          {!isNfcSupported ? (
-            <button
-              type="button"
-              onClick={() => setShowNfcErrorModal(true)}
-              className="bg-[#f8fafc] dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-150 dark:border-slate-800 text-[#64748b] dark:text-slate-400 text-[10.5px] font-black uppercase tracking-wider px-5 py-3 rounded-2xl flex items-center gap-2 shadow-sm transition-all duration-150 cursor-pointer select-none"
-            >
-              <Smartphone className="w-4 h-4 text-slate-400" />
-              <span>NFC TIDAK DIDUKUNG</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                const nextState = !isNfcActive;
-                if (nextState && activeSession === "none") {
-                  MySwal.fire({
-                    icon: 'error',
-                    title: 'MAAF TIDAK ADA SESI YANG AKTIF',
-                    text: 'Silakan tunggu atau set sesi absensi terlebih dahulu.',
-                    confirmButtonText: 'Tutup',
-                    confirmButtonColor: '#f87171',
-                    customClass: {
-                      popup: 'rounded-[2rem]',
-                    }
-                  });
-                  return;
-                }
-                setIsNfcActive(nextState);
-                if (nextState) setIsCameraActive(false);
-                setScanFeedback(null);
-              }}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl border text-[10.5px] font-black uppercase tracking-wider transition-all duration-150 cursor-pointer shadow-sm ${
-                isNfcActive 
-                  ? "bg-[#10b981] text-white border-[#10b981] shadow-emerald-100 scale-[1.01]" 
-                  : "bg-white dark:bg-[#111c44] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800"
-              }`}
-            >
-              <Smartphone className="w-4 h-4" />
-              <span>NFC: {isNfcActive ? "AKTIF" : "NONAKTIF"}</span>
-            </button>
-          )}
-
-          {/* ESP32 Hardware Reader Trigger Button */}
+      {/* REKAP VIEW: TAB SELECTOR (Rekap Data | Statistik | WhatsApp) */}
+      {viewMode === "rekap" && (
+        <div className="bg-white dark:bg-[#111c44] p-1 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-sm flex items-center select-none" id="attendance_tab_selector">
           <button
-            type="button"
-            onClick={() => setShowEsp32GuideModal(true)}
-            className="flex items-center gap-2 px-4 py-3 rounded-2xl border text-[10.5px] font-black uppercase tracking-wider transition-all duration-150 cursor-pointer shadow-sm bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100"
-            title="Klik untuk melihat skema & setting ESP32 RC522 Reader"
-          >
-            <Cpu className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>ESP32 Reader {wifiStatus === "connected" || isSerialConnected ? "🟢" : "⚙️"}</span>
-          </button>
-
-          {/* Camera Barcode Scanner Trigger Button */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextState = !isCameraActive;
-              if (nextState && activeSession === "none") {
-                MySwal.fire({
-                  icon: 'error',
-                  title: 'MAAF TIDAK ADA SESI YANG AKTIF',
-                  text: 'Silakan tunggu atau set sesi absensi terlebih dahulu.',
-                  confirmButtonText: 'Tutup',
-                  confirmButtonColor: '#f87171',
-                  customClass: {
-                    popup: 'rounded-[2rem]',
-                  }
-                });
-                return;
-              }
-              setIsCameraActive(nextState);
-              if (nextState) setIsNfcActive(false);
-              setScanFeedback(null);
-            }}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl border text-[10.5px] font-black uppercase tracking-wider transition-all duration-150 cursor-pointer shadow-sm ${
-              isCameraActive 
-                ? "bg-[#3e46ca] text-white border-[#3e46ca] scale-[1.01]" 
-                : "bg-white dark:bg-[#111c44] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800"
+            onClick={() => setAttendanceSubTab("rekap")}
+            className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+              attendanceSubTab === "rekap"
+                ? "bg-[#3e46ca] text-white shadow"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
             }`}
           >
-            <Video className="w-4 h-4" />
-            <span>QR CODE SCANNER: {isCameraActive ? "AKTIF" : "NONAKTIF"}</span>
+            Rekap Data
           </button>
-
-          {/* Iqomah Status Pill Row Block */}
-          {isSholatActive && (
-            <div className="flex items-center gap-3.5 bg-slate-50/55 dark:bg-slate-900 border border-slate-200/20 dark:border-slate-800 rounded-2xl pl-5 pr-3 py-1.5 select-none min-h-[48px]">
-              <span className="text-[10.5px] font-black text-[#586884] dark:text-slate-400 uppercase tracking-wider">
-                IQOMAH STATUS
-              </span>
-              <button
-                type="button"
-                onClick={toggleIqomah}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10.5px] font-black uppercase tracking-wide transition-all cursor-pointer ${
-                  isIqomahActive 
-                    ? "bg-rose-50 dark:bg-rose-955 border-rose-200 dark:border-rose-900 text-rose-600 hover:bg-rose-105" 
-                    : "bg-[#f0fdf4] dark:bg-green-955 border-[#bbf7d0] dark:border-green-900 text-[#15803d] dark:text-[#dcfce7] hover:bg-[#dcfce7]"
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${isIqomahActive ? "bg-rose-500 animate-pulse" : "bg-[#10b981]"}`}></span>
-                <span>{isIqomahActive ? "SUDAH IQOMAH" : "BELUM IQOMAH"}</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ACTIVE SENSOR OVERLAYS / FEEDBACK PANELS */}
-      {(isNfcActive || isCameraActive || scanFeedback) && (
-        <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-[2rem] p-6 shadow-sm space-y-4 animate-fade-in relative overflow-hidden mt-4" id="active_sensor_panel">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <h4 className="text-[11px] font-black text-[#1d2757] dark:text-white uppercase tracking-wider flex items-center gap-2">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>Koneksi Sensor Input</span>
-            </h4>
-            <button
-              type="button"
-              onClick={() => {
-                setIsNfcActive(false);
-                setIsCameraActive(false);
-                setScanFeedback(null);
-              }}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-extrabold text-[10px] uppercase tracking-wider bg-slate-50 dark:bg-slate-900/40 hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-800 cursor-pointer"
-            >
-              Tutup ✕
-            </button>
-          </div>
-
-          <div className="max-w-md mx-auto space-y-4">
-            {isNfcActive && (
-              <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-6 text-center space-y-3 select-none">
-                <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[#10b981] mx-auto">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-[#10b981]"></span>
-                  </span>
-                </div>
-                <div>
-                  <h5 className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">Mencari Sinyal Kartu NFC...</h5>
-                  <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                    Silakan dekatkan kartu santri/wali ke area sensor NFC perangkat Anda.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {isCameraActive && (
-              <div className="bg-[#0f172a] rounded-2xl p-4 text-center space-y-3 border border-slate-800">
-                <div className="relative w-full aspect-video rounded-xl bg-black border border-slate-800 flex items-center justify-center overflow-hidden shadow-2xl animate-fade-in">
-                  <video 
-                    ref={videoRef}
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className="absolute inset-0 w-full h-full object-cover opacity-85"
-                  />
-                  <div className="absolute inset-x-0 w-full h-1 bg-rose-500 shadow-[0_0_15px_4px_rgba(239,68,68,0.9)] animate-pulse" style={{ top: "45%" }}></div>
-                  <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-rose-500"></div>
-                  <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-rose-500"></div>
-                  <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-rose-500"></div>
-                  <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-rose-500"></div>
-                  {!videoStream && (
-                    <div className="z-10 text-[9px] text-[#ffffff85] uppercase tracking-widest font-black animate-pulse text-center px-4">
-                      Menunggu Kamera... <br />
-                      <span className="text-[8px] text-slate-400">(Izinkan hak akses lensa)</span>
-                    </div>
-                  )}
-                </div>
-
-                {availableCameras.length > 1 && (
-                  <div className="space-y-1.5 text-left pt-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider select-none block">
-                      PILIH LENSA KAMERA (UNTUK ANDROID):
-                    </label>
-                    <select
-                      value={selectedCameraId}
-                      onChange={(e) => setSelectedCameraId(e.target.value)}
-                      className="w-full text-[11px] font-extrabold bg-[#1e293b] text-slate-200 border border-slate-700 rounded-xl px-3 py-2 outline-none focus:border-rose-500 transition-colors"
-                    >
-                      {availableCameras.map((camera, index) => (
-                        <option key={camera.deviceId} value={camera.deviceId} className="font-extrabold">
-                          📷 {camera.label || `Kamera ${index + 1}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {scanFeedback && (
-              <div className={`p-4 rounded-2xl border text-xs font-bold flex items-start gap-3 select-none ${
-                scanFeedback.type === "success" 
-                  ? "bg-emerald-50 border-emerald-150 text-emerald-800" 
-                  : scanFeedback.type === "warning"
-                  ? "bg-amber-50 border-amber-150 text-amber-800"
-                  : "bg-rose-50 border-rose-150 text-rose-800"
-              }`}>
-                <span className="text-base shrink-0">
-                  {scanFeedback.type === "success" ? "✅" : scanFeedback.type === "warning" ? "⚠️" : "❌"}
-                </span>
-                <div>
-                  <h6 className="font-extrabold uppercase text-[10px] tracking-wider mb-0.5">Respons Sensor</h6>
-                  <p>{scanFeedback.message}</p>
-                </div>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setAttendanceSubTab("statistik")}
+            className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+              attendanceSubTab === "statistik"
+                ? "bg-[#3e46ca] text-white shadow"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+            }`}
+          >
+            Statistik
+          </button>
+          <button
+            onClick={() => setAttendanceSubTab("whatsapp")}
+            className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
+              attendanceSubTab === "whatsapp"
+                ? "bg-[#3e46ca] text-white shadow"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+            }`}
+          >
+            WhatsApp
+          </button>
         </div>
       )}
 
-      {/* 4. MAIN ACTION VIEWS DEPENDING ON TAB SELECTION */}
-      
-      {/* A. PRESENSI VIEW (INPUT PRESENSI) */}
-      {attendanceSubTab === "input" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          
-          {/* LEFT SIDE: PRESENSI SANTRI LIST & CONTROLS (spans 2 columns on desktop) */}
-          <div className="lg:col-span-2 space-y-5">
-            
-            {/* PRESENSI SANTRI CONTAINER CARD */}
-            <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 space-y-4">
-              
-              {/* Header section with Dropdown Filter */}
-              <div className="flex items-center justify-between select-none">
-                <h3 className="text-xl font-extrabold text-[#111827] dark:text-white font-display">
-                  Presensi Santri
-                </h3>
-
-                {/* Unit Dropdown Filter */}
-                <select 
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-white rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none"
-                >
-                  <option value="All">Semua Unit</option>
-                  <option value="SMP">Unit SMP</option>
-                  <option value="SMA">Unit SMA</option>
-                  <option value="Reguler">Unit Reguler</option>
-                </select>
+      {/* ABSENSI VIEW: ONLY SESI AKTIF + RINGKASAN ANALITIK SESI */}
+      {viewMode === "absensi" && (
+        <div className="space-y-6 animate-fade-in" id="absensi_siswa_main_section">
+          {/* SESI AKTIF CARD */}
+          <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-[2rem] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in relative overflow-hidden" id="session_card_header">
+            <div className="flex items-center gap-4 select-none">
+              <div className="w-[54px] h-[54px] rounded-2xl bg-[#eef2ff] dark:bg-slate-900 flex items-center justify-center text-[#5b51ff] shrink-0">
+                <Clock className="w-6 h-6 stroke-[2.2]" />
               </div>
 
-              {/* Input Search Block */}
-              <div className="relative">
-                <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
-                <input 
-                  type="text"
-                  placeholder="Cari nama..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-xs font-medium pl-10 pr-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-505 focus:bg-white dark:focus:bg-slate-850 text-slate-800 dark:text-white transition-all shadow-inner"
-                />
+              <div className="flex flex-col">
+                <span className="text-[10px] uppercase font-extrabold text-[#94a3b8] tracking-[0.1em] leading-none mb-1.5">
+                  Sesi Aktif
+                </span>
+                <div className="text-2xl font-black text-[#1e1b4b] dark:text-white leading-none tracking-tight flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  {activeSession !== "none" ? (
+                    <>
+                      <span>{activeSessionObj.label}</span>
+                      <span className="text-xs uppercase font-extrabold px-2.5 py-1 rounded-xl font-mono bg-indigo-50/60 dark:bg-purple-950/30 border border-indigo-100/50 dark:border-slate-800 text-[#3e46ca] dark:text-indigo-300 ml-1.5 shadow-xs">
+                        {activeSessionObj.time}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-slate-400 dark:text-slate-500 font-bold text-lg flex items-center gap-1.5">
+                      ⛔ Tidak ada sesi
+                    </span>
+                  )}
+                </div>
               </div>
+            </div>
 
-              {/* Student List Container */}
-              <div className="grid grid-cols-1 gap-3 max-h-[550px] overflow-y-auto pr-1">
-                {studentsPending.length > 0 ? (
-                  studentsPending.map((student) => {
-                    const avatarColor = "bg-indigo-50 text-indigo-700 dark:bg-slate-900 dark:text-slate-350";
-                    const isFemale = student.jenis_kelamin === "P";
-
-                    return (
-                      <div 
-                        key={student.id}
-                        onClick={() => {
-                          if (student.id) handleToggleRowAttendance(student.id);
-                        }}
-                        className="group bg-[#f8fafc] dark:bg-slate-900 hover:bg-slate-100/50 dark:hover:bg-slate-800/55 transition-all border border-slate-100/30 dark:border-slate-800/50 rounded-2xl p-3.5 flex items-center justify-between gap-3 cursor-pointer h-fit"
-                      >
-                        {/* Left: Avatar & Name */}
-                        <div className="flex items-center gap-3 min-w-0">
-                          {student.foto ? (
-                            <img src={student.foto} alt="" className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-800 object-cover shrink-0" />
-                          ) : (
-                            <div className={`w-10 h-10 rounded-full border dark:border-slate-850 flex items-center justify-center shrink-0 font-extrabold text-sm select-none ${avatarColor}`}>
-                              <span>{(student.nama_lengkap || "S").charAt(0).toUpperCase()}</span>
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <h4 className="text-[13px] font-extrabold text-slate-800 dark:text-white leading-tight group-hover:text-[#3e46ca] dark:group-hover:text-indigo-400 transition-colors whitespace-nowrap">
-                              {student.nama_lengkap}
-                            </h4>
-                            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase mt-0.5 block">
-                              KAMAR: {student.kamar || "BELUM SET"} • {student.kategori || "Reguler"}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Right: Icon Device & Check Trigger */}
-                        <div className="flex items-center gap-3 shrink-0 select-none">
-                          <Smartphone className="w-4 h-4 text-[#10b981]" />
-                          
-                          {/* Circular Tick-Box representation */}
-                          <div className="w-5.5 h-5.5 rounded-full border-2 border-slate-350 dark:border-slate-700 flex items-center justify-center transition-all group-hover:border-indigo-400 bg-white dark:bg-slate-805 text-transparent group-hover:text-indigo-400">
-                            <span className="text-[10px] font-bold block leading-none">✓</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="col-span-1 sm:col-span-2 p-12 text-center text-slate-400 select-none flex flex-col items-center justify-center space-y-2">
-                    <div className="text-3xl">🎉</div>
-                    <h4 className="text-xs font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-widest">Inbox Zero / Selesai!</h4>
-                    <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
-                      Semua santri yang terbit dalam daftar sandingan hari ini telah diinput absennya.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Red Tactile Button */}
-              {isSholatActive && (
+            {isSholatActive && (
+              <div className="flex items-center gap-3.5 bg-slate-50/55 dark:bg-slate-900 border border-slate-200/20 dark:border-slate-800 rounded-2xl pl-5 pr-3 py-1.5 select-none min-h-[48px]">
+                <span className="text-[10.5px] font-black text-[#586884] dark:text-slate-400 uppercase tracking-wider">
+                  IQOMAH STATUS
+                </span>
                 <button
                   type="button"
                   onClick={toggleIqomah}
-                  className={`w-full py-4 rounded-2xl text-center text-white text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-md select-none ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-[10.5px] font-black uppercase tracking-wide transition-all cursor-pointer ${
                     isIqomahActive 
-                      ? "bg-[#ef4444] hover:bg-rose-600 animate-pulse ring-4 ring-rose-100 dark:ring-rose-950/40" 
-                      : "bg-[#ff2c55] hover:bg-[#e02047]"
+                      ? "bg-rose-50 dark:bg-rose-955 border-rose-200 dark:border-rose-900 text-rose-600 hover:bg-rose-105" 
+                      : "bg-[#f0fdf4] dark:bg-green-955 border-[#bbf7d0] dark:border-green-900 text-[#15803d] dark:text-[#dcfce7] hover:bg-[#dcfce7]"
                   }`}
                 >
-                  🔥 {isIqomahActive ? "STATUS: IQOMAH TELAH BERKUMANDANG" : "TOMBOL IQOMAH"}
+                  <span className={`w-1.5 h-1.5 rounded-full ${isIqomahActive ? "bg-rose-500 animate-pulse" : "bg-[#10b981]"}`}></span>
+                  <span>{isIqomahActive ? "SUDAH IQOMAH" : "BELUM IQOMAH"}</span>
                 </button>
-              )}
-
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT SIDE: STATS & SYSTEM STATUS MODULES (1 column on desktop) */}
-          <div className="space-y-6">
-            
-            {/* 6. LIVE PARTICIPATION CARD */}
-            <div className="bg-indigo-50 dark:bg-[#111c44] text-indigo-900 dark:text-white rounded-3xl p-5 shadow-sm space-y-4 select-none animate-fade-in border border-indigo-100/60 dark:border-slate-800">
-              <div className="flex flex-col">
-                <span className="text-[9px] font-black uppercase tracking-widest text-[#4f46e5] dark:text-indigo-250">
-                  KEHADIRAN LIVE SESI
-                </span>
-                <span className="text-5xl font-extrabold italic font-display text-indigo-950 dark:text-white mt-1 leading-none">
-                  {stats.percentPresent}%
-                </span>
-              </div>
-              
-              <hr className="border-indigo-100/80 dark:border-slate-800" />
+          {/* RINGKASAN ANALITIK SESI */}
+          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm space-y-6" id="attendance_analytic_summary_card">
+            <h3 className="text-base font-black text-slate-800 dark:text-white uppercase tracking-wider text-center border-b border-slate-55 dark:border-slate-800 pb-2">
+              Ringkasan Analitik Sesi
+            </h3>
 
-              <div className="text-xs font-semibold text-slate-700 dark:text-indigo-200">
-                {stats.markedCount} dari {stats.total} santri hari ini
-              </div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+              {/* Radial gauge on left or column on mobile */}
+              <div className="flex flex-col items-center justify-center py-2 text-center border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 md:pr-4">
+                <div className="relative flex items-center justify-center w-36 h-36 mb-4">
+                  <svg className="w-full h-full transform -rotate-90">
+                    <circle
+                      cx="72"
+                      cy="72"
+                      r="60"
+                      className="stroke-slate-100 dark:stroke-slate-800"
+                      strokeWidth="11"
+                      fill="transparent"
+                    />
+                    <circle
+                      cx="72"
+                      cy="72"
+                      r="60"
+                      className="stroke-[#3e46ca] transition-all duration-500 ease-out"
+                      strokeWidth="11"
+                      fill="transparent"
+                      strokeDasharray={2 * Math.PI * 60}
+                      strokeDashoffset={2 * Math.PI * 60 * (1 - stats.percentPresent / 100)}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center">
+                    <span className="text-4xl font-black text-slate-900 dark:text-white leading-none">{stats.percentPresent}%</span>
+                    <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black mt-2">Kehadiran</span>
+                  </div>
+                </div>
 
-            {/* 7. LATE ARRIVALS CARD & STATUS MONITOR */}
-            <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-2.5 select-none animate-fade-in">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block pb-1">
-                {isSholatActive ? "LATE ARRIVALS MONITOR" : "STATUS MONITOR PRESENSI"}
-              </span>
-              <div className="flex items-baseline gap-2">
-                <span className={`text-4xl font-extrabold italic ${isSholatActive ? (isIqomahActive ? "text-[#ff2c55]" : "text-slate-400") : "text-indigo-500"}`}>
-                  {isSholatActive ? (isIqomahActive ? "Aktif" : "Nonaktif") : "Berjalan"}
-                </span>
+                <div className="text-xs font-semibold text-slate-650 dark:text-slate-300">
+                  Selesai Input: <span className="font-extrabold text-[#3e46ca] dark:text-indigo-400">{stats.markedCount}</span> dari <span className="font-extrabold text-slate-900 dark:text-white">{stats.total}</span> santri
+                </div>
               </div>
-              <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 pt-1">
-                Monitoring Sesi {activeSessionObj?.label}
-              </h4>
-              <p className="text-[10px] text-slate-400 leading-normal">
-                {isSholatActive 
-                  ? "Santri yang absen setelah iqomah tercatat otomatis sebagai terlambat."
-                  : (() => {
-                      const pType = mapLocalSessionToDbSession(activeSessionObj?.id || "", sessions).presensi;
-                      if (pType === "makan") return "Pemindaian akan mencatat status pengambilan makan santri pada sesi ini.";
-                      if (pType === "ngaji") return "Pemindaian akan mencatat kehadiran ngaji santri pada sesi ini.";
-                      if (pType === "sekolah") return "Pemindaian akan mencatat kehadiran sekolah santri pada sesi ini.";
-                      return `Pemindaian akan otomatis mencatat kehadiran santri untuk sesi ${activeSessionObj?.label}.`;
-                    })()
-                }
-              </p>
+
+              {/* Breakdown item bars on right */}
+              <div className="space-y-3.5">
+                {[
+                  { label: "Hadir", count: stats.hadir, color: "bg-emerald-500", rawColor: "text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-green-950/20" },
+                  { label: "Terlambat", count: stats.terlambat, color: "bg-amber-400 animate-pulse", rawColor: "text-[#854d0e] bg-amber-50 dark:text-amber-400 dark:bg-amber-950/20" },
+                  { label: "Sakit", count: stats.sakit, color: "bg-yellow-400", rawColor: "text-yellow-700 bg-yellow-50 dark:text-yellow-450 dark:bg-yellow-950/20" },
+                  { label: "Izin", count: stats.izin, color: "bg-blue-400", rawColor: "text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/20" },
+                  { label: "Pulang", count: stats.pulang, color: "bg-fuchsia-400", rawColor: "text-fuchsia-700 bg-fuchsia-50 dark:text-fuchsia-400 dark:bg-fuchsia-950/20" },
+                  { label: "Alpa (Tanpa Keterangan)", count: stats.alpa, color: "bg-rose-400", rawColor: "text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-950/20" },
+                  { label: "Belum Absen", count: stats.unmarked, color: "bg-slate-300 dark:bg-slate-700", rawColor: "text-slate-500 bg-slate-50 dark:text-slate-400 dark:bg-slate-900" },
+                ].map((item) => {
+                  const ratio = stats.total > 0 ? (item.count / stats.total) * 100 : 0;
+                  return (
+                    <div key={item.label} className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="text-slate-600 dark:text-slate-300">{item.label}</span>
+                        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-mono leading-none ${item.rawColor}`}>
+                          {item.count} santri ({Math.round(ratio)}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-50 dark:bg-slate-900 h-2 rounded-full overflow-hidden">
+                        <div className={`h-full ${item.color}`} style={{ width: `${ratio}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* B. REKAP DATA VIEW (REKAP DATA) */}
-      {attendanceSubTab === "rekap" && (
+      {/* REKAP VIEW: RENDER SUB-VIEWS */}
+      {viewMode === "rekap" && (
+        <>
+          {/* B. REKAP DATA VIEW */}
+          {attendanceSubTab === "rekap" && (
         <div className="space-y-4 animate-fade-in" id="attendance_rekap_section">
           
           {/* TIMEFRAME SELECTION SWITCHER */}
@@ -2876,6 +2632,8 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
 
         </div>
       )}
+        </>
+      )}
 
       {/* 9. BOTTOM FOOTER */}
       <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-500 font-bold select-none py-1 border-t border-slate-100 dark:border-slate-800 uppercase tracking-widest mt-2" id="attendance_panel_footer">
@@ -2912,13 +2670,9 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
       {/* ABSENSI CUSTOM STATUS POPUP OVERLAY */}
       {attendancePopup?.isOpen && (
         <div 
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#0a0a1a]/55 backdrop-blur-md transition-opacity duration-300 font-sans cursor-pointer" 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#0a0a1a]/55 backdrop-blur-md transition-opacity duration-200 font-sans cursor-pointer animate-fade-in" 
           id="absensi-custom-popup-overlay"
-          onClick={() => {
-            if (attendancePopup.type === "success") {
-              setAttendancePopup(null);
-            }
-          }}
+          onClick={() => setAttendancePopup(null)}
         >
           {attendancePopup.type === "success" ? (
             <div 
@@ -2926,9 +2680,24 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
               id="absensi-success-card"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#10b981] border-2 border-white shadow-md flex items-center justify-center text-white">
+              <button
+                type="button"
+                onClick={() => setAttendancePopup(null)}
+                className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#10b981] hover:bg-emerald-600 border-2 border-white shadow-lg flex items-center justify-center text-white cursor-pointer transition-all hover:scale-110 active:scale-95 z-30"
+                aria-label="Tutup"
+                title="Tutup (1.5 detik)"
+              >
                 <Check className="w-5 h-5 stroke-[3]" />
-              </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAttendancePopup(null)}
+                className="absolute top-3 right-3 p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                aria-label="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
 
               <div className="w-24 h-28 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl mx-auto overflow-hidden relative shadow-sm mb-4">
                 {attendancePopup.studentPhoto ? (
@@ -3033,15 +2802,28 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
             </div>
           ) : attendancePopup.type === "error" && (
             <div 
-              className="relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-rose-500 p-8 max-w-[320px] w-full shadow-2xl text-center pt-10 pb-6 animate-scale-up border-rose-500" 
+              className="relative bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-rose-500 p-8 max-w-[320px] w-full shadow-2xl text-center pt-10 pb-6 animate-scale-up" 
               id="absensi-error-card"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-rose-500 border-2 border-white shadow-md flex items-center justify-center text-white">
-                <svg className="w-5 h-5 stroke-[3]" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
+              <button
+                type="button"
+                onClick={() => setAttendancePopup(null)}
+                className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-rose-500 hover:bg-rose-600 border-2 border-white shadow-lg flex items-center justify-center text-white cursor-pointer transition-all hover:scale-110 active:scale-95 z-30"
+                aria-label="Tutup"
+                title="Tutup (1.5 detik)"
+              >
+                <X className="w-5 h-5 stroke-[3]" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAttendancePopup(null)}
+                className="absolute top-3 right-3 p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                aria-label="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
 
               <div className="mb-4">
                 {attendancePopup.reason === "already_scanned" ? (
@@ -3081,25 +2863,19 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
                 {attendancePopup.reason === "already_scanned" ? "SUDAH ABSEN" : "ID TIDAK DIKENAL"}
               </h3>
 
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-bold px-1 mb-6">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-bold px-1 mb-2">
                 {attendancePopup.reason === "already_scanned" ? (
                   <>
                     Siswa <span className="text-slate-800 dark:text-white font-extrabold">{attendancePopup.studentName}</span> sudah melakukan absensi sebelumnya pada sesi ini.
                   </>
                 ) : attendancePopup.reason === "unregistered_card" ? (
-                  "Maaf kartu Anda belum terdaftar, silakan menghubungi admin."
+                  <>
+                    Kartu belum terdaftar di database kesiswaan. Silakan hubungkan kartu ini ke salah satu santri.
+                  </>
                 ) : (
                   attendancePopup.customMessage || "Gagal melakukan absensi."
                 )}
               </p>
-
-              <button
-                type="button"
-                onClick={() => setAttendancePopup(null)}
-                className="w-full bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-xs uppercase tracking-widest py-3.5 rounded-2xl transition-all shadow-md hover:shadow-lg cursor-pointer transform active:scale-[0.98]"
-              >
-                Ulangi
-              </button>
             </div>
           )}
         </div>
@@ -3208,6 +2984,14 @@ export default function PresensiPanel({ students, rooms }: PresensiPanelProps) {
             executeScanRef.current(uid, "nfc");
           }
         }}
+      />
+
+      {/* NFC UID Format Converter Modal (Hex ⇄ Decimal USB Reader) */}
+      <NfcUidConverterModal
+        isOpen={showConverterModal}
+        onClose={() => setShowConverterModal(false)}
+        students={students}
+        initialUid={converterInitialUid}
       />
 
     </div>

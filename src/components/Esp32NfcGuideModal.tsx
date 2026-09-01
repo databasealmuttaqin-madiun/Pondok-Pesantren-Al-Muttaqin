@@ -14,8 +14,8 @@ export default function Esp32NfcGuideModal({
 }: Esp32NfcGuideModalProps) {
   const [activeTab, setActiveTab] = useState<"pinout" | "wifi_code" | "serial_code" | "test">("pinout");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [wifiSsid, setWifiSsid] = useState<string>("WIFI_PONDOK");
-  const [wifiPass, setWifiPass] = useState<string>("pass12345");
+  const [wifiSsid, setWifiSsid] = useState<string>("KANTOR SMP L2");
+  const [wifiPass, setWifiPass] = useState<string>("");
   const [testUid, setTestUid] = useState<string>("12A3B4C5");
   const [testFeedback, setTestFeedback] = useState<string | null>(null);
 
@@ -44,12 +44,12 @@ export default function Esp32NfcGuideModal({
       5V / 3V3     -> VCC LCD
       GND          -> GND LCD
 
-  [2] RFID RC522 (SPI):
-      GPIO18       -> SDA / SS (Chip Select)
-      GPIO19       -> SCK (Clock)
-      GPIO23       -> MOSI
-      GPIO5        -> MISO
-      GPIO13       -> RST (Reset)
+  [2] RFID RC522 (SPI Standard Hardware VSPI):
+      GPIO5        -> SDA / SS (D10 di Wemos D1 R32)
+      GPIO18       -> SCK (D13 di Wemos D1 R32)
+      GPIO19       -> MISO (D12 di Wemos D1 R32)
+      GPIO23       -> MOSI (D11 di Wemos D1 R32)
+      GPIO13       -> RST (D9 di Wemos D1 R32)
       3V3          -> VCC (Wajib 3.3V, Jangan 5V!)
       GND          -> GND
       IRQ          -> (Tidak Dipakai)
@@ -72,34 +72,56 @@ export default function Esp32NfcGuideModal({
 #include <WiFiClientSecure.h>
 
 // --- KONFIGURASI PIN WEMOS D1 R32 ---
-#define SS_PIN     18  // SDA/SS RC522
-#define SCK_PIN    19  // SCK RC522
-#define MOSI_PIN   23  // MOSI RC522
-#define MISO_PIN   5   // MISO RC522
-#define RST_PIN    13  // RST RC522
+#define SS_PIN     18  // SDA/SS RC522 (GPIO 18 / Pin D10 Wemos R32)
+#define SCK_PIN    19  // SCK RC522 (GPIO 19 / Pin D13 Wemos R32)
+#define MOSI_PIN   23  // MOSI RC522 (GPIO 23 / Pin D11 Wemos R32)
+#define MISO_PIN   5   // MISO RC522 (GPIO 5 / Pin D12 Wemos R32)
+#define RST_PIN    13  // RST RC522 (GPIO 13 / Pin D9 Wemos R32)
 
-#define BUZZER_PIN 12  // Signal Buzzer
-#define BUTTON_PIN 26  // Tombol (INPUT_PULLUP, Aktif LOW)
+#define BUZZER_PIN 12  // Signal Buzzer (GPIO 12)
+#define BUTTON_PIN 26  // Tombol Manual (GPIO 26, INPUT_PULLUP)
 
-#define I2C_SDA    21  // SDA LCD I2C
-#define I2C_SCL    22  // SCL LCD I2C
+#define I2C_SDA    21  // SDA LCD I2C (GPIO 21)
+#define I2C_SCL    22  // SCL LCD I2C (GPIO 22)
 
 // Inisialisasi MFRC522 & LCD I2C (Alamat I2C umum 0x27 atau 0x3F)
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
-// --- KONFIGURASI WIFI & SERVER API ---
+// --- KONFIGURASI WIFI & HOSTINGER / API ENDPOINT ---
 const char* ssid         = "${wifiSsid}";
 const char* password     = "${wifiPass}";
 
-// Endpoint API Express / Cloud Run
-const char* serverApiUrl = "https://ais-dev-7iq2pu7x3nfewkb6nyaboc-253474951008.asia-east1.run.app/api/nfc/tap";
-const char* deviceId     = "WEMOS_GATE_01";
+// Endpoint Hostinger API PHP & Supabase REST API Fallback
+const char* hostingerApiUrl = "https://almuttaqin.online/api/tap.php";
+const char* supabaseUrl  = "https://eflhcunxpckcynozywol.supabase.co";
+const char* supabaseKey  = "sb_publishable_fqZTO3lL9cb88K61NXjKHw_zH8O3TuZ";
+const char* deviceId     = "ESP32_GATE_01";
 
 unsigned long lastScanTime = 0;
 String lastCardUid = "";
 bool lastBtnState = HIGH;
 unsigned long lastDebounceBtn = 0;
+
+// Helper ekstrak nilai JSON sederhana
+String extractJsonVal(String json, String key) {
+  int keyIdx = json.indexOf(key);
+  if (keyIdx < 0) return "";
+  int startVal = json.indexOf(":", keyIdx);
+  if (startVal < 0) return "";
+  startVal++;
+  while (startVal < json.length() && (json[startVal] == ' ' || json[startVal] == '"')) startVal++;
+  int endVal = startVal;
+  while (endVal < json.length() && json[endVal] != '"' && json[endVal] != ',' && json[endVal] != '}' && json[endVal] != 13 && json[endVal] != 10) endVal++;
+  if (endVal > startVal) return json.substring(startVal, endVal);
+  return "";
+}
+
+bool extractJsonBool(String json, String key) {
+  int keyIdx = json.indexOf(key);
+  if (keyIdx < 0) return false;
+  return json.substring(keyIdx, keyIdx + 20).indexOf("true") >= 0;
+}
 
 void updateLcdStandby() {
   lcd.clear();
@@ -128,15 +150,18 @@ void setup() {
   lcd.setCursor(0, 1);
   lcd.print("Memuat System...");
 
-  // Inisialisasi SPI Khusus Wemos D1 R32
+  // Inisialisasi SPI & MFRC522 RFID
   SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
   mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max); // Set kekuatan antena ke maksimal
 
   Serial.println("");
   Serial.println("===========================================");
   Serial.println(" WEMOS D1 R32 + RC522 + LCD I2C + BUZZER");
   Serial.println(" SIM Pondok Pesantren Al Muttaqin");
   Serial.println("===========================================");
+  Serial.print("Cek Hardware RC522: ");
+  mfrc522.PCD_DumpVersionToSerial(); // Cek chip RC522 terdeteksi (0x91 / 0x92 = OK)
 
   // Koneksi ke WiFi
   lcd.clear();
@@ -147,10 +172,15 @@ void setup() {
 
   Serial.print("Menghubungkan ke WiFi: ");
   Serial.println(ssid);
-  WiFi.begin(ssid, password);
+  
+  if (strlen(password) > 0) {
+    WiFi.begin(ssid, password);
+  } else {
+    WiFi.begin(ssid); // WiFi tanpa password
+  }
 
   int attempt = 0;
-  while (WiFi.status() != WL_CONNECTED && attempt < 15) {
+  while (WiFi.status() != WL_CONNECTED && attempt < 30) {
     delay(500);
     Serial.print(".");
     attempt++;
@@ -166,18 +196,22 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("WiFi Connected!");
     lcd.setCursor(0, 1);
-    lcd.print(WiFi.localIP());
+    lcd.print(WiFi.localIP().toString());
     delay(1500);
   } else {
     Serial.println("");
-    Serial.println("WiFi Disconnected (Mode Lokal/Serial)");
+    Serial.println("WiFi Disconnected (Mode Offline)");
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("WiFi Disconnected");
+    lcd.print("WiFi Disconnect");
     lcd.setCursor(0, 1);
     lcd.print("Standby Mode...");
     delay(1500);
   }
+
+  // Pastikan RFID MFRC522 siap setelah WiFi init
+  mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
 
   updateLcdStandby();
 
@@ -187,12 +221,19 @@ void setup() {
 }
 
 void loop() {
+  // Reset MFRC522 jika mengalami freeze
+  static unsigned long lastRfcCheck = 0;
+  if (millis() - lastRfcCheck > 10000) {
+    lastRfcCheck = millis();
+    mfrc522.PCD_Init();
+    mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
+  }
+
   // --- CEK TOMBOL MANUAL (GPIO 26) ---
   int btnVal = digitalRead(BUTTON_PIN);
   if (btnVal == LOW && lastBtnState == HIGH && (millis() - lastDebounceBtn > 300)) {
     lastDebounceBtn = millis();
-    Serial.println("");
-    Serial.println("[TOMBOL TEKAN]: Trigger Manual Ditekan");
+    Serial.println("\n[TOMBOL TEKAN]: Trigger Manual Ditekan");
     
     digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
     
@@ -208,23 +249,17 @@ void loop() {
 
   // --- CEK TAP KARTU RFID RC522 ---
   if (!mfrc522.PICC_IsNewCardPresent()) {
-    // Reset cache kartu terakhir jika tidak ada kartu selama > 2.5 detik
-    if (millis() - lastScanTime > 2500) {
+    if (millis() - lastScanTime > 2000) {
       lastCardUid = "";
     }
     return;
   }
 
-  // Bersihkan buffer memori UID sebelum membaca
-  memset(mfrc522.uid.uidByte, 0, sizeof(mfrc522.uid.uidByte));
-  mfrc522.uid.size = 0;
-
-  if (!mfrc522.PICC_ReadCardSerial() || mfrc522.uid.size == 0) {
-    mfrc522.PICC_HaltA();
+  if (!mfrc522.PICC_ReadCardSerial()) {
     return;
   }
 
-  // Format UID ke String Hex (Contoh: 12A3B4C5)
+  // Format UID ke String Hex (Contoh: 511913A8)
   String cardUid = "";
   for (byte i = 0; i < mfrc522.uid.size; i++) {
     if (mfrc522.uid.uidByte[i] < 0x10) cardUid += "0";
@@ -232,10 +267,12 @@ void loop() {
   }
   cardUid.toUpperCase();
 
-  // Debounce: Jika KARTU SAMA ditap berturut-turut dalam 2 detik, abaikan
+  // Halt card & stop crypto
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+
+  // Debounce: Abaikan jika kartu sama ditap ulang dalam 2 detik
   if (cardUid == lastCardUid && (millis() - lastScanTime < 2000)) {
-    mfrc522.PICC_HaltA();
-    mfrc522.PCD_StopCrypto1();
     return;
   }
 
@@ -253,78 +290,170 @@ void loop() {
   lcd.setCursor(0, 1);
   lcd.print("UID: " + cardUid);
 
-  // Beep 1x
-  digitalWrite(BUZZER_PIN, HIGH); delay(150); digitalWrite(BUZZER_PIN, LOW);
+  // Beep 1x indikasi kartu terbaca
+  digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW);
 
-  // Kirim data ke API backend (/api/nfc/tap)
+  // Kirim POST Request ke Backend API (Ngrok / Server)
   if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
     WiFiClientSecure client;
-    client.setInsecure(); // SSL Insecure bypass jika menggunakan HTTPS
+    client.setInsecure(); // Bypass SSL Certificate Check
+    HTTPClient http;
 
-    http.begin(client, serverApiUrl);
+    http.begin(client, hostingerApiUrl);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("User-Agent", "ESP32-Gate");
 
-    String jsonBody = "{\\"card_uid\\":\\"" + cardUid + "\\",\\"device_id\\":\\"" + String(deviceId) + "\\"}";
-    int httpResponseCode = http.POST(jsonBody);
+    String jsonBody = "{\"card_uid\":\"" + cardUid + "\",\"device_id\":\"" + String(deviceId) + "\"}";
+    
+    Serial.println("Sending POST Request to: " + String(hostingerApiUrl));
+    Serial.println("Body: " + jsonBody);
 
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.println("[HTTP CODE]: " + String(httpResponseCode));
-      Serial.println("[RESPONSE]: " + response);
+    int httpCode = http.POST(jsonBody);
+    String responseString = "";
+    
+    if (httpCode > 0) {
+      responseString = http.getString();
+      Serial.println("HTTP Code: " + String(httpCode));
+      Serial.println("Response: " + responseString);
+    } else {
+      Serial.println("HTTP POST Error: " + http.errorToString(httpCode));
+    }
+    http.end();
 
-      lcd.clear();
-      if (httpResponseCode == 200 && response.indexOf("true") >= 0) {
-        String namaSiswa = "Siswa Ditemukan";
-        int namaIdx = response.indexOf("nama");
-        if (namaIdx >= 0) {
-          int startName = response.indexOf(":", namaIdx) + 1;
-          while (startName < response.length() && (response[startName] == ' ' || response[startName] == '"')) startName++;
-          int endName = startName;
-          while (endName < response.length() && response[endName] != '"' && response[endName] != ',' && response[endName] != '}') endName++;
-          if (endName > startName) {
-            namaSiswa = response.substring(startName, endName);
+    // Parse Hasil Respon
+    bool success = extractJsonBool(responseString, "success");
+    String namaSiswa = extractJsonVal(responseString, "nama");
+    String msg = extractJsonVal(responseString, "message");
+
+    lcd.clear();
+
+    if (success && namaSiswa.length() > 0 && namaSiswa != "Tidak Dikenal") {
+      // --- KARTU TERDAFTAR & PRESENSI BERHASIL ---
+      lcd.setCursor(0, 0);
+      if (msg.length() > 0) lcd.print(msg.substring(0, 16));
+      else lcd.print("PRESENSI SUKSES");
+      
+      lcd.setCursor(0, 1);
+      lcd.print(namaSiswa.substring(0, 16));
+
+      // Beep 2x Cepat
+      digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW); delay(80);
+      digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
+
+    } else {
+      // --- FALLBACK SUPABASE DIRECT JIKA HOSTINGER API FAIL ATAU KARTU BELUM MATCH ---
+      if (!success) {
+        // Cek 1: Ke Supabase tabel 'santri' (kolom 'nfc_id')
+        HTTPClient httpSupa1;
+        String supaUrl1 = String(supabaseUrl) + "/rest/v1/santri?nfc_id=eq." + cardUid + "&select=nama,nama_lengkap";
+        httpSupa1.begin(client, supaUrl1);
+        httpSupa1.addHeader("apikey", supabaseKey);
+        httpSupa1.addHeader("Authorization", String("Bearer ") + supabaseKey);
+        
+        int sCode1 = httpSupa1.GET();
+        if (sCode1 == 200) {
+          String sResp1 = httpSupa1.getString();
+          String sNama1 = extractJsonVal(sResp1, "nama");
+          if (sNama1.length() == 0) sNama1 = extractJsonVal(sResp1, "nama_lengkap");
+          if (sNama1.length() > 0) {
+            namaSiswa = sNama1;
+            success = true;
           }
         }
+        httpSupa1.end();
 
+        // Cek 2: Ke Supabase tabel 'nfc' (kolom 'serial_number') jika belum ketemu
+        if (!success) {
+          HTTPClient httpSupa2;
+          String supaUrl2 = String(supabaseUrl) + "/rest/v1/nfc?serial_number=eq." + cardUid + "&select=nama";
+          httpSupa2.begin(client, supaUrl2);
+          httpSupa2.addHeader("apikey", supabaseKey);
+          httpSupa2.addHeader("Authorization", String("Bearer ") + supabaseKey);
+          
+          int sCode2 = httpSupa2.GET();
+          if (sCode2 == 200) {
+            String sResp2 = httpSupa2.getString();
+            String sNama2 = extractJsonVal(sResp2, "nama");
+            if (sNama2.length() > 0) {
+              namaSiswa = sNama2;
+              success = true;
+            }
+          }
+          httpSupa2.end();
+        }
+
+        // Cek 3: Ke Supabase tabel 'nfc_cards' (kolom 'card_uid') jika belum ketemu
+        if (!success) {
+          HTTPClient httpSupa3;
+          String supaUrl3 = String(supabaseUrl) + "/rest/v1/nfc_cards?card_uid=eq." + cardUid + "&select=nama";
+          httpSupa3.begin(client, supaUrl3);
+          httpSupa3.addHeader("apikey", supabaseKey);
+          httpSupa3.addHeader("Authorization", String("Bearer ") + supabaseKey);
+          
+          int sCode3 = httpSupa3.GET();
+          if (sCode3 == 200) {
+            String sResp3 = httpSupa3.getString();
+            String sNama3 = extractJsonVal(sResp3, "nama");
+            if (sNama3.length() > 0) {
+              namaSiswa = sNama3;
+              success = true;
+            }
+          }
+          httpSupa3.end();
+        }
+      }
+
+      if (success && namaSiswa.length() > 0 && namaSiswa != "Tidak Dikenal") {
         lcd.setCursor(0, 0);
-        lcd.print("Presensi Berhasil!");
+        lcd.print("PRESENSI SUKSES");
         lcd.setCursor(0, 1);
         lcd.print(namaSiswa.substring(0, 16));
 
-        // Beep Berhasil (2x Beep Pendek)
+        // Beep 2x Cepat
         digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW); delay(80);
         digitalWrite(BUZZER_PIN, HIGH); delay(80); digitalWrite(BUZZER_PIN, LOW);
       } else {
+        // Kartu Belum Terdaftar ke Nama Siswa Mana Pun
         lcd.setCursor(0, 0);
-        lcd.print("Kartu Tak Dikenal");
+        lcd.print("KARTU TDK DIKENAL");
         lcd.setCursor(0, 1);
-        lcd.print("Register Dulu!");
+        lcd.print("UID: " + cardUid.substring(0, 11));
 
-        // Beep Gagal (1x Beep Panjang)
-        digitalWrite(BUZZER_PIN, HIGH); delay(400); digitalWrite(BUZZER_PIN, LOW);
+        // Beep 1x Panjang
+        digitalWrite(BUZZER_PIN, HIGH); delay(450); digitalWrite(BUZZER_PIN, LOW);
       }
-    } else {
-      Serial.println("Error HTTP POST: " + String(httpResponseCode));
-      lcd.setCursor(0, 0);
-      lcd.print("HTTP Error!");
-      lcd.setCursor(0, 1);
-      lcd.print("Code: " + String(httpResponseCode));
     }
-    http.end();
+
+    // --- SANGAT PENTING: Record log tap ke Supabase nfc_taps ---
+    // Ini memastikan Menu Registrasi NFC di Web App selalu bisa membaca UID kartu baru!
+    HTTPClient httpTap;
+    httpTap.begin(client, String(supabaseUrl) + "/rest/v1/nfc_taps");
+    httpTap.addHeader("Content-Type", "application/json");
+    httpTap.addHeader("apikey", supabaseKey);
+    httpTap.addHeader("Authorization", String("Bearer ") + supabaseKey);
+    httpTap.addHeader("Prefer", "return=minimal");
+    
+    String bodyTap = "{\"uid\":\"" + cardUid + "\",\"device_id\":\"" + String(deviceId) + "\",\"nama\":\"" + (namaSiswa.length() > 0 ? namaSiswa : "Tidak Dikenal") + "\"}";
+    int tapRes = httpTap.POST(bodyTap);
+    Serial.println("[Supabase nfc_taps] Status Code: " + String(tapRes));
+    if (tapRes == 400 || tapRes == 404) {
+      Serial.println("  -> CATATAN: Jika status 400, jalankan SQL tabel 'nfc_taps' dari tombol di Menu Registrasi NFC Web App.");
+    } else if (tapRes == 201 || tapRes == 200 || tapRes == 204) {
+      Serial.println("  -> BERHASIL dikirim ke Supabase! Web App kini siap membaca UID ini.");
+    }
+    httpTap.end();
+
   } else {
     Serial.println("WiFi Terputus! Mencoba reconnect...");
     WiFi.reconnect();
   }
 
+  // Re-init MFRC522 agar tidak freeze setelah WiFi SSL request
+  mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
+
   delay(1200);
   updateLcdStandby();
-
-  // Reset RC522 State & Re-Init agar siap membaca tap berikutnya
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-  delay(100);
-  mfrc522.PCD_Init(); // Re-Init hardware RC522
 }
 `;
 
@@ -340,11 +469,11 @@ void loop() {
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-#define SS_PIN     18  // SDA/SS RC522
-#define SCK_PIN    19  // SCK RC522
-#define MOSI_PIN   23  // MOSI RC522
-#define MISO_PIN   5   // MISO RC522
-#define RST_PIN    13  // RST RC522
+#define SS_PIN     5   // SDA/SS RC522 (GPIO 5 / D10 Wemos)
+#define SCK_PIN    18  // SCK RC522 (GPIO 18 / D13 Wemos)
+#define MOSI_PIN   23  // MOSI RC522 (GPIO 23 / D11 Wemos)
+#define MISO_PIN   19  // MISO RC522 (GPIO 19 / D12 Wemos)
+#define RST_PIN    13  // RST RC522 (GPIO 13 / D9 Wemos)
 
 #define BUZZER_PIN 12  // Signal Buzzer
 #define BUTTON_PIN 26  // Tombol Manual (INPUT_PULLUP)
@@ -400,17 +529,13 @@ void loop() {
   lastBtnState = btnVal;
 
   if (!mfrc522.PICC_IsNewCardPresent()) {
-    if (millis() - lastScanTime > 2500) {
+    if (millis() - lastScanTime > 2000) {
       lastCardUid = "";
     }
     return;
   }
 
-  memset(mfrc522.uid.uidByte, 0, sizeof(mfrc522.uid.uidByte));
-  mfrc522.uid.size = 0;
-
-  if (!mfrc522.PICC_ReadCardSerial() || mfrc522.uid.size == 0) {
-    mfrc522.PICC_HaltA();
+  if (!mfrc522.PICC_ReadCardSerial()) {
     return;
   }
 
@@ -421,9 +546,10 @@ void loop() {
   }
   cardUid.toUpperCase();
 
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+
   if (cardUid == lastCardUid && (millis() - lastScanTime < 1500)) {
-    mfrc522.PICC_HaltA();
-    mfrc522.PCD_StopCrypto1();
     return;
   }
 
@@ -444,11 +570,6 @@ void loop() {
 
   delay(1000);
   updateLcdStandby();
-
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-  delay(50);
-  mfrc522.PCD_Init();
 }
 `;
 
@@ -588,7 +709,7 @@ void loop() {
                     </tr>
                     <tr className="bg-slate-50/50 dark:bg-slate-850/50">
                       <td className="p-3 font-mono">SCK</td>
-                      <td className="p-3 font-mono font-bold">GPIO 19</td>
+                      <td className="p-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">GPIO 19</td>
                     </tr>
                     <tr className="bg-slate-50/50 dark:bg-slate-850/50">
                       <td className="p-3 font-mono">MOSI</td>
@@ -651,6 +772,19 @@ void loop() {
                   <li><strong>Mode WiFi (Rekomendasi):</strong> ESP32 terhubung ke WiFi pondok dan mengirimkan ID kartu secara otomatis ke URL server web via HTTP POST (`/api/nfc/tap`).</li>
                   <li><strong>Mode USB Serial:</strong> ESP32 dihubungkan menggunakan kabel data USB ke Laptop/PC admin. Aplikasi membaca sinyal serial langsung via Web Serial API.</li>
                 </ul>
+              </div>
+
+              <div className="bg-rose-50 dark:bg-rose-950/30 p-4 rounded-2xl border border-rose-200 dark:border-rose-800/60 text-xs space-y-2">
+                <h4 className="font-extrabold text-rose-800 dark:text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  <span>Solusi Jika Pembaca RFID Belum Bisa Membaca Kartu:</span>
+                </h4>
+                <ol className="list-decimal list-inside space-y-1.5 text-rose-900 dark:text-rose-200 leading-relaxed">
+                  <li><strong>Periksa Kabel SPI SCK & SDA:</strong> Pastikan pin <strong>SDA/SS</strong> terhubung ke <strong>GPIO 5 (Pin D10)</strong> dan pin <strong>SCK</strong> terhubung ke <strong>GPIO 18 (Pin D13)</strong>. (Sebelumnya terbalik antara SCK dan SDA).</li>
+                  <li><strong>Power 3.3V Cukup:</strong> Pastikan VCC RC522 ke pin <strong>3.3V</strong> (Bukan 5V). Bila daya drop saat WiFi nyala, hubungkan ke USB adaptor daya min 1A-2A.</li>
+                  <li><strong>Cek Serial Monitor (115200 baud):</strong> Saat booting, lihat tulisan <em>"Firmware Version: 0x91"</em>. Jika muncul <em>"0x0"</em> atau <em>"0xFF"</em>, artinya perkabelan jumper atau solderan pin RC522 kendor.</li>
+                  <li><strong>Jenis Kartu:</strong> Pastikan kartu berfrekuensi <strong>13.56 MHz (Mifare 1k / e-KTP / Tag Biru RFID)</strong>, bukan kartu 125 KHz (EM4100).</li>
+                </ol>
               </div>
             </div>
           )}
