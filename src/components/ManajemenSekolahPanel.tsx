@@ -147,8 +147,8 @@ export default function ManajemenSekolahPanel({
       if (dbPengguna && dbPengguna.length > 0) {
         dbPengguna.forEach((u: any) => {
           const isTeacher =
-            u.role === "guru_sekolah" ||
-            u.role === "guru_pondok" ||
+            u.role === "guru SMP" ||
+            u.role === "guru pondok" ||
             (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
 
           if (isTeacher && u.username) {

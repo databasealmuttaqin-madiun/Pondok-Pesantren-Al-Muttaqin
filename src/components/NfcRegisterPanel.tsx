@@ -1,3 +1,4 @@
+import { PageHeader } from './ui/PageHeader';
 import React, { useState, useEffect, useRef } from "react";
 import { SantriData } from "../supabaseClient";
 import { Fingerprint, Search, User, Home, HelpCircle, Check, AlertTriangle, Trash2, Shield, RefreshCw, Cpu, Wifi, Usb, Radio, ArrowRightLeft, Copy, Sparkles, CheckCircle2 } from "lucide-react";
@@ -106,15 +107,17 @@ interface NfcRegisterPanelProps {
   rooms: string[];
   onUpdateNfc: (studentId: number, nfcId: string | null) => Promise<boolean>;
   isDarkMode: boolean;
+  viewMode?: "scan" | "database";
 }
 
 export default function NfcRegisterPanel({
   students,
   rooms,
   onUpdateNfc,
-  isDarkMode
+  isDarkMode,
+  viewMode = "scan"
 }: NfcRegisterPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"scan" | "database">("scan");
+  const activeSubTab = viewMode;
   
   // Real-time input buffer for physical NFC scanning emulated by USB Readers
   const [scannedCode, setScannedCode] = useState<string>("");
@@ -353,56 +356,20 @@ export default function NfcRegisterPanel({
 
   return (
     <div className="space-y-6" id="nfc-comprehensive-panel">
-      {/* Header Banner */}
-      <div className="bg-white dark:bg-[#111c44] border border-slate-100 dark:border-slate-800 rounded-[2rem] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in relative overflow-hidden" id="nfc_main_header">
-        <div className="flex items-center gap-4">
-          <div className="w-[54px] h-[54px] rounded-2xl bg-indigo-50 dark:bg-slate-900 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
-            <Fingerprint className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-1.5 leading-none">
-              Registrasi & Manajemen Kartu NFC
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
-              Sistem pendaftaran kartu RFID / NFC terhubung ke database santri secara otomatis.
-            </p>
-          </div>
-        </div>
-
-        {/* Tab Switcher inside Header */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowConverterModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-sm"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span>Kalkulator UID</span>
-          </button>
-
-          <div className="bg-slate-50 dark:bg-slate-900/60 p-1 border border-slate-200/50 dark:border-slate-800 rounded-2xl h-fit flex items-center shrink-0">
-            <button
-              onClick={() => setActiveSubTab("scan")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer ${
-                activeSubTab === "scan"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-              }`}
-            >
-              Daftar
-            </button>
-            <button
-              onClick={() => setActiveSubTab("database")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer ${
-                activeSubTab === "database"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-              }`}
-            >
-              Database Kartu ({studentsWithNfc.length})
-            </button>
-          </div>
-        </div>
+      <PageHeader 
+        breadcrumbs={["Registrasi NFC", activeSubTab === "scan" ? "Daftar Kartu" : "Database Kartu"]}
+        title={activeSubTab === "scan" ? "Pendaftaran Kartu NFC" : "Database Kartu NFC"}
+      />
+      
+      <div className="flex justify-end mb-4">
+        <button
+          type="button"
+          onClick={() => setShowConverterModal(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-sm"
+        >
+          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+          <span>Kalkulator UID</span>
+        </button>
       </div>
 
       {activeSubTab === "scan" ? (

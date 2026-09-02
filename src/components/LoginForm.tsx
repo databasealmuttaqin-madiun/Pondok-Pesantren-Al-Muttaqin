@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop, Database, Settings, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { User, Lock, Chrome, Shield, AlertCircle, Check, Sun, Moon, Laptop, Settings, UserPlus } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import GuruRegisterModal from "./GuruRegisterModal";
 
@@ -19,41 +19,6 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
   const [showPassword, setShowPassword] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
-  // Database Connection states
-  const [showDbSettings, setShowDbSettings] = useState(false);
-  const [customDbUrl, setCustomDbUrl] = useState(() => localStorage.getItem("supabase_url") || "");
-  const [customDbKey, setCustomDbKey] = useState(() => localStorage.getItem("supabase_anon_key") || "");
-  const [dbSuccessMsg, setDbSuccessMsg] = useState("");
-
-  const handleSaveDbSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (customDbUrl.trim()) {
-      localStorage.setItem("supabase_url", customDbUrl.trim());
-    } else {
-      localStorage.removeItem("supabase_url");
-    }
-    if (customDbKey.trim()) {
-      localStorage.setItem("supabase_anon_key", customDbKey.trim());
-    } else {
-      localStorage.removeItem("supabase_anon_key");
-    }
-    setDbSuccessMsg("Konfigurasi disimpan! Memuat ulang sistem...");
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
-  };
-
-  const handleResetDbSettings = () => {
-    localStorage.removeItem("supabase_url");
-    localStorage.removeItem("supabase_anon_key");
-    setCustomDbUrl("");
-    setCustomDbKey("");
-    setDbSuccessMsg("Koneksi dikembalikan ke default! Memuat ulang...");
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
@@ -65,38 +30,57 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
     setIsLoading(true);
 
     try {
-      // Check database first!
+      const cleanUsername = username.trim().toLowerCase();
+      const cleanPassword = password.trim().toLowerCase();
+
+      // Check database first with case-insensitive handling!
       const { data, error } = await supabase
         .from("pengguna")
-        .select("*")
-        .eq("username", username)
-        .eq("password", password);
+        .select("*");
 
       if (data && data.length > 0) {
-        const user = data[0];
-        
-        // Merge with local fallback details in case columns aren't present in remote Supabase table yet
-        const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
-        const extra = localDetails[user.username] || {};
+        const user = data.find((u: any) => 
+          String(u.username || "").trim().toLowerCase() === cleanUsername &&
+          (String(u.password || "").trim().toLowerCase() === cleanPassword || String(u.password || "").trim() === password.trim())
+        );
 
-        const dbUserVal = {
-          username: user.username,
-          role: user.role,
-          name: user.nama,
-          gender: user.gender || 'Semua',
-          bagian: user.bagian || extra.bagian || (user.role === "admin" ? "kedua" : user.role === "guru_sekolah" ? "sekolah" : "pondok"),
-          jabatan: user.jabatan || extra.jabatan || (user.role === "admin" ? "pengurus" : user.role === "guru_sekolah" ? "guru mapel" : "guru pondok"),
-          tugas_kamar: user.tugas_kamar || extra.tugas_kamar || "",
-          tugas_kelas_sekolah: user.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
-          tugas_kelas_pengajian: user.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || ""
-        };
-        
-        setIsSuccess(true);
-        setIsLoading(false);
-        localStorage.setItem("admin_token", "session_token_custom_db");
-        localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
-        setTimeout(() => onSuccess(dbUserVal), 2200);
-        return;
+        if (user) {
+          // Merge with local fallback details in case columns aren't present in remote Supabase table yet
+          const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
+          const extra = localDetails[cleanUsername] || localDetails[user.username] || {};
+
+          let userRole = user.role || extra.role || "admin";
+          const rLower = String(userRole).toLowerCase().trim();
+          if (rLower === "super admin" || rLower === "super_admin" || rLower === "superadmin") userRole = "super admin";
+          else if (rLower === "admin") userRole = "admin";
+          else if (rLower === "guru pondok" || rLower === "guru pondok") userRole = "guru pondok";
+          else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru SMP") userRole = "guru SMP";
+          else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") userRole = "siswa";
+
+          const inferredGender = user.gender || extra.gender || (
+            cleanUsername.includes("siswi") || String(user.nama || "").toLowerCase().includes("siswi") ? "P" : 
+            userRole === "siswa" ? "L" : "Semua"
+          );
+
+          const dbUserVal = {
+            username: user.username,
+            role: userRole,
+            name: user.nama || user.nama_lengkap || user.username,
+            gender: inferredGender,
+            bagian: user.bagian || extra.bagian || (userRole === "admin" || userRole === "super admin" ? "kedua" : userRole === "guru SMP" ? "sekolah" : "pondok"),
+            jabatan: user.jabatan || extra.jabatan || (userRole === "admin" || userRole === "super admin" ? "pengurus" : userRole === "guru SMP" ? "guru mapel" : "guru pondok"),
+            tugas_kamar: user.tugas_kamar || extra.tugas_kamar || "",
+            tugas_kelas_sekolah: user.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
+            tugas_kelas_pengajian: user.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || ""
+          };
+          
+          setIsSuccess(true);
+          setIsLoading(false);
+          localStorage.setItem("admin_token", "session_token_custom_db");
+          localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
+          setTimeout(() => onSuccess(dbUserVal), 2200);
+          return;
+        }
       }
     } catch (err: any) {
       console.warn("DB login check failed", err);
@@ -104,29 +88,49 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
 
     // Check local registered user details fallback (instant login for registered users)
     const cleanUsername = username.trim().toLowerCase();
+    const cleanPassword = password.trim().toLowerCase();
     const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
-    if (localDetails[cleanUsername] && localDetails[cleanUsername].password === password) {
-      const extra = localDetails[cleanUsername];
-      const dbUserVal = {
-        username: cleanUsername,
-        role: extra.role || "guru_sekolah",
-        name: extra.nama_lengkap || extra.nama || cleanUsername,
-        gender: extra.gender || 'Semua',
-        bagian: extra.bagian || "sekolah",
-        jabatan: extra.jabatan || "",
-        tugas_kamar: extra.tugas_kamar || "",
-        tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
-        tugas_kelas_pengajian: extra.tugas_kelas_pengajian || ""
-      };
-      setIsSuccess(true);
-      setIsLoading(false);
-      localStorage.setItem("admin_token", "session_token_registered_guru");
-      localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
-      setTimeout(() => onSuccess(dbUserVal), 2200);
-      return;
+    const matchedKey = Object.keys(localDetails).find(k => k.trim().toLowerCase() === cleanUsername);
+    if (matchedKey) {
+      const extra = localDetails[matchedKey];
+      if (
+        String(extra.password || "").trim().toLowerCase() === cleanPassword ||
+        String(extra.password || "").trim() === password.trim()
+      ) {
+        let userRole = extra.role || "guru SMP";
+        const rLower = String(userRole).toLowerCase().trim();
+        if (rLower === "super admin" || rLower === "super_admin") userRole = "super admin";
+        else if (rLower === "admin") userRole = "admin";
+        else if (rLower === "guru pondok" || rLower === "guru pondok") userRole = "guru pondok";
+        else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru SMP") userRole = "guru SMP";
+        else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") userRole = "siswa";
+
+        const inferredGender = extra.gender || (
+          cleanUsername.includes("siswi") || String(extra.nama_lengkap || "").toLowerCase().includes("siswi") ? "P" : 
+          userRole === "siswa" ? "L" : "Semua"
+        );
+
+        const dbUserVal = {
+          username: extra.username || matchedKey,
+          role: userRole,
+          name: extra.nama_lengkap || extra.nama || cleanUsername,
+          gender: inferredGender,
+          bagian: extra.bagian || (userRole === "admin" || userRole === "super admin" ? "kedua" : userRole === "guru SMP" ? "sekolah" : "pondok"),
+          jabatan: extra.jabatan || "",
+          tugas_kamar: extra.tugas_kamar || "",
+          tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
+          tugas_kelas_pengajian: extra.tugas_kelas_pengajian || ""
+        };
+        setIsSuccess(true);
+        setIsLoading(false);
+        localStorage.setItem("admin_token", "session_token_registered_guru");
+        localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
+        setTimeout(() => onSuccess(dbUserVal), 2200);
+        return;
+      }
     }
 
-    // Try express backend API next for backwards compatibility (the old hardcoded API login or fallback)
+    // Try express backend API next for backwards compatibility
     try {
       const response = await fetch("/api/login", {
         method: "POST",
@@ -149,35 +153,15 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
             onSuccess(data.user);
           }, 2200);
           return;
-        } else {
-          // If express auth rejected but maybe client fallback allowed? Let's check below.
         }
       }
     } catch (err: any) {
       console.warn("Backend auth failed or unreachable; utilizing client-side fallback authentication:", err);
     }
 
-    // Client-side fallback authentication (ensures 100% success on any deployment environment: static/server-side)
-    if (username === "angie.seprisa" && password === "pssleman") {
-      setIsSuccess(true);
-      setIsLoading(false);
-      
-      const guestUser = {
-        username: "angie.seprisa",
-        role: "admin",
-        name: "Angie Seprisa"
-      };
-
-      localStorage.setItem("admin_token", "session_token_admin_pp_almuttaqin_2026");
-      localStorage.setItem("admin_user", JSON.stringify(guestUser));
-
-      setTimeout(() => {
-        onSuccess(guestUser);
-      }, 2200);
-    } else {
-      setIsLoading(false);
-      setErrorMsg("ID Pengguna atau Password salah!");
-    }
+    // If not found in database or local details
+    setIsLoading(false);
+    setErrorMsg("ID Pengguna atau Password salah!");
   };
 
   const handleGoogleSignIn = () => {
@@ -481,111 +465,6 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
                 <span>Daftar Akun Guru / Staf Baru</span>
               </button>
             </form>
-
-            {/* Info / Note */}
-            <div className={`mt-5 text-center text-[11px] font-semibold tracking-wide py-3 px-4 rounded-xl border transition-colors duration-300 w-full ${
-              isDarkMode 
-                ? "bg-[#141829] border-[#20253f] text-[#8c98bd]" 
-                : "bg-slate-50 border-slate-200/50 text-slate-500 shadow-inner"
-            }`}>
-              Belum punya akun? Klik &quot;Daftar Akun Guru / Staf Baru&quot; di atas untuk mendaftarkan akun dan pendataan tugas secara mandiri.
-            </div>
-
-            {/* Database Connection Settings Accordion */}
-            <div className="w-full mt-4 text-left border-t border-slate-100/50 dark:border-slate-800/50 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowDbSettings(!showDbSettings)}
-                className={`w-full flex items-center justify-between text-xs font-black uppercase tracking-wider py-1.5 focus:outline-none transition-colors cursor-pointer ${
-                  isDarkMode ? "text-[#8c98bd] hover:text-white" : "text-slate-500 hover:text-slate-850"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Database className="w-3.5 h-3.5 text-blue-500" />
-                  Koneksi Database (Supabase)
-                </span>
-                <span>{showDbSettings ? "▲" : "▼"}</span>
-              </button>
-
-              {showDbSettings && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="mt-3 space-y-3"
-                >
-                  <div className={`p-3 rounded-xl border text-[10px] leading-relaxed font-semibold transition-colors ${
-                    isDarkMode ? "bg-blue-950/20 border-blue-900/30 text-blue-300" : "bg-blue-50 border-blue-100 text-blue-800"
-                  }`}>
-                    Ganti URL dan API key di bawah untuk menghubungkan aplikasi dengan database Supabase milik Anda sendiri.
-                  </div>
-
-                  {dbSuccessMsg && (
-                    <div className="p-2 text-center text-[11px] font-bold text-emerald-500 bg-emerald-500/10 rounded-xl animate-pulse">
-                      {dbSuccessMsg}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSaveDbSettings} className="space-y-3">
-                    <div className="space-y-1">
-                      <label className={`text-[9px] font-bold uppercase ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                        SUPABASE PROJECT URL
-                      </label>
-                      <input
-                        type="url"
-                        value={customDbUrl}
-                        onChange={(e) => setCustomDbUrl(e.target.value)}
-                        placeholder="https://xyz.supabase.co"
-                        className={`w-full text-xs font-mono px-3 py-2.5 rounded-xl border outline-none focus:ring-1 ${
-                          isDarkMode
-                            ? "bg-[#0b0c16] border-[#1d2138] text-white focus:border-sky-500/80 focus:ring-sky-500/30"
-                            : "bg-[#eef2fc] border-[#d2dff6] text-slate-800 focus:border-blue-500 focus:ring-blue-500/20"
-                        }`}
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className={`text-[9px] font-bold uppercase ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                        SUPABASE ANON KEY (PUBLIC API KEY)
-                      </label>
-                      <input
-                        type="password"
-                        value={customDbKey}
-                        onChange={(e) => setCustomDbKey(e.target.value)}
-                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        className={`w-full text-xs font-mono px-3 py-2.5 rounded-xl border outline-none focus:ring-1 ${
-                          isDarkMode
-                            ? "bg-[#0b0c16] border-[#1d2138] text-white focus:border-sky-500/80 focus:ring-sky-500/30"
-                            : "bg-[#eef2fc] border-[#d2dff6] text-slate-800 focus:border-blue-500 focus:ring-blue-500/20"
-                        }`}
-                        required
-                      />
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="submit"
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer shadow transition-all flex items-center justify-center gap-1"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} />
-                        Simpan & Hubungkan
-                      </button>
-                      {(localStorage.getItem("supabase_url") || localStorage.getItem("supabase_anon_key")) && (
-                        <button
-                          type="button"
-                          onClick={handleResetDbSettings}
-                          className="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] py-2.5 px-3 rounded-xl uppercase tracking-wider cursor-pointer shadow transition-all flex items-center justify-center gap-1"
-                          title="Reset ke Default"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Reset
-                        </button>
-                      )}
-                    </div>
-                  </form>
-                </motion.div>
-              )}
-            </div>
           </motion.div>
         ) : (
           /* --- WELCOME SCREEN (Animated transition from the video) --- */

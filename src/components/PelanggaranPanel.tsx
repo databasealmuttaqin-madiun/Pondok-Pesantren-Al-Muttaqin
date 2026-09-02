@@ -1,3 +1,5 @@
+import { SearchableSelect } from './ui/SearchableSelect';
+import { PageHeader } from './ui/PageHeader';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   AlertTriangle,
@@ -688,59 +690,91 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
       {viewMode === "rekap" && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-xs space-y-5">
           {/* SEARCH & FILTERS BAR */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <PageHeader breadcrumbs={["Pelanggaran & Takzir", "Rekapitulasi"]} title="Data Pelanggaran Santri" />
+      
+      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+          <h3 className="font-bold text-slate-900 text-base">Filter</h3>
+          <button 
+            onClick={() => {
+              setFilterJenis("semua");
+              setFilterStatus("semua");
+              setFilterKamar("semua");
+              setRekapSearch("");
+            }}
+            className="text-red-500 hover:text-red-600 text-sm font-medium"
+          >
+            Atur ulang filter
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Pencarian</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={rekapSearch}
                 onChange={(e) => setRekapSearch(e.target.value)}
-                placeholder="Cari nama santri, kamar, jenis pelanggaran, atau pelapor..."
-                className="w-full text-xs font-semibold pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-white outline-none focus:border-red-500"
+                placeholder="Cari nama santri, kamar..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none text-sm"
               />
-            </div>
-
-            {/* Filter Dropdowns */}
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <select
-                value={filterJenis}
-                onChange={(e) => setFilterJenis(e.target.value)}
-                className="text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 outline-none"
-              >
-                <option value="semua">Semua Tingkat</option>
-                <option value="Ringan">Ringan</option>
-                <option value="Sedang">Sedang</option>
-                <option value="Berat">Berat</option>
-              </select>
-
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 outline-none"
-              >
-                <option value="semua">Semua Status Takzir</option>
-                <option value="Belum Ditindak">Belum Ditindak</option>
-                <option value="Proses Takzir">Proses Takzir</option>
-                <option value="Selesai Takzir">Selesai Takzir</option>
-              </select>
-
-              <select
-                value={filterKamar}
-                onChange={(e) => setFilterKamar(e.target.value)}
-                className="text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 outline-none max-w-[140px]"
-              >
-                <option value="semua">Semua Kamar</option>
-                {rooms.map((rm) => (
-                  <option key={rm} value={rm}>
-                    {rm}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 
-          {/* TABLE LIST */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Tingkat</label>
+            <SearchableSelect
+              value={filterJenis}
+              onChange={setFilterJenis}
+              options={[
+                { value: "semua", label: "Semua Tingkat" },
+                { value: "Ringan", label: "Ringan" },
+                { value: "Sedang", label: "Sedang" },
+                { value: "Berat", label: "Berat" }
+              ]}
+              placeholder="Pilih Tingkat"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Status Takzir</label>
+            <SearchableSelect
+              value={filterStatus}
+              onChange={setFilterStatus}
+              options={[
+                { value: "semua", label: "Semua Status" },
+                { value: "Belum Ditindak", label: "Belum Ditindak" },
+                { value: "Proses Takzir", label: "Proses Takzir" },
+                { value: "Selesai Takzir", label: "Selesai Takzir" }
+              ]}
+              placeholder="Pilih Status"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Asrama/Kamar</label>
+            <SearchableSelect
+              value={filterKamar}
+              onChange={setFilterKamar}
+              options={[
+                { value: "semua", label: "Semua Kamar" },
+                ...rooms.map(rm => ({ value: rm, label: rm }))
+              ]}
+              placeholder="Pilih Kamar"
+            />
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors">
+            Terapkan filter
+          </button>
+        </div>
+      </div>
+
+      {/* TABLE LIST */}
           {filteredRekapList.length === 0 ? (
             <div className="py-12 text-center space-y-3">
               <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center text-2xl">

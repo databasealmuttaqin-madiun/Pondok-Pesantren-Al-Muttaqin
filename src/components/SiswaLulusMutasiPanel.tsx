@@ -1,3 +1,5 @@
+import { SearchableSelect } from './ui/SearchableSelect';
+import { PageHeader } from './ui/PageHeader';
 import React, { useState, useEffect } from "react";
 import {
   Search,
@@ -57,6 +59,7 @@ export interface SiswaMutasi {
 }
 
 interface SiswaLulusMutasiPanelProps {
+  currentUserRole?: string;
   viewMode: "lulus" | "mutasi";
   onSwitchMode?: (mode: "lulus" | "mutasi") => void;
   activeStudents?: SantriData[];
@@ -64,7 +67,7 @@ interface SiswaLulusMutasiPanelProps {
   onDataChanged?: () => void;
 }
 
-export default function SiswaLulusMutasiPanel({
+export default function SiswaLulusMutasiPanel({ currentUserRole,
   viewMode,
   onSwitchMode,
   activeStudents = [],
@@ -839,20 +842,24 @@ export default function SiswaLulusMutasiPanel({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleOpenEditModal(item)}
-                            className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                            title="Edit Data"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(item)}
-                            className="p-1.5 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                            title="Hapus Data"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {currentUserRole !== "guru SMP" && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEditModal(item)}
+                                className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                title="Edit Data"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteTarget(item)}
+                                className="p-1.5 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                title="Hapus Data"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -927,20 +934,24 @@ export default function SiswaLulusMutasiPanel({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleOpenEditModal(item)}
-                            className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                            title="Edit Data"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(item)}
-                            className="p-1.5 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                            title="Hapus Data"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {currentUserRole !== "guru SMP" && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEditModal(item)}
+                                className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                title="Edit Data"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteTarget(item)}
+                                className="p-1.5 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                title="Hapus Data"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

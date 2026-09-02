@@ -1,3 +1,4 @@
+import { SearchableSelect } from './ui/SearchableSelect';
 import React, { useState, useEffect, useRef } from "react";
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
@@ -42,6 +43,7 @@ interface PresensiPanelProps {
   viewMode?: "absensi" | "rekap";
   defaultTab?: "input" | "rekap" | "statistik" | "whatsapp";
   activeMenu?: string; // made optional to support seamless transition to unified absensi menu
+  currentUserGender?: string;
 }
 
 type AttendanceStatus = "hadir" | "terlambat" | "sakit" | "izin" | "alpa" | "unmarked" | "pulang";
@@ -345,6 +347,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
   const [isManualDate, setIsManualDate] = useState(false);
   const [rekapTimeframe, setRekapTimeframe] = useState<"harian" | "mingguan" | "bulanan">("harian");
   const [rekapPresensiType, setRekapPresensiType] = useState<string>("sholat");
+  const [rekapSesiFilter, setRekapSesiFilter] = useState<string>("semua");
   
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [downloadOptions, setDownloadOptions] = useState<{
@@ -1481,6 +1484,11 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       return status;
     };
 
+    const isSessionMatched = (sess: any) => {
+      if (!rekapSesiFilter || rekapSesiFilter === "semua") return true;
+      return sess.label.toLowerCase().includes(rekapSesiFilter.toLowerCase());
+    };
+
     if (tf === "harian") {
       sessionsData[date] = {};
       const passedSessionIds = getPassedSessions(date);
@@ -1488,6 +1496,9 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
         if (!passedSessionIds.includes(sess.id)) return;
         const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
         if (mappedPresensi !== type) return;
+          if (!isSessionMatched(sess)) return;
+        if (!isSessionMatched(sess)) return;
+        
         const key = `${date}_absensi_${sess.id}`;
         let status = attendanceDb[key]?.[sId] || "unmarked";
         status = resolveStatus(status) as AttendanceStatus;
@@ -1515,6 +1526,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
           if (!passedSessionIds.includes(sess.id)) return;
           const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
           if (mappedPresensi !== type) return;
+          if (!isSessionMatched(sess)) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           let status = attendanceDb[key]?.[sId] || "unmarked";
           status = resolveStatus(status) as AttendanceStatus;
@@ -1541,6 +1553,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
           if (!passedSessionIds.includes(sess.id)) return;
           const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
           if (mappedPresensi !== type) return;
+          if (!isSessionMatched(sess)) return;
           const key = `${dateStr}_absensi_${sess.id}`;
           let status = attendanceDb[key]?.[sId] || "unmarked";
           status = resolveStatus(status) as AttendanceStatus;
@@ -1614,7 +1627,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
             ];
           });
         } else {
-          head = [["No", "Nama Santri", "Kamar", "Hadir/Makan", "Sakit/Izin", "Tidak/Alpa", "Persentase"]];
+          head = [["No", "Nama Santri", "Kamar", "Hadir/Makan", "Telat", "Izin/Sakit", "Alfa"]];
           tableData = pdfStudents.map((student: any, idx: number) => {
             const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
             const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
@@ -1623,10 +1636,10 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
               idx + 1,
               student.nama_lengkap,
               student.kamar || "-",
-              pPeriodStats.hadir + pPeriodStats.terlambat,
+              pPeriodStats.hadir,
+              pPeriodStats.terlambat,
               pPeriodStats.sakit + pPeriodStats.pulang,
-              pPeriodStats.alpa,
-              `${persentase}%`
+              pPeriodStats.alpa
             ];
           });
         }
@@ -1650,55 +1663,41 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
     <div className="w-full py-4 px-2 space-y-6 flex flex-col items-stretch" id="attendance_menu_root">
       
       {/* 1. HEADER BRANDING */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 select-none pt-2" id="attendance_brand_header">
-        <div>
-          <h2 className="text-3xl font-black text-[#1d2757] dark:text-white font-display tracking-tight leading-none">
-            {viewMode === "rekap" ? "Rekap Presensi Santri" : "Absensi Siswa"}
+      <div className="flex flex-col gap-1 pt-2 pb-6 select-none" id="attendance_brand_header">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
+          <span>{viewMode === "rekap" ? "Rekap Presensi Santri" : "Presensi Santri"}</span>
+          <ChevronRight className="w-4 h-4" />
+          <span>Daftar</span>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 className="text-[28px] font-bold text-slate-900 dark:text-white tracking-tight leading-none">
+            {viewMode === "rekap" ? "Rekap Presensi Santri" : "Presensi Santri"}
           </h2>
-          <p className="text-xs text-[#566580] dark:text-slate-400 font-bold mt-2.5 flex flex-wrap items-center justify-start gap-1.5 uppercase tracking-wide">
-            {viewMode === "rekap" ? (
-              <span>Laporan Kehadiran Santri Harian, Mingguan, Bulanan & Ekspor PDF</span>
-            ) : (
-              <>
-                <span>Pondok Pesantren</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping"></span>
-                <span className="text-[#3b82f6]">Al Muttaqin</span>
-                {supabaseSyncStatus === "connected" && (
-                  <>
-                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                    <span className="text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-sky-100 flex items-center gap-1 shadow-sm">
-                      <span className="w-1 h-1 rounded-full bg-sky-500 animate-pulse"></span>
-                      SINKRON ONLINE (CLOUD)
-                    </span>
-                  </>
-                )}
-                {supabaseSyncStatus === "loading" && (
-                  <>
-                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                    <span className="text-slate-500 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-slate-100 dark:border-slate-800 flex items-center gap-1 animate-pulse shadow-sm">
-                      🔄 MENYELARASKAN...
-                    </span>
-                  </>
-                )}
-                {supabaseSyncStatus === "disabled" && (
-                  <>
-                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                    <span className="text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-amber-100 shadow-sm" title="Tabel 'absensi' belum aktif di Supabase. Sistem otomatis menyimpannya secara offline aman di Browser Storage Anda.">
-                      LOKAL (OFFLINE-OK)
-                    </span>
-                  </>
-                )}
-                {supabaseSyncStatus === "error" && (
-                  <>
-                    <span className="w-1 h-3 border-l border-slate-200 dark:border-slate-800"></span>
-                    <span className="text-rose-700 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900 px-1.5 py-0.5 rounded-lg text-[9px] font-black border border-rose-100 shadow-sm flex items-center gap-1" title="Masalah jaringan database Supabase. Hubungkan wifi/paket data kembali.">
-                      ⚠️ KONEKSI TERBATAS
-                    </span>
-                  </>
-                )}
-              </>
-            )}
-          </p>
+          {viewMode !== "rekap" && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide">
+              {supabaseSyncStatus === "connected" && (
+                <span className="text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-400 px-2 py-1 rounded-lg border border-sky-200 dark:border-sky-800 flex items-center gap-1.5 shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                  SINKRON ONLINE (CLOUD)
+                </span>
+              )}
+              {supabaseSyncStatus === "loading" && (
+                <span className="text-slate-500 bg-slate-50 dark:bg-slate-900/40 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center gap-1.5 animate-pulse shadow-sm">
+                  🔄 MENYELARASKAN...
+                </span>
+              )}
+              {supabaseSyncStatus === "disabled" && (
+                <span className="text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 px-2 py-1 rounded-lg border border-amber-200 dark:border-amber-800 shadow-sm" title="Tabel 'absensi' belum aktif di Supabase. Sistem otomatis menyimpannya secara offline aman di Browser Storage Anda.">
+                  LOKAL (OFFLINE-OK)
+                </span>
+              )}
+              {supabaseSyncStatus === "error" && (
+                <span className="text-rose-700 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-400 px-2 py-1 rounded-lg border border-rose-200 dark:border-rose-800 shadow-sm flex items-center gap-1.5" title="Masalah jaringan database Supabase. Hubungkan wifi/paket data kembali.">
+                  ⚠️ KONEKSI TERBATAS
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1723,43 +1722,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
         </div>
       )}
 
-      {/* REKAP VIEW: TAB SELECTOR (Rekap Data | Statistik | WhatsApp) */}
-      {viewMode === "rekap" && (
-        <div className="bg-white dark:bg-[#111c44] p-1 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-sm flex items-center select-none" id="attendance_tab_selector">
-          <button
-            onClick={() => setAttendanceSubTab("rekap")}
-            className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-              attendanceSubTab === "rekap"
-                ? "bg-[#3e46ca] text-white shadow"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
-          >
-            Rekap Data
-          </button>
-          <button
-            onClick={() => setAttendanceSubTab("statistik")}
-            className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-              attendanceSubTab === "statistik"
-                ? "bg-[#3e46ca] text-white shadow"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
-          >
-            Statistik
-          </button>
-          <button
-            onClick={() => setAttendanceSubTab("whatsapp")}
-            className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all cursor-pointer ${
-              attendanceSubTab === "whatsapp"
-                ? "bg-[#3e46ca] text-white shadow"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
-          >
-            WhatsApp
-          </button>
-        </div>
-      )}
-
-      {/* ABSENSI VIEW: ONLY SESI AKTIF + RINGKASAN ANALITIK SESI */}
+            {/* ABSENSI VIEW: ONLY SESI AKTIF + RINGKASAN ANALITIK SESI */}
       {viewMode === "absensi" && (
         <div className="space-y-6 animate-fade-in" id="absensi_siswa_main_section">
           {/* SESI AKTIF CARD */}
@@ -1891,159 +1854,159 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
           {/* B. REKAP DATA VIEW */}
           {attendanceSubTab === "rekap" && (
         <div className="space-y-4 animate-fade-in" id="attendance_rekap_section">
-          
-          {/* TIMEFRAME SELECTION SWITCHER */}
-          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 select-none animate-fade-in animate-fade-in">
-            <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
-              Pilih Ruang Lingkup Rekapitulasi:
-            </h4>
-            <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-xs w-full md:max-w-sm" id="rekap_timeframe_switcher">
-              {[
-                { id: "harian", label: "Harian" },
-                { id: "mingguan", label: "Mingguan" },
-                { id: "bulanan", label: "Bulanan" }
-              ].map((tf) => {
-                const active = rekapTimeframe === tf.id;
-                return (
-                  <button
-                    key={tf.id}
-                    type="button"
-                    onClick={() => {
-                      setRekapTimeframe(tf.id as "harian" | "mingguan" | "bulanan");
-                    }}
-                    className={`flex-1 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                      active 
-                        ? "bg-[#3e46ca] text-white shadow-sm font-black"
-                        : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-                    }`}
-                  >
-                    {tf.label}
-                  </button>
-                );
-              })}
+
+          {/* CLEAN FILTER CARD MATCHING EXACT DESIGN */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base">Filter</h3>
+              <button 
+                type="button"
+                onClick={() => {
+                  setRekapTimeframe("harian");
+                  setRekapPresensiType("sholat");
+                  setRekapSesiFilter("semua");
+                  setSelectedDate(new Date().toISOString().slice(0, 10));
+                  setSearchQuery("");
+                  setRoomFilter("All");
+                  setCategoryFilter("All");
+                }}
+                className="text-red-500 hover:text-red-600 text-sm font-medium transition-colors"
+              >
+                Atur ulang filter
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Periode</label>
+                <SearchableSelect
+                  value={rekapTimeframe}
+                  onChange={(val) => setRekapTimeframe(val as "harian" | "mingguan" | "bulanan")}
+                  options={[
+                    { value: "harian", label: "Harian" },
+                    { value: "mingguan", label: "Mingguan" },
+                    { value: "bulanan", label: "Bulanan" }
+                  ]}
+                  placeholder="Pilih salah satu opsi"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jenis Presensi</label>
+                <SearchableSelect
+                  value={rekapPresensiType}
+                  onChange={(val) => {
+                    setRekapPresensiType(val);
+                    setRekapSesiFilter("semua");
+                  }}
+                  options={[
+                    { value: "sholat", label: "Presensi Sholat" },
+                    { value: "makan", label: "Presensi Makan" },
+                    { value: "ngaji", label: "Presensi Ngaji" },
+                    { value: "sekolah", label: "Presensi Sekolah" }
+                  ]}
+                  placeholder="Pilih salah satu opsi"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Sesi / Waktu</label>
+                <SearchableSelect
+                  value={rekapSesiFilter}
+                  onChange={setRekapSesiFilter}
+                  options={[
+                    { value: "semua", label: "Semua Sesi" },
+                    ...(rekapPresensiType === "sholat" ? [
+                      { value: "subuh", label: "Subuh" },
+                      { value: "dzuhur", label: "Dzuhur" },
+                      { value: "ashar", label: "Ashar" },
+                      { value: "maghrib", label: "Maghrib" },
+                      { value: "isya", label: "Isya" }
+                    ] : []),
+                    ...(rekapPresensiType === "makan" ? [
+                      { value: "pagi", label: "Pagi" },
+                      { value: "siang", label: "Siang" },
+                      { value: "malam", label: "Malam / Sore" }
+                    ] : []),
+                    ...(rekapPresensiType === "ngaji" ? [
+                      { value: "pagi", label: "Pagi" },
+                      { value: "sore", label: "Sore" },
+                      { value: "malam", label: "Malam" }
+                    ] : [])
+                  ]}
+                  placeholder="Pilih salah satu opsi"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {rekapTimeframe === "harian" ? "Tanggal" : rekapTimeframe === "mingguan" ? "Tanggal Acuan" : "Bulan"}
+                </label>
+                <input 
+                  type={rekapTimeframe === "bulanan" ? "month" : "date"}
+                  value={rekapTimeframe === "bulanan" ? selectedDate.slice(0, 7) : selectedDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setSelectedDate(rekapTimeframe === "bulanan" ? e.target.value + "-01" : e.target.value);
+                      setIsManualDate(true);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-left text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Asrama / Kamar</label>
+                <SearchableSelect
+                  value={roomFilter}
+                  onChange={setRoomFilter}
+                  options={[
+                    { value: "All", label: "Semua Kamar" },
+                    ...roomsList.map((r: string) => ({ value: r, label: r }))
+                  ]}
+                  placeholder="Pilih kamar"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <button 
+                type="button"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors shadow-xs w-fit"
+              >
+                Terapkan filter
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="text"
+                    placeholder="Pencarian nama atau kamar..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full text-xs font-medium pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                  />
+                </div>
+                <button
+                  onClick={() => setIsDownloadModalOpen(true)}
+                  className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Unduh PDF</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-5 shadow-sm space-y-4 animate-fade-in">
-            
-            {/* Context Header & Date Filters depending on active timeframe */}
-            <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-base font-black text-[#1d2757] dark:text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span>📁 Laporan Kehadiran</span>
-                <span className="text-sky-600 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-400 px-2 py-0.5 rounded-lg text-[9px] font-black tracking-widest border border-sky-100 dark:border-sky-900">
-                  {rekapTimeframe.toUpperCase()}
-                </span>
+          <div className="bg-white dark:bg-[#111c44] rounded-2xl border border-slate-100 dark:border-slate-800 p-5 shadow-sm space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white">
+                Data Presensi {rekapTimeframe === "harian" ? "Harian" : rekapTimeframe === "mingguan" ? "Mingguan" : "Bulanan"} ({filteredStudents.length} Santri)
               </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 mb-3">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Jenis Rekapitulasi</label>
-                  <select
-                    value={rekapPresensiType}
-                    onChange={(e) => setRekapPresensiType(e.target.value)}
-                    className="w-full text-xs font-bold px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                  >
-                    <option value="sholat">🕌 Presensi Sholat</option>
-                    <option value="makan">🍽️ Presensi Makan</option>
-                    <option value="ngaji">📖 Presensi Ngaji</option>
-                    <option value="sekolah">🎒 Presensi Sekolah</option>
-                  </select>
-                </div>
-              </div>
-
-              {rekapTimeframe === "harian" && (
-                <div className="space-y-1">
-                  <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Saring Tanggal Rekap</label>
-                  <input 
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setSelectedDate(e.target.value);
-                        setIsManualDate(true);
-                      }
-                    }}
-                    className="w-full max-w-sm text-xs font-bold leading-normal px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                  />
-                </div>
-              )}
-
-              {rekapTimeframe === "mingguan" && (
-                <div className="space-y-3 mt-3">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Pilih Tanggal Acuan Minggu</label>
-                    <input 
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setSelectedDate(e.target.value);
-                          setIsManualDate(true);
-                        }
-                      }}
-                      className="w-full max-w-sm text-xs font-bold leading-normal px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                    />
-                  </div>
-                  <div className="bg-indigo-50/50 dark:bg-indigo-950/30 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-900 flex items-center gap-2.5 text-[11px] font-bold text-slate-600 dark:text-slate-350 leading-normal">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0"></span>
-                    <span>
-                      Minggu Terpilih: <strong className="text-indigo-900 dark:text-indigo-400">{formatIndoDate(getWeekRange(selectedDate).monday.toISOString().slice(0, 10))}</strong> s.d. <strong className="text-indigo-900 dark:text-indigo-400">{formatIndoDate(getWeekRange(selectedDate).sunday.toISOString().slice(0, 10))}</strong>
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {rekapTimeframe === "bulanan" && (
-                <div className="space-y-3 mt-3">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-extrabold uppercase tracking-widest text-[#3b82f6]">Saring Bulan Rekap</label>
-                    <input 
-                      type="month"
-                      value={selectedDate.slice(0, 7)}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setSelectedDate(e.target.value + "-01");
-                          setIsManualDate(true);
-                        }
-                      }}
-                      className="w-full max-w-sm text-xs font-bold leading-normal px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                    />
-                  </div>
-                  <div className="bg-[#10b981]/5 dark:bg-green-950/30 p-3 rounded-2xl border border-emerald-100 dark:border-emerald-900/60 flex items-center gap-2.5 text-[11px] font-bold text-slate-600 dark:text-slate-350 leading-normal">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] shrink-0"></span>
-                    <span>
-                      Bulan Terpilih: <strong className="text-emerald-950 dark:text-emerald-400 font-extrabold">{formatIndoMonth(selectedDate)}</strong>
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {rekapTimeframe !== "harian" && (
-              <div className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider py-1">
-                📊 Data Rekapitulasi Menyerang Hadir, Telat, dan Alfa
-              </div>
-            )}
-
-            {/* Filter and Download row */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                <input 
-                  type="text"
-                  placeholder="Pencarian nama atau kamar santri..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-[11px] font-medium pl-8.5 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                />
-              </div>
-              <button
-                onClick={() => setIsDownloadModalOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center gap-2 shrink-0 shadow-sm"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Unduh Laporan PDF</span>
-              </button>
+              <span className="text-xs text-slate-500 font-medium">
+                {rekapTimeframe === "harian" ? formatIndoDate(selectedDate) : rekapTimeframe === "mingguan" ? `${formatIndoDate(getWeekRange(selectedDate).monday.toISOString().slice(0, 10))} - ${formatIndoDate(getWeekRange(selectedDate).sunday.toISOString().slice(0, 10))}` : formatIndoMonth(selectedDate)}
+              </span>
             </div>
 
             {/* Scrollable list of Rekap */}
@@ -2052,210 +2015,43 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
                 filteredStudents.map((student) => {
                   const isFemale = student.jenis_kelamin === "P";
                   const pPeriodStats = getStudentPeriodStats(student.id);
-
-                  if (rekapPresensiType === "makan") {
-                    if (rekapTimeframe === "harian") {
-                      const sessionsTodayData = pPeriodStats.sessionsData[selectedDate] || {};
-                      const getSessionStatus = (keyword: string) => {
-                          const s = sessions.find(sess => mapLocalSessionToDbSession(sess.id, sessions).presensi === "makan" && sess.label.toLowerCase().includes(keyword));
-                          if (!s) return "unmarked";
-                          return sessionsTodayData[s.id] || "unmarked";
-                      };
-                      const pagi = getSessionStatus("pagi");
-                      const siang = getSessionStatus("siang");
-                      const sore = getSessionStatus("sore");
-                      const countMakan = (pagi==="hadir"?1:0) + (siang==="hadir"?1:0) + (sore==="hadir"?1:0);
-
-                      return (
-                        <div key={student.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs font-semibold">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
-                              {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 select-none self-end md:self-auto">
-                            <div className="flex flex-col items-center px-3 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-3xs">
-                              <span className="text-slate-400 text-[9px] font-extrabold uppercase">Pagi</span>
-                              <span className="text-sm">{pagi === "hadir" ? "✅" : "❌"}</span>
-                            </div>
-                            <div className="flex flex-col items-center px-3 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-3xs">
-                              <span className="text-slate-400 text-[9px] font-extrabold uppercase">Siang</span>
-                              <span className="text-sm">{siang === "hadir" ? "✅" : "❌"}</span>
-                            </div>
-                            <div className="flex flex-col items-center px-3 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-3xs">
-                              <span className="text-slate-400 text-[9px] font-extrabold uppercase">Sore</span>
-                              <span className="text-sm">{sore === "hadir" ? "✅" : "❌"}</span>
-                            </div>
-                            <div className="flex flex-col items-center px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-xl shadow-3xs ml-2">
-                              <span className="text-indigo-600 dark:text-indigo-400 text-[9px] font-extrabold uppercase">Rekap</span>
-                              <strong className="text-indigo-800 dark:text-indigo-300 font-black text-sm">{countMakan}x</strong>
-                            </div>
-                          </div>
+                  return (
+                    <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
+                          {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
                         </div>
-                      );
-                    } else {
-                      const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
-                      const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
-                      return (
-                        <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
-                              {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
-                            <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl">
-                              <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir/Makan</span>
-                              <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir + pPeriodStats.terlambat}</strong>
-                            </div>
-                            <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-250/60 dark:border-sky-900/40 rounded-xl shadow-3xs">
-                              <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Skt/Iz</span>
-                              <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
-                            </div>
-                            <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl">
-                              <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Tidak Makan</span>
-                              <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
-                            </div>
-                            <div className="flex items-center justify-center px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-[#3e46ca] dark:text-indigo-400 font-mono text-sm ml-2 w-16 text-center">
-                              {persentase}%
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                  } else {
-                    // Default / Sholat logic
-                    const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
-                    const persentase = (pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang) > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
-                    return (
-                      <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
-                            {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
-                          <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs">
-                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir</span>
-                            <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
-                          </div>
-                          <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-250/60 dark:border-amber-900/40 rounded-xl shadow-3xs">
-                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Telat</span>
-                            <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
-                          </div>
-                          <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-250/60 dark:border-sky-900/40 rounded-xl shadow-3xs">
-                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Skt/Iz</span>
-                            <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
-                          </div>
-                          <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl shadow-3xs">
-                            <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Alfa</span>
-                            <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
-                          </div>
-                          <div className="flex flex-col items-center justify-center px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl ml-2 w-16 text-center">
-                            <span className="text-slate-500 dark:text-slate-400 text-[8px] font-extrabold uppercase mb-0.5 leading-none">Rasio</span>
-                            <strong className="text-[#3e46ca] dark:text-indigo-400 font-mono text-sm leading-none">{persentase}%</strong>
-                          </div>
+                        <div className="min-w-0">
+                          <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
                         </div>
                       </div>
-                    );
-                  }
+                      <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
+                        <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs">
+                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir</span>
+                          <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
+                        </div>
+                        <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-250/60 dark:border-amber-900/40 rounded-xl shadow-3xs">
+                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Telat</span>
+                          <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
+                        </div>
+                        <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-250/60 dark:border-sky-900/40 rounded-xl shadow-3xs">
+                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Izin/Skt</span>
+                          <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
+                        </div>
+                        <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl shadow-3xs">
+                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Alfa</span>
+                          <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
                 })
               ) : (
                 <div className="py-12 text-center text-slate-400 bg-slate-50 dark:bg-slate-900 border dark:border-slate-800 rounded-2xl text-xs font-bold leading-normal">
                   Tidak ada data yang cocok.
                 </div>
               )}
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* C. STATISTIK VIEW (STATISTICS) */}
-      {attendanceSubTab === "statistik" && (
-        <div className="space-y-4 animate-fade-in" id="attendance_statistik_section">
-          
-          {/* Radial progress & Breakdown widget */}
-          <div className="bg-white dark:bg-[#111c44] rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm space-y-6">
-            <h3 className="text-base font-black text-slate-800 dark:text-white uppercase tracking-wider text-center border-b border-slate-55 dark:border-slate-800 pb-2">
-              Ringkasan Analitik Sesi
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              {/* Radial gauge on left or column on mobile */}
-              <div className="flex flex-col items-center justify-center py-2 text-center border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 md:pr-4">
-                <div className="relative flex items-center justify-center w-36 h-36 mb-4">
-                  <svg className="w-full h-full transform -rotate-90">
-                    <circle
-                      cx="72"
-                      cy="72"
-                      r="60"
-                      className="stroke-slate-100 dark:stroke-slate-800"
-                      strokeWidth="11"
-                      fill="transparent"
-                    />
-                    <circle
-                      cx="72"
-                      cy="72"
-                      r="60"
-                      className="stroke-[#3e46ca] transition-all duration-500 ease-out"
-                      strokeWidth="11"
-                      fill="transparent"
-                      strokeDasharray={2 * Math.PI * 60}
-                      strokeDashoffset={2 * Math.PI * 60 * (1 - stats.percentPresent / 100)}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute flex flex-col items-center justify-center">
-                    <span className="text-4xl font-black text-slate-900 dark:text-white leading-none">{stats.percentPresent}%</span>
-                    <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black mt-2">Kehadiran</span>
-                  </div>
-                </div>
-
-                <div className="text-xs font-semibold text-slate-650 dark:text-slate-300">
-                  Selesai Input: <span className="font-extrabold text-[#3e46ca] dark:text-indigo-400">{stats.markedCount}</span> dari <span className="font-extrabold text-slate-900 dark:text-white">{stats.total}</span> santri
-                </div>
-              </div>
-
-              {/* Breakdown item bars on right */}
-              <div className="space-y-3.5">
-                {[
-                  { label: "Hadir", count: stats.hadir, color: "bg-emerald-500", rawColor: "text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-green-950/20" },
-                  { label: "Terlambat", count: stats.terlambat, color: "bg-amber-400 animate-pulse", rawColor: "text-[#854d0e] bg-amber-50 dark:text-amber-400 dark:bg-amber-950/20" },
-                  { label: "Sakit", count: stats.sakit, color: "bg-yellow-400", rawColor: "text-yellow-700 bg-yellow-50 dark:text-yellow-450 dark:bg-yellow-950/20" },
-                  { label: "Izin", count: stats.izin, color: "bg-blue-400", rawColor: "text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/20" },
-                  { label: "Pulang", count: stats.pulang, color: "bg-fuchsia-400", rawColor: "text-fuchsia-700 bg-fuchsia-50 dark:text-fuchsia-400 dark:bg-fuchsia-950/20" },
-                  { label: "Alpa (Tanpa Keterangan)", count: stats.alpa, color: "bg-rose-400", rawColor: "text-rose-700 bg-rose-50 dark:text-rose-400 dark:bg-rose-950/20" },
-                  { label: "Belum Absen", count: stats.unmarked, color: "bg-slate-300 dark:bg-slate-700", rawColor: "text-slate-500 bg-slate-50 dark:text-slate-400 dark:bg-slate-900" },
-                ].map((item) => {
-                  const ratio = stats.total > 0 ? (item.count / stats.total) * 100 : 0;
-                  return (
-                    <div key={item.label} className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px] font-bold">
-                        <span className="text-slate-600 dark:text-slate-300">{item.label}</span>
-                        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-mono leading-none ${item.rawColor}`}>
-                          {item.count} santri ({Math.round(ratio)}%)
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-50 dark:bg-slate-900 h-2 rounded-full overflow-hidden">
-                        <div className={`h-full ${item.color}`} style={{ width: `${ratio}%` }}></div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
 
@@ -2899,45 +2695,35 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
             </div>
             
             <div className="p-5 space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Pilih Kamar</label>
-                <select
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Pilih Kamar</label>
+                <SearchableSelect
                   value={downloadOptions.kamar}
-                  onChange={(e) => setDownloadOptions({...downloadOptions, kamar: e.target.value})}
-                  className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                >
-                  <option value="All">Semua Kamar</option>
-                  {roomsList.map((k: string) => (
-                    <option key={k} value={k}>{k}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setDownloadOptions({...downloadOptions, kamar: val})}
+                  options={[
+                    { value: "All", label: "Semua Kamar" },
+                    ...roomsList.map((k: string) => ({ value: k, label: k }))
+                  ]}
+                  placeholder="Pilih kamar"
+                />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Rentang Waktu</label>
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700">
-                  {[
-                    { id: "harian", label: "Harian" },
-                    { id: "mingguan", label: "Mingguan" },
-                    { id: "bulanan", label: "Bulanan" }
-                  ].map((tf) => (
-                    <button
-                      key={tf.id}
-                      onClick={() => setDownloadOptions({...downloadOptions, timeframe: tf.id as "harian" | "mingguan" | "bulanan"})}
-                      className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                        downloadOptions.timeframe === tf.id 
-                          ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-700"
-                      }`}
-                    >
-                      {tf.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Rentang Waktu</label>
+                <SearchableSelect
+                  value={downloadOptions.timeframe}
+                  onChange={(val) => setDownloadOptions({...downloadOptions, timeframe: val as "harian" | "mingguan" | "bulanan"})}
+                  options={[
+                    { value: "harian", label: "Harian" },
+                    { value: "mingguan", label: "Mingguan" },
+                    { value: "bulanan", label: "Bulanan" }
+                  ]}
+                  placeholder="Pilih salah satu opsi"
+                />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   {downloadOptions.timeframe === "harian" ? "Tanggal" : downloadOptions.timeframe === "mingguan" ? "Tanggal dalam Minggu" : "Bulan"}
                 </label>
                 <input
@@ -2951,7 +2737,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
                       });
                     }
                   }}
-                  className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  className="w-full text-sm font-normal px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 />
               </div>
             </div>

@@ -1,3 +1,5 @@
+import { SearchableSelect } from './ui/SearchableSelect';
+import { PageHeader } from './ui/PageHeader';
 import React, { useState, useEffect } from "react";
 import { Search, GraduationCap, Shield, User, Filter, Grid, List, CheckCircle, MapPin, BookOpen, Home, Phone, Sparkles, UserCheck, Plus, Database, Copy, Check, X, Code, ChevronDown } from "lucide-react";
 import { supabase } from "../supabaseClient";
@@ -6,7 +8,7 @@ export interface WargaPerson {
   id: string;
   nama: string;
   username: string;
-  role: string; // 'admin' | 'guru_pondok' | 'guru_sekolah' | 'pengurus'
+  role: string; // 'admin' | 'guru pondok' | 'guru SMP' | 'pengurus'
   gender?: "L" | "P" | "Semua";
   bagian?: string; // 'sekolah' | 'pondok' | 'kedua' | 'pondok,sekolah'
   jabatan?: string;
@@ -51,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public.pengguna (
     nama TEXT NOT NULL,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL DEFAULT '123456',
-    role TEXT NOT NULL DEFAULT 'guru_sekolah' CHECK (role IN ('admin', 'guru_pondok', 'guru_sekolah', 'pengurus')),
+    role TEXT NOT NULL DEFAULT 'guru SMP' CHECK (role IN ('admin', 'guru pondok', 'guru SMP', 'pengurus')),
     gender TEXT CHECK (gender IN ('L', 'P', 'Semua')) DEFAULT 'L',
     bagian TEXT DEFAULT 'sekolah',
     jabatan TEXT,
@@ -104,7 +106,7 @@ CREATE TABLE IF NOT EXISTS public.pengguna (
     nama TEXT NOT NULL,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL DEFAULT '123456',
-    role TEXT NOT NULL CHECK (role IN ('admin', 'guru_pondok', 'guru_sekolah', 'pengurus')),
+    role TEXT NOT NULL CHECK (role IN ('admin', 'guru pondok', 'guru SMP', 'pengurus')),
     gender TEXT CHECK (gender IN ('L', 'P', 'Semua')) DEFAULT 'L',
     bagian TEXT DEFAULT 'sekolah', -- 'sekolah' | 'pondok' | 'pondok,sekolah'
     jabatan TEXT,
@@ -217,12 +219,12 @@ CREATE TABLE IF NOT EXISTS public.nfc_taps (
 -- SEED DATA WARGA (GURU & PENGURUS AWAL)
 INSERT INTO public.pengguna (nama, username, password, role, gender, bagian, jabatan, tugas_kamar, tugas_kelas_sekolah, tugas_kelas_pengajian, tugas_mapel, no_hp)
 VALUES
-('Ustadz Ahmad Musyaffa, S.Pd.I', 'musyaffa', '123456', 'guru_pondok', 'L', 'pondok,sekolah', 'Guru Pengajian Utama & Guru PAI', 'Gedung Utama Lt.2', '7A SMP, 10 SMA', 'Ula A, Wustho B', 'Fiqih, Al-Qur''an Hadits', '081234567890'),
-('Ustadzah Siti Fatimah, S.Si', 'fatimah', '123456', 'guru_sekolah', 'P', 'sekolah', 'Guru Matematika & IPA', NULL, '7B SMP, 8A SMP, 11 SMA', NULL, 'Matematika, IPA Terpadu', '081298765432'),
-('Ustadz Muhammad Ridwan, M.H', 'm_ridwan', '123456', 'guru_pondok', 'L', 'pondok', 'Guru Kitab Kuning & Nahwu Shorof', 'Asrama Putra Room A', NULL, 'Ulya A, Takhashshus', 'Alfiyah Ibn Malik, Fathul Qorib', '085712341234'),
-('Ustadzah Nurul Hidayah, S.Pd', 'nurul_h', '123456', 'guru_sekolah', 'P', 'sekolah', 'Guru Bahasa Inggris & Seni Budaya', NULL, '8B SMP, 9A SMP, 12 SMA', NULL, 'Bahasa Inggris', '081344556677'),
-('Ustadz Badrus Salam, M.Pd', 'badrus', '123456', 'guru_pondok', 'L', 'pondok,sekolah', 'Guru Tahfidh & Bahasa Arab', 'Asrama Tahfidh Putra', '9B SMP, 10 SMA', 'Tahfidh Al-Qur''an', 'Bahasa Arab, Tajwid', '082199887766'),
-('Ustadzah Aisyah Rahmawati, S.Ag', 'aisyah_r', '123456', 'guru_pondok', 'P', 'pondok', 'Pengasuh Pengajian Putri & Akhlaq', 'Asrama Putri Blok C', NULL, 'Ula B Putri, Wustho Putri', 'Ta''lim Muta''allim, Akhlaqul Banat', '087811223344')
+('Ustadz Ahmad Musyaffa, S.Pd.I', 'musyaffa', '123456', 'guru pondok', 'L', 'pondok,sekolah', 'Guru Pengajian Utama & Guru PAI', 'Gedung Utama Lt.2', '7A SMP, 10 SMA', 'Ula A, Wustho B', 'Fiqih, Al-Qur''an Hadits', '081234567890'),
+('Ustadzah Siti Fatimah, S.Si', 'fatimah', '123456', 'guru SMP', 'P', 'sekolah', 'Guru Matematika & IPA', NULL, '7B SMP, 8A SMP, 11 SMA', NULL, 'Matematika, IPA Terpadu', '081298765432'),
+('Ustadz Muhammad Ridwan, M.H', 'm_ridwan', '123456', 'guru pondok', 'L', 'pondok', 'Guru Kitab Kuning & Nahwu Shorof', 'Asrama Putra Room A', NULL, 'Ulya A, Takhashshus', 'Alfiyah Ibn Malik, Fathul Qorib', '085712341234'),
+('Ustadzah Nurul Hidayah, S.Pd', 'nurul_h', '123456', 'guru SMP', 'P', 'sekolah', 'Guru Bahasa Inggris & Seni Budaya', NULL, '8B SMP, 9A SMP, 12 SMA', NULL, 'Bahasa Inggris', '081344556677'),
+('Ustadz Badrus Salam, M.Pd', 'badrus', '123456', 'guru pondok', 'L', 'pondok,sekolah', 'Guru Tahfidh & Bahasa Arab', 'Asrama Tahfidh Putra', '9B SMP, 10 SMA', 'Tahfidh Al-Qur''an', 'Bahasa Arab, Tajwid', '082199887766'),
+('Ustadzah Aisyah Rahmawati, S.Ag', 'aisyah_r', '123456', 'guru pondok', 'P', 'pondok', 'Pengasuh Pengajian Putri & Akhlaq', 'Asrama Putri Blok C', NULL, 'Ula B Putri, Wustho Putri', 'Ta''lim Muta''allim, Akhlaqul Banat', '087811223344')
 ON CONFLICT (username) DO NOTHING;
 
 -- RLS POLICIES FOR PUBLIC ACCESS
@@ -322,7 +324,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
             id: String(g.id || uname || Math.random()),
             nama: g.nama_lengkap || g.nama || uname || "Guru",
             username: uname,
-            role: g.role || "guru_sekolah",
+            role: g.role || "guru SMP",
             gender: (g.jenis_kelamin === "P" || g.gender === "P" ? "P" : "L") as "L" | "P",
             bagian: g.bagian || "sekolah",
             jabatan: g.jabatan || "Guru Pengajar",
@@ -342,8 +344,8 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
         // Next process 'pengguna' table entries (teacher roles or jabatan containing guru/ustadz)
         dbPenggunaList.forEach((u: any) => {
           const isTeacherRole =
-            u.role === "guru_pondok" ||
-            u.role === "guru_sekolah" ||
+            u.role === "guru pondok" ||
+            u.role === "guru SMP" ||
             (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
 
           if (isTeacherRole) {
@@ -356,7 +358,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
               mapByUsername.set(key, {
                 ...existing,
                 nama: existing.nama || u.nama || uname,
-                role: u.role || existing.role || "guru_sekolah",
+                role: u.role || existing.role || "guru SMP",
                 bagian: u.bagian || existing.bagian || "sekolah",
                 jabatan: u.jabatan || existing.jabatan || "Guru Pengajar",
                 tugas_kamar: existing.tugas_kamar || u.tugas_kamar || "",
@@ -371,9 +373,9 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
                 id: String(u.id || uname),
                 nama: u.nama || uname,
                 username: uname,
-                role: u.role || "guru_sekolah",
+                role: u.role || "guru SMP",
                 gender: (u.gender === "P" ? "P" : "L") as "L" | "P",
-                bagian: u.bagian || (u.role === "guru_sekolah" ? "sekolah" : "pondok"),
+                bagian: u.bagian || (u.role === "guru SMP" ? "sekolah" : "pondok"),
                 jabatan: u.jabatan || "Guru Pengajar",
                 tugas_kamar: u.tugas_kamar || "",
                 tugas_kelas_sekolah: u.tugas_kelas_sekolah || "",
@@ -408,7 +410,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
               username: uname,
               nama: localUser.nama_lengkap || localUser.nama || uname,
               nama_lengkap: localUser.nama_lengkap || localUser.nama || uname,
-              role: localUser.role || (localUser.status === "pengurus" ? "pengurus" : localUser.status === "sekolah" ? "guru_sekolah" : "guru_pondok"),
+              role: localUser.role || (localUser.status === "pengurus" ? "pengurus" : localUser.status === "sekolah" ? "guru SMP" : "guru pondok"),
               gender: localUser.gender || "L",
               status: localUser.status || "pengurus",
               bagian: localUser.bagian || localUser.status || "pondok",
@@ -424,7 +426,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
             const r = (u.role || "").toLowerCase();
             const s = (u.status || "").toLowerCase();
             // Strictly exclude teacher roles
-            if (r === "guru_sekolah" || r === "guru_pondok" || s === "sekolah") return false;
+            if (r === "guru SMP" || r === "guru pondok" || s === "sekolah") return false;
             return r === "pengurus" || r === "admin" || s === "pengurus";
           })
           .map((u: any) => {
@@ -485,8 +487,8 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
   const totalCount = people.length;
   const countL = people.filter(p => p.gender === "L").length;
   const countP = people.filter(p => p.gender === "P").length;
-  const countSekolah = people.filter(p => (p.bagian || "").includes("sekolah") || p.role === "guru_sekolah").length;
-  const countPondok = people.filter(p => (p.bagian || "").includes("pondok") || p.role === "guru_pondok").length;
+  const countSekolah = people.filter(p => (p.bagian || "").includes("sekolah") || p.role === "guru SMP").length;
+  const countPondok = people.filter(p => (p.bagian || "").includes("pondok") || p.role === "guru pondok").length;
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">

@@ -61,11 +61,13 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "manajemen_sesi" | "perizinan" | "nfc" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "manajemen_sesi" | "perizinan" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap">("dashboard");
+  const [isNfcExpanded, setIsNfcExpanded] = useState(true);
   const [isDataWargaExpanded, setIsDataWargaExpanded] = useState(true);
   const [isPelanggaranExpanded, setIsPelanggaranExpanded] = useState(false);
   const [isManajemenExpanded, setIsManajemenExpanded] = useState(false);
-  const [hoveredFlyout, setHoveredFlyout] = useState<"data_warga" | "pelanggaran" | "manajemen" | null>(null);
+  const [hoveredFlyout, setHoveredFlyout] = useState<"data_warga" | "pelanggaran" | "manajemen" | "nfc" | null>(null);
+  const [mobileNfcOpen, setMobileNfcOpen] = useState(true);
   const [mobileDataWargaOpen, setMobileDataWargaOpen] = useState(true);
   const [mobilePelanggaranOpen, setMobilePelanggaranOpen] = useState(false);
   const [mobileManajemenOpen, setMobileManajemenOpen] = useState(false);
@@ -1176,29 +1178,31 @@ export default function App() {
   }, [students, lulusList, mutasiList]);
 
   const allTabs = [
-    { id: "dashboard", group: "UTAMA", label: "Dasbor", shortLabel: "Dasbor", icon: Home, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "form", group: "UTAMA", label: editingStudent ? "Edit Siswa" : "Pendaftaran", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "perizinan", group: "UTAMA", label: "Perizinan Siswa", shortLabel: "Izin", icon: Clock, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "absensi", group: "UTAMA", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "rekap_presensi", group: "UTAMA", label: "Rekap Presensi", shortLabel: "Rekap", icon: TableProperties, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "absensi_guru", group: "UTAMA", label: "Guru Sekolah & Jurnal", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "nfc", group: "UTAMA", label: "Registrasi NFC", shortLabel: "NFC", icon: Fingerprint, roles: ["admin", "pengurus"] },
+    { id: "dashboard", group: "UTAMA", label: "Dasbor", shortLabel: "Dasbor", icon: Home, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "form", group: "UTAMA", label: editingStudent ? "Edit Siswa" : "Pendaftaran", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "perizinan", group: "UTAMA", label: "Perizinan Siswa", shortLabel: "Izin", icon: Clock, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "absensi", group: "UTAMA", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "siswa"] },
+    { id: "rekap_presensi", group: "UTAMA", label: "Rekap Presensi", shortLabel: "Rekap", icon: TableProperties, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "absensi_guru", group: "UTAMA", label: "Guru Sekolah & Jurnal", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
+    // REGISTRASI NFC GROUP WITH SUBMENUS
+    { id: "nfc_daftar", group: "REGISTRASI NFC", isSubmenu: true, subLabel: "Daftar Kartu", label: "Daftar Kartu", shortLabel: "Daftar Kartu", icon: Fingerprint, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "nfc_database", group: "REGISTRASI NFC", isSubmenu: true, subLabel: "Database Kartu", label: `Database Kartu (${students.filter(s => !!s.nfc_id).length})`, shortLabel: "Database Kartu", icon: Database, roles: ["super admin", "admin", "guru pondok"] },
     
     // DATA WARGA GROUP WITH SUBMENUS
-    { id: "list", group: "DATA WARGA", isSubmenu: true, subLabel: "Santri", label: "Santri", shortLabel: "Santri", icon: Users, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "warga_guru", group: "DATA WARGA", isSubmenu: true, subLabel: "Guru", label: "Guru", shortLabel: "Guru", icon: GraduationCap, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "warga_pengurus", group: "DATA WARGA", isSubmenu: true, subLabel: "Pengurus", label: "Pengurus", shortLabel: "Pengurus", icon: Shield, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "warga_mutasi", group: "DATA WARGA", isSubmenu: true, subLabel: "Mutasi", label: "Mutasi", shortLabel: "Mutasi", icon: UserMinus, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
-    { id: "warga_lulus", group: "DATA WARGA", isSubmenu: true, subLabel: "Alumni / Lulus", label: "Alumni / Lulus", shortLabel: "Lulus", icon: Award, roles: ["admin", "guru_pondok", "guru_sekolah", "pengurus"] },
+    { id: "list", group: "DATA WARGA", isSubmenu: true, subLabel: "Santri", label: "Santri", shortLabel: "Santri", icon: Users, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "warga_guru", group: "DATA WARGA", isSubmenu: true, subLabel: "Guru", label: "Guru", shortLabel: "Guru", icon: GraduationCap, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "warga_pengurus", group: "DATA WARGA", isSubmenu: true, subLabel: "Pengurus", label: "Pengurus", shortLabel: "Pengurus", icon: Shield, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "warga_mutasi", group: "DATA WARGA", isSubmenu: true, subLabel: "Mutasi", label: "Mutasi", shortLabel: "Mutasi", icon: UserMinus, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "warga_lulus", group: "DATA WARGA", isSubmenu: true, subLabel: "Alumni / Lulus", label: "Alumni / Lulus", shortLabel: "Lulus", icon: Award, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     
     // PELANGGARAN GROUP WITH SUBMENUS
-    { id: "pelanggaran_input", group: "PELANGGARAN", isSubmenu: true, subLabel: "Input Pelanggaran", label: "Input Pelanggaran", shortLabel: "Input Pelanggaran", icon: ShieldAlert, roles: ["admin", "guru_pondok", "pengurus"] },
-    { id: "pelanggaran_rekap", group: "PELANGGARAN", isSubmenu: true, subLabel: "Daftar Pelanggaran", label: "Daftar Pelanggaran", shortLabel: "Rekap Pelanggaran", icon: ClipboardList, roles: ["admin", "guru_pondok", "pengurus"] },
+    { id: "pelanggaran_input", group: "PELANGGARAN", isSubmenu: true, subLabel: "Input Pelanggaran", label: "Input Pelanggaran", shortLabel: "Input Pelanggaran", icon: ShieldAlert, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "pelanggaran_rekap", group: "PELANGGARAN", isSubmenu: true, subLabel: "Daftar Pelanggaran", label: "Daftar Pelanggaran", shortLabel: "Rekap Pelanggaran", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     
     // PLOTTING / MANAJEMEN AKADEMIK
-    { id: "manajemen_pondok", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Building2, roles: ["admin", "pengurus"] },
-    { id: "manajemen_sekolah", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["admin", "pengurus"] },
-    { id: "pengguna", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["admin"] },
+    { id: "manajemen_pondok", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Building2, roles: ["super admin", "admin"] },
+    { id: "manajemen_sekolah", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "pengguna", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
   ];
   
   const accessibleTabs = allTabs.filter(t => t.roles.includes(userRole));
@@ -1206,7 +1210,11 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       if (!allTabs.find(t => t.id === activeTab)?.roles.includes(userRole)) {
-        setActiveTab("dashboard");
+        if (userRole === "siswa") {
+          setActiveTab("absensi");
+        } else {
+          setActiveTab("dashboard");
+        }
       }
     }
   }, [currentUser, activeTab, userRole]);
@@ -1216,7 +1224,11 @@ export default function App() {
       <LoginForm 
         onSuccess={(user) => {
           setCurrentUser(user);
-          setActiveTab("dashboard");
+          if (user.role === "siswa") {
+            setActiveTab("absensi");
+          } else {
+            setActiveTab("dashboard");
+          }
         }} 
         isDarkMode={isDarkMode} 
         setIsDarkMode={setIsDarkMode} 
@@ -1500,6 +1512,94 @@ export default function App() {
                   </div>
                 );
               })}
+
+            {/* REGISTRASI NFC GROUP (ACCORDION) */}
+            {accessibleTabs.some(t => t.group === "REGISTRASI NFC") && (!sidebarSearchQuery || "registrasi nfc kartu rfid scan database".includes(sidebarSearchQuery.toLowerCase())) && (
+              <div 
+                className="w-full pt-1.5 relative group/flyout"
+                onMouseEnter={() => setHoveredFlyout("nfc")}
+                onMouseLeave={() => setHoveredFlyout(null)}
+              >
+                {!sidebarCollapsed ? (
+                  <div
+                    onClick={() => setIsNfcExpanded(!isNfcExpanded)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Registrasi NFC</span>
+                    {isNfcExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full flex justify-center py-1">
+                    <button
+                      onClick={() => setIsNfcExpanded(!isNfcExpanded)}
+                      className={`p-2 rounded-xl transition-colors ${
+                        ["nfc_daftar", "nfc_database", "nfc"].includes(activeTab)
+                          ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                          : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                      }`}
+                      title="Registrasi NFC"
+                    >
+                      <Fingerprint className="w-4.5 h-4.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Expanded Inline Submenu */}
+                {!sidebarCollapsed && isNfcExpanded && (
+                  <div className="space-y-0.5 mt-0.5">
+                    {accessibleTabs.filter(t => t.group === "REGISTRASI NFC").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center justify-start px-3 py-2 gap-3 rounded-xl transition-all text-xs ${
+                            isSubActive
+                              ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                          }`}
+                        >
+                          <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                          <span className="truncate">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Collapsed Flyout Popover */}
+                {sidebarCollapsed && hoveredFlyout === "nfc" && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                    <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      Registrasi NFC
+                    </div>
+                    {accessibleTabs.filter(t => t.group === "REGISTRASI NFC").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                            isSubActive
+                              ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <SubIcon className="w-4 h-4 text-slate-400" />
+                          <span>{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 2. DATA WARGA GROUP (ACCORDION) */}
             {accessibleTabs.some(t => t.group === "DATA WARGA") && (!sidebarSearchQuery || "data warga santri guru pengurus mutasi lulus".includes(sidebarSearchQuery.toLowerCase())) && (
@@ -1951,7 +2051,7 @@ export default function App() {
           {/* Current Router Outlet */}
           <div className="flex-1 w-full flex flex-col">
             <ErrorBoundary key={activeTab}>
-            {activeTab === "dashboard" && userRole === "guru_sekolah" && (
+            {activeTab === "dashboard" && userRole === "guru SMP" && (
               <DashboardGuruSekolah
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -1975,7 +2075,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === "dashboard" && userRole === "guru_pondok" && (
+            {activeTab === "dashboard" && userRole === "guru pondok" && (
               <DashboardGuruPondok
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -1999,7 +2099,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === "dashboard" && (userRole === "admin" || userRole === "pengurus") && (
+            {activeTab === "dashboard" && (userRole === "admin" || userRole === "super admin" || userRole === "superadmin" || userRole === "pengurus") && (
               <Dashboard
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -2058,7 +2158,7 @@ export default function App() {
                 <DaftarWargaPanel
                   viewType="guru"
                   onSwitchType={(type) => setActiveTab(type === "guru" ? "warga_guru" : "warga_pengurus")}
-                  onNavigateToUserManagement={userRole === "admin" ? () => setActiveTab("pengguna") : undefined}
+                  onNavigateToUserManagement={userRole === "admin" || userRole === "super admin" || userRole === "superadmin" ? () => setActiveTab("pengguna") : undefined}
                 />
               </div>
             )}
@@ -2068,7 +2168,7 @@ export default function App() {
                 <DaftarWargaPanel
                   viewType="pengurus"
                   onSwitchType={(type) => setActiveTab(type === "guru" ? "warga_guru" : "warga_pengurus")}
-                  onNavigateToUserManagement={userRole === "admin" ? () => setActiveTab("pengguna") : undefined}
+                  onNavigateToUserManagement={userRole === "admin" || userRole === "super admin" || userRole === "superadmin" ? () => setActiveTab("pengguna") : undefined}
                 />
               </div>
             )}
@@ -2080,6 +2180,7 @@ export default function App() {
                   onSwitchMode={(mode) => setActiveTab(mode === "lulus" ? "warga_lulus" : "warga_mutasi")}
                   activeStudents={displayedStudents}
                   onDataChanged={checkConnectionAndLoad}
+                  currentUserRole={userRole}
                 />
               </div>
             )}
@@ -2091,6 +2192,7 @@ export default function App() {
                   onSwitchMode={(mode) => setActiveTab(mode === "lulus" ? "warga_lulus" : "warga_mutasi")}
                   activeStudents={displayedStudents}
                   onDataChanged={checkConnectionAndLoad}
+                  currentUserRole={userRole}
                 />
               </div>
             )}
@@ -2098,7 +2200,7 @@ export default function App() {
             {activeTab === "perizinan" && (
               <div className="w-full">
                 <PerizinanPanel
-                  students={displayedStudents}
+                  students={userGenderAccess !== "Semua" ? displayedStudents.filter(s => s.jenis_kelamin === userGenderAccess) : displayedStudents}
                   rooms={rooms}
                   onRefreshAll={checkConnectionAndLoad}
                   onTriggerNotification={triggerNotification}
@@ -2108,13 +2210,13 @@ export default function App() {
 
             {activeTab === "absensi" && (
               <div className="w-full">
-                <PresensiPanel students={displayedStudents} rooms={rooms} viewMode="absensi" />
+                <PresensiPanel students={userGenderAccess !== "Semua" ? displayedStudents.filter(s => s.jenis_kelamin === userGenderAccess) : displayedStudents} rooms={rooms} viewMode="absensi" />
               </div>
             )}
 
             {activeTab === "rekap_presensi" && (
               <div className="w-full">
-                <PresensiPanel students={displayedStudents} rooms={rooms} viewMode="rekap" />
+                <PresensiPanel students={userGenderAccess !== "Semua" ? displayedStudents.filter(s => s.jenis_kelamin === userGenderAccess) : displayedStudents} rooms={rooms} viewMode="rekap" />
               </div>
             )}
 
@@ -2152,13 +2254,14 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "nfc" && (
+            {(activeTab === "nfc_daftar" || activeTab === "nfc_database" || activeTab === "nfc") && (
               <div className="w-full">
                 <NfcRegisterPanel
                   students={displayedStudents}
                   rooms={rooms}
                   onUpdateNfc={handleUpdateStudentNfc}
                   isDarkMode={isDarkMode}
+                  viewMode={activeTab === "nfc_database" ? "database" : "scan"}
                 />
               </div>
             )}
@@ -2257,6 +2360,49 @@ export default function App() {
                     </button>
                   );
                 })}
+
+              {/* REGISTRASI NFC GROUP */}
+              {accessibleTabs.some(t => t.group === "REGISTRASI NFC") && (
+                <div className="pt-1.5">
+                  <div
+                    onClick={() => setMobileNfcOpen(!mobileNfcOpen)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Registrasi NFC</span>
+                    {mobileNfcOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+
+                  {mobileNfcOpen && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {accessibleTabs.filter(t => t.group === "REGISTRASI NFC").map((sub) => {
+                        const SubIcon = sub.icon;
+                        const isSubActive = activeTab === sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            onClick={() => {
+                              setActiveTab(sub.id as any);
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs ${
+                              isSubActive
+                                ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                                : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                            <span className="truncate">{sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* DATA WARGA GROUP */}
               {accessibleTabs.some(t => t.group === "DATA WARGA") && (

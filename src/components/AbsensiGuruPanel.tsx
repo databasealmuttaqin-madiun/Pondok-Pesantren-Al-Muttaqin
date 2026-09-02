@@ -584,9 +584,10 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     // 4. Fetch globally from Supabase
     fetchGlobalLocation();
 
-    // 5. Fetch current user's profile and all profiles (if admin/pengurus)
+    // 5. Fetch current user's profile and all profiles (if admin/pengurus/super admin)
     fetchMyProfile();
-    if (currentUser?.role === 'admin' || currentUser?.role === 'pengurus') {
+    const isAdminUser = currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin' || currentUser?.role === 'pengurus';
+    if (isAdminUser) {
       fetchAllProfiles();
     }
 
@@ -685,9 +686,9 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         return;
       }
 
-      // Secondary fallback: 'guru_sekolah'
+      // Secondary fallback: 'guru SMP'
       const { data, error } = await supabase
-        .from("guru_sekolah")
+        .from("guru SMP")
         .select("*")
         .eq("username", currentUser.username)
         .maybeSingle();
@@ -740,7 +741,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       } else {
         // Fallback to guru_sekolah if guru table empty
         const { data: gsData } = await supabase
-          .from("guru_sekolah")
+          .from("guru SMP")
           .select("*")
           .order("nama_lengkap", { ascending: true });
         if (gsData) {
@@ -759,8 +760,8 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       if (penggunaData && penggunaData.length > 0) {
         penggunaData.forEach((u: any) => {
           const isTeacher =
-            u.role === "guru_pondok" ||
-            u.role === "guru_sekolah" ||
+            u.role === "guru pondok" ||
+            u.role === "guru SMP" ||
             (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
 
           if (isTeacher && u.username) {
@@ -773,7 +774,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                 jenis_kelamin: u.gender || "L",
                 mata_pelajaran: u.tugas_mapel || "",
                 nomor_seluler: u.no_hp || "",
-                role: u.role || "guru_sekolah",
+                role: u.role || "guru SMP",
                 bagian: u.bagian || "sekolah",
                 jabatan: u.jabatan || "Guru Pengajar"
               });
@@ -1035,7 +1036,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       await supabase.from("guru").upsert([guruPayload], { onConflict: "username" });
 
       let { error } = await supabase
-        .from("guru_sekolah")
+        .from("guru SMP")
         .upsert([payload], { onConflict: "username" });
 
       if (error && (error.message?.includes("column") || error.message?.includes("mata_pelajaran"))) {
@@ -1043,7 +1044,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         const fallbackPayload = { ...payload };
         delete fallbackPayload.mata_pelajaran;
         const retryResult = await supabase
-          .from("guru_sekolah")
+          .from("guru SMP")
           .upsert([fallbackPayload], { onConflict: "username" });
         error = retryResult.error;
       }
@@ -1080,7 +1081,8 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         setIsEditing(false);
         setIsEditingProfileModal(false);
         fetchMyProfile();
-        if (currentUser?.role === 'admin' || currentUser?.role === 'pengurus') {
+        const isAdminUser = currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin' || currentUser?.role === 'pengurus';
+        if (isAdminUser) {
           fetchAllProfiles();
         }
       }
@@ -1261,7 +1263,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                 <Edit className="w-3.5 h-3.5" /> Lengkapi &amp; Ubah Profil
               </button>
 
-              {currentUser?.role === 'admin' && (
+              {(currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin') && (
                 <button 
                   onClick={() => setShowConfig(!showConfig)}
                   className="inline-flex items-center gap-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl transition-colors cursor-pointer border border-slate-200"
@@ -1335,7 +1337,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       </div>
 
       {/* CONFIGURATION PANEL (ADMIN ONLY) */}
-      {showConfig && currentUser?.role === 'admin' && (
+      {showConfig && (currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin') && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6 animate-fade-in">
           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
             <Settings className="w-5 h-5 text-[#0c66e4]" /> Konfigurasi Titik Pusat Sekolah
@@ -1413,7 +1415,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
           <BookOpen className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "mengajar" ? "scale-110" : ""}`} /> 
           <span>Tab Mengajar</span>
         </button>
-        {(currentUser?.role === 'admin' || currentUser?.role === 'pengurus') && (
+        {(currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin' || currentUser?.role === 'pengurus') && (
           <button
             onClick={() => setActiveSubTab("semua_guru")}
             className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
@@ -1499,7 +1501,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                   <div>
                     <h4 className="font-extrabold text-slate-850 text-base leading-tight">{profile.nama_lengkap || currentUser?.name}</h4>
                     <p className="text-[10px] text-slate-400 font-bold tracking-wide mt-1 uppercase bg-slate-100 px-2.5 py-0.5 rounded-full inline-block">
-                      {currentUser?.role === 'admin' ? 'Administrator' : 'Guru Sekolah'}
+                      {(currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin') ? 'Administrator' : 'Guru Sekolah'}
                     </p>
                   </div>
                 </div>
@@ -1915,7 +1917,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
           {/* HISTORY TABLE */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <h3 className="font-bold text-slate-800 mb-4">{currentUser?.role === 'admin' ? "Semua Riwayat Absensi" : "Riwayat Absensi Anda"}</h3>
+            <h3 className="font-bold text-slate-800 mb-4">{(currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin') ? "Semua Riwayat Absensi" : "Riwayat Absensi Anda"}</h3>
             {history.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
@@ -2833,7 +2835,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       )}
 
       {/* SUB-TAB Content: DAFTAR SEMUA GURU (Admin/Pengurus Only) */}
-      {activeSubTab === "semua_guru" && (currentUser?.role === 'admin' || currentUser?.role === 'pengurus') && (
+      {activeSubTab === "semua_guru" && (currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin' || currentUser?.role === 'pengurus') && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>

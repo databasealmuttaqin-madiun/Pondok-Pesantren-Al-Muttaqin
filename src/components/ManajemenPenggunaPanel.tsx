@@ -29,13 +29,13 @@ export default function ManajemenPenggunaPanel() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [nama, setNama] = useState("");
-  const [role, setRole] = useState("guru_pondok");
+  const [role, setRole] = useState("guru pondok");
   const [gender, setGender] = useState("Semua");
 
   // Multi-selection states
   const [isPondok, setIsPondok] = useState(true);
   const [isSekolah, setIsSekolah] = useState(true);
-  const [selectedJabatans, setSelectedJabatans] = useState<string[]>(["guru_pondok"]);
+  const [selectedJabatans, setSelectedJabatans] = useState<string[]>(["guru pondok"]);
   
   // Custom multi-select component states
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -53,10 +53,9 @@ export default function ManajemenPenggunaPanel() {
   const [optRecitationClasses, setOptRecitationClasses] = useState<string[]>([]);
 
   const roles = [
-    { id: "admin", label: "Admin (Akses Penuh)" },
-    { id: "guru_pondok", label: "Guru Pondok" },
-    { id: "guru_sekolah", label: "Guru Sekolah" },
-    { id: "pengurus", label: "Pengurus" }
+    { id: "guru pondok", label: "Guru Pondok" },
+    { id: "guru SMP", label: "Guru SMP" },
+    { id: "siswa", label: "Siswa / Santri" }
   ];
 
   // Load plotting options on mount
@@ -91,12 +90,12 @@ export default function ManajemenPenggunaPanel() {
   useEffect(() => {
     if (selectedJabatans.length > 0) {
       const hasSekolah = selectedJabatans.some(j => ["wali_kelas", "guru_mapel", "kepala_sekolah", "wakil_kepala_sekolah"].includes(j));
-      const hasPondok = selectedJabatans.some(j => ["guru_pondok", "wali_kamar"].includes(j));
+      const hasPondok = selectedJabatans.some(j => ["guru pondok", "wali_kamar"].includes(j));
       
       if (hasSekolah) {
-        setRole("guru_sekolah");
+        setRole("guru SMP");
       } else if (hasPondok) {
-        setRole("guru_pondok");
+        setRole("guru pondok");
       }
     }
   }, [selectedJabatans]);
@@ -137,8 +136,8 @@ export default function ManajemenPenggunaPanel() {
           const extra = localDetails[u.username] || {};
           return {
             ...u,
-            bagian: extra.bagian || (u.role === "admin" ? "pondok,sekolah" : u.role === "guru_sekolah" ? "sekolah" : "pondok"),
-            jabatan: extra.jabatan || (u.role === "admin" ? "pengurus" : u.role === "guru_sekolah" ? "guru_mapel" : "guru_pondok"),
+            bagian: extra.bagian || (u.role === "admin" ? "pondok,sekolah" : u.role === "guru SMP" ? "sekolah" : "pondok"),
+            jabatan: extra.jabatan || (u.role === "admin" ? "pengurus" : u.role === "guru SMP" ? "guru_mapel" : "guru pondok"),
             tugas_kamar: extra.tugas_kamar || "",
             tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
             tugas_kelas_pengajian: extra.tugas_kelas_pengajian || "",
@@ -151,8 +150,8 @@ export default function ManajemenPenggunaPanel() {
           const extra = localDetails[u.username] || {};
           return {
             ...u,
-            bagian: u.bagian || extra.bagian || (u.role === "admin" ? "pondok,sekolah" : u.role === "guru_sekolah" ? "sekolah" : "pondok"),
-            jabatan: u.jabatan || extra.jabatan || (u.role === "admin" ? "pengurus" : u.role === "guru_sekolah" ? "guru_mapel" : "guru_pondok"),
+            bagian: u.bagian || extra.bagian || (u.role === "admin" ? "pondok,sekolah" : u.role === "guru SMP" ? "sekolah" : "pondok"),
+            jabatan: u.jabatan || extra.jabatan || (u.role === "admin" ? "pengurus" : u.role === "guru SMP" ? "guru_mapel" : "guru pondok"),
             tugas_kamar: u.tugas_kamar || extra.tugas_kamar || "",
             tugas_kelas_sekolah: u.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
             tugas_kelas_pengajian: u.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",
@@ -190,10 +189,10 @@ export default function ManajemenPenggunaPanel() {
         setIsSekolah(bag.includes("sekolah"));
       }
 
-      const jab = user.jabatan || "guru_pondok";
+      const jab = user.jabatan || "guru pondok";
       const rawJabs = jab.split(",").map(j => j.trim()).filter(Boolean);
       const mappedJList = rawJabs.map(j => {
-        if (j === "guru pondok") return "guru_pondok";
+        if (j === "guru pondok") return "guru pondok";
         if (j === "guru mapel" || j === "guru mata pelajaran" || j === "guru_mapel") return "guru_mapel";
         if (j === "pamong kamar" || j === "wali kamar" || j === "wali_kamar") return "wali_kamar";
         if (j === "wali kelas" || j === "wali kelas sekolah" || j === "wali_kelas") return "wali_kelas";
@@ -212,11 +211,11 @@ export default function ManajemenPenggunaPanel() {
       setUsername("");
       setPassword("");
       setNama("");
-      setRole("guru_pondok");
+      setRole("guru pondok");
       setGender("Semua");
       setIsPondok(true);
       setIsSekolah(true);
-      setSelectedJabatans(["guru_pondok"]);
+      setSelectedJabatans(["guru pondok"]);
       setTugasKamar("");
       setTugasKelasSekolah("");
       setTugasKelasPengajian("");
@@ -264,7 +263,7 @@ export default function ManajemenPenggunaPanel() {
         jabatan: finalJabatan,
         tugas_kamar: selectedJabatans.includes("wali_kamar") ? tugasKamar : "",
         tugas_kelas_sekolah: (selectedJabatans.includes("wali_kelas") || selectedJabatans.includes("guru_mapel")) ? tugasKelasSekolah : "",
-        tugas_kelas_pengajian: selectedJabatans.includes("guru_pondok") ? tugasKelasPengajian : "",
+        tugas_kelas_pengajian: selectedJabatans.includes("guru pondok") ? tugasKelasPengajian : "",
         tugas_mapel: selectedJabatans.includes("guru_mapel") ? tugasMapel : ""
       };
 
@@ -349,7 +348,7 @@ export default function ManajemenPenggunaPanel() {
   };
 
   const mapJabatanIdToLabel = (id: string) => {
-    if (id === "guru_pondok") return "Guru Pondok";
+    if (id === "guru pondok") return "Guru Pondok";
     if (id === "guru_mapel") return "Guru Mata Pelajaran";
     if (id === "wali_kamar") return "Wali Kamar";
     if (id === "wali_kelas") return "Wali Kelas Sekolah";
@@ -475,7 +474,7 @@ export default function ManajemenPenggunaPanel() {
                     <div className="flex flex-wrap gap-1.5">
                       {selectedJabatans.map(jid => {
                         const itemsList = [
-                          { id: "guru_pondok", label: "Guru Pondok" },
+                          { id: "guru pondok", label: "Guru Pondok" },
                           { id: "guru_mapel", label: "Guru Mata Pelajaran" },
                           { id: "wali_kamar", label: "Wali Kamar" },
                           { id: "wali_kelas", label: "Wali Kelas Sekolah" },
@@ -548,7 +547,7 @@ export default function ManajemenPenggunaPanel() {
                     <div className="max-h-52 overflow-y-auto py-1">
                       {(() => {
                         const itemsList = [
-                          { id: "guru_pondok", label: "Guru Pondok" },
+                          { id: "guru pondok", label: "Guru Pondok" },
                           { id: "guru_mapel", label: "Guru Mata Pelajaran" },
                           { id: "wali_kamar", label: "Wali Kamar" },
                           { id: "wali_kelas", label: "Wali Kelas Sekolah" },
@@ -636,7 +635,7 @@ export default function ManajemenPenggunaPanel() {
                 </div>
               )}
 
-              {selectedJabatans.includes("guru_pondok") && (
+              {selectedJabatans.includes("guru pondok") && (
                 <div className="space-y-2 p-3.5 bg-purple-50/50 dark:bg-purple-950/10 rounded-2xl border border-purple-100/50 dark:border-purple-950/30 animate-in fade-in duration-200">
                   <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 block">Konfigurasi Guru Pondok</span>
                   <div className="space-y-1">

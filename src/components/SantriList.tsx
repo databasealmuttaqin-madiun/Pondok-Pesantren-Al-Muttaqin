@@ -1,3 +1,5 @@
+import { SearchableSelect } from './ui/SearchableSelect';
+import { PageHeader } from './ui/PageHeader';
 import React, { useState } from "react";
 import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database, User } from "lucide-react";
 import { SantriData } from "../supabaseClient";
@@ -308,110 +310,125 @@ export default function SantriList({
   return (
     <div className="space-y-4" id="santri_list_section">
       {/* Search & Filter Header Card */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cari berdasarkan nama, NIK, NISN, atau NPSN..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded bg-slate-50 border border-slate-200 focus:border-sky-500 focus:outline-none transition-all duration-150 text-xs"
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+          <h3 className="font-bold text-slate-900 dark:text-white text-base">Filter</h3>
+          <button 
+            type="button"
+            onClick={() => {
+              setSearchQuery("");
+              setFilterCategory("All");
+              setFilterDaerah("All");
+              setFilterGender("All");
+              setFilterStatus("All");
+            }}
+            className="text-red-500 hover:text-red-600 text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+          >
+            Atur ulang filter
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {/* Pencarian */}
+          <div className="space-y-1.5">
+            <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Pencarian</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Cari nama, NIK, NISN..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400"
+              />
+            </div>
+          </div>
+
+          {/* Gender Filter */}
+          <div className="space-y-1.5">
+            <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Jenis Kelamin</label>
+            <SearchableSelect
+              value={filterGender}
+              onChange={setFilterGender}
+              options={[
+                { value: "All", label: "Semua Gender" },
+                { value: "L", label: "Laki-laki (Siswa)" },
+                { value: "P", label: "Perempuan (Siswi)" }
+              ]}
+              placeholder="Pilih salah satu opsi"
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Category Filter */}
-            <div className="flex items-center bg-slate-50 rounded px-2.5 py-1 border border-slate-200">
-              <Filter className="w-3.5 h-3.5 text-slate-500 mr-1.5" />
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="bg-transparent border-none text-[11px] font-semibold focus:outline-none text-slate-700 cursor-pointer"
-              >
-                <option value="All">Kategori: Semua</option>
-                <option value="SMP">SMP</option>
-                <option value="SMA">SMA</option>
-                <option value="Reguler">Reguler</option>
-              </select>
-            </div>
+          {/* Category Filter */}
+          <div className="space-y-1.5">
+            <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Kategori</label>
+            <SearchableSelect
+              value={filterCategory}
+              onChange={setFilterCategory}
+              options={[
+                { value: "All", label: "Semua Kategori" },
+                { value: "SMP", label: "SMP" },
+                { value: "SMA", label: "SMA" },
+                { value: "Reguler", label: "Reguler" }
+              ]}
+              placeholder="Pilih salah satu opsi"
+            />
+          </div>
 
-             {/* Daerah Filter */}
-            <div className="flex items-center bg-slate-50 rounded px-2.5 py-1 border border-slate-200">
-              <MapPin className="w-3.5 h-3.5 text-slate-500 mr-1.5" />
-              <select
-                value={filterDaerah}
-                onChange={(e) => setFilterDaerah(e.target.value)}
-                className="bg-transparent border-none text-[11px] font-semibold focus:outline-none text-slate-700 cursor-pointer"
-              >
-                <option value="All">Daerah: Semua</option>
-                {uniqueDaerah.map((reg) => (
-                  <option key={reg} value={reg}>
-                    {reg}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Daerah Filter */}
+          <div className="space-y-1.5">
+            <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Daerah / Asal</label>
+            <SearchableSelect
+              value={filterDaerah}
+              onChange={setFilterDaerah}
+              options={[
+                { value: "All", label: "Semua Daerah" },
+                ...uniqueDaerah.map((reg) => ({ value: reg, label: reg }))
+              ]}
+              placeholder="Pilih salah satu opsi"
+            />
+          </div>
 
-             {/* Gender Filter */}
-            <div className="flex items-center bg-slate-50 rounded px-2.5 py-1 border border-slate-200">
-              <User className="w-3.5 h-3.5 text-slate-500 mr-1.5" />
-              <select
-                value={filterGender}
-                onChange={(e) => setFilterGender(e.target.value)}
-                className="bg-transparent border-none text-[11px] font-semibold focus:outline-none text-slate-700 cursor-pointer"
-              >
-                <option value="All">Gender: Semua (Siswa & Siswi)</option>
-                <option value="L">Laki-laki (Siswa)</option>
-                <option value="P">Perempuan (Siswi)</option>
-              </select>
-            </div>
-
-            {/* Status Filter */}
-            <div className="flex items-center bg-slate-50 rounded px-2.5 py-1 border border-slate-200">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></span>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent border-none text-[11px] font-semibold focus:outline-none text-slate-700 cursor-pointer"
-              >
-                <option value="All">Status: Semua</option>
-                <option value="Aktif">🟢 Aktif</option>
-                <option value="Sakit">🟡 Sakit</option>
-                <option value="Pulang">🔴 Pulang</option>
-                <option value="Haid">🩷 Haid</option>
-              </select>
-            </div>
-
-            {/* Export To Excel/CSV */}
-            <button
-              onClick={exportToCSV}
-              disabled={filteredStudents.length === 0}
-              className="bg-sky-600 hover:bg-sky-700 active:scale-98 transition-all text-white text-[11px] font-bold px-3 py-2 rounded flex items-center gap-1 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-              id="export-csv-btn"
-            >
-              <Download className="w-3.5 h-3.5" /> Ekspor CSV
-            </button>
+          {/* Status Filter */}
+          <div className="space-y-1.5">
+            <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Status</label>
+            <SearchableSelect
+              value={filterStatus}
+              onChange={setFilterStatus}
+              options={[
+                { value: "All", label: "Semua Status" },
+                { value: "Aktif", label: "Aktif" },
+                { value: "Sakit", label: "Sakit" },
+                { value: "Pulang", label: "Pulang" },
+                { value: "Haid", label: "Haid" }
+              ]}
+              placeholder="Pilih salah satu opsi"
+            />
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-[11px] text-slate-450 font-medium px-1">
-          <span>Menampilkan <strong className="text-slate-800">{filteredStudents.length}</strong> dari <strong className="text-slate-805">{students.length}</strong> siswa terdaftarkan</span>
-          {searchQuery || filterCategory !== "All" || filterDaerah !== "All" || filterGender !== "All" || filterStatus !== "All" ? (
+        <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <button 
+            type="button"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium px-5 py-2.5 rounded-xl transition-colors shadow-xs w-fit"
+          >
+            Terapkan filter
+          </button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium mr-2">
+              Menampilkan <strong className="text-slate-800 dark:text-white font-semibold">{filteredStudents.length}</strong> dari <strong className="text-slate-800 dark:text-white font-semibold">{students.length}</strong> santri
+            </span>
             <button
-              onClick={() => {
-                setSearchQuery("");
-                setFilterCategory("All");
-                setFilterDaerah("All");
-                setFilterGender("All");
-                setFilterStatus("All");
-              }}
-              className="text-sky-600 hover:underline font-bold text-[11px]"
+              onClick={exportToCSV}
+              disabled={filteredStudents.length === 0}
+              className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+              id="export-csv-btn"
             >
-              Reset Filter
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span>Ekspor CSV</span>
             </button>
-          ) : null}
+          </div>
         </div>
       </div>
 
@@ -644,7 +661,7 @@ export default function SantriList({
                           </button>
 
                           {/* 1. Edit Elegant light cyan circle with dark blue pen */}
-                          {currentUserRole !== "guru_sekolah" && (
+                          {currentUserRole !== "guru SMP" && (
                             <button
                               onClick={() => onEdit(s)}
                               className="w-8 h-8 flex items-center justify-center bg-[#E6F4FA] hover:bg-[#d0edfa] text-[#00a5ec] rounded-full transition-all cursor-pointer shadow-sm shadow-sky-100"
@@ -655,7 +672,7 @@ export default function SantriList({
                           )}
 
                           {/* 2. Trash bin */}
-                          {currentUserRole !== "guru_sekolah" && (
+                          {currentUserRole !== "guru SMP" && (
                             <button
                               onClick={() => handleDeleteClick(s)}
                               className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50/55 rounded-full transition-all cursor-pointer"

@@ -292,24 +292,10 @@ async function startServer() {
 
   // API Route for Admin Login
   app.post("/api/login", (req, res) => {
-    const { username, password } = req.body;
-    if (username === "angie.seprisa" && password === "pssleman") {
-      res.json({
-        success: true,
-        message: "Login berhasil",
-        token: "session_token_admin_pp_almuttaqin_2026",
-        user: {
-          username: "angie.seprisa",
-          role: "admin",
-          name: "Angie Seprisa"
-        }
-      });
-    } else {
-      res.status(401).json({
-        success: false,
-        message: "ID Pengguna atau Password salah!"
-      });
-    }
+    res.status(401).json({
+      success: false,
+      message: "Silakan gunakan login langsung melalui database."
+    });
   });
 
   // Vite middleware for development
