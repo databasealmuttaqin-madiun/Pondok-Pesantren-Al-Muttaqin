@@ -72,7 +72,7 @@ export default function App() {
   const [mobilePelanggaranOpen, setMobilePelanggaranOpen] = useState(false);
   const [mobileManajemenOpen, setMobileManajemenOpen] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
-  const [listFilters, setListFilters] = useState<{ category?: string; status?: string }>({});
+  const [listFilters, setListFilters] = useState<{ category?: string; status?: string; class?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState<SantriData[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -2149,7 +2149,10 @@ export default function App() {
                 onUpdateStatus={handleUpdateStudentStatus}
                 initialFilterCategory={listFilters.category || "All"}
                 initialFilterStatus={listFilters.status || "All"}
+                initialFilterClass={listFilters.class || "All"}
                 currentUserRole={userRole}
+                schoolClasses={schoolClasses}
+                recitationClasses={recitationClasses}
               />
             )}
 

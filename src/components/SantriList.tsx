@@ -11,7 +11,10 @@ interface SantriListProps {
   onUpdateStatus: (studentIdOrNik: number | string, newStatus: "Aktif" | "Sakit" | "Pulang" | "Haid") => Promise<void>;
   initialFilterCategory?: string;
   initialFilterStatus?: string;
+  initialFilterClass?: string;
   currentUserRole?: string;
+  schoolClasses?: string[];
+  recitationClasses?: string[];
 }
 
 // Helper to infer gender based on common Indonesian female name keywords for authentic visual parity with the mockup screen
@@ -101,10 +104,14 @@ export default function SantriList({
   onUpdateStatus, 
   initialFilterCategory = "All", 
   initialFilterStatus = "All",
-  currentUserRole
+  initialFilterClass = "All",
+  currentUserRole,
+  schoolClasses,
+  recitationClasses
 }: SantriListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>(initialFilterCategory);
+  const [filterClass, setFilterClass] = useState<string>(initialFilterClass);
   const [filterDaerah, setFilterDaerah] = useState<string>("All");
   const [filterGender, setFilterGender] = useState<string>("All");
   const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus);
@@ -113,6 +120,87 @@ export default function SantriList({
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<SantriData | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewTab, setPreviewTab] = useState<"formulir" | "card">("formulir");
+
+  // Keep filter state synchronized if parent props update
+  React.useEffect(() => {
+    if (initialFilterCategory !== undefined) setFilterCategory(initialFilterCategory);
+  }, [initialFilterCategory]);
+
+  React.useEffect(() => {
+    if (initialFilterStatus !== undefined) setFilterStatus(initialFilterStatus);
+  }, [initialFilterStatus]);
+
+  React.useEffect(() => {
+    if (initialFilterClass !== undefined) setFilterClass(initialFilterClass);
+  }, [initialFilterClass]);
+
+  // Extract unique school classes & recitation classes from props, localStorage, and current students
+  const availableSchoolClasses = React.useMemo(() => {
+    let storedSchool: string[] = [];
+    try {
+      storedSchool = JSON.parse(localStorage.getItem("manajemen_school_classes") || "[]");
+    } catch {}
+    const set = new Set<string>();
+    (schoolClasses || []).forEach((c) => c && set.add(c.trim()));
+    storedSchool.forEach((c) => c && set.add(c.trim()));
+    students.forEach((s) => {
+      if (s.kelas_sekolah && s.kelas_sekolah.trim()) set.add(s.kelas_sekolah.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+  }, [schoolClasses, students]);
+
+  const availableRecitationClasses = React.useMemo(() => {
+    let storedRecitation: string[] = [];
+    try {
+      storedRecitation = JSON.parse(localStorage.getItem("manajemen_recitation_classes") || "[]");
+    } catch {}
+    const set = new Set<string>();
+    (recitationClasses || []).forEach((c) => c && set.add(c.trim()));
+    storedRecitation.forEach((c) => c && set.add(c.trim()));
+    students.forEach((s) => {
+      if (s.kelas_pengajian && s.kelas_pengajian.trim()) set.add(s.kelas_pengajian.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+  }, [recitationClasses, students]);
+
+  // Build searchable filter options with counts
+  const classFilterOptions = React.useMemo(() => {
+    const unassignedCount = students.filter(s => !s.kelas_sekolah && !s.kelas_pengajian).length;
+    const opts: { value: string; label: string }[] = [
+      { value: "All", label: `Semua Kelas (${students.length})` },
+    ];
+
+    if (unassignedCount > 0) {
+      opts.push({
+        value: "none",
+        label: `Belum Ada Kelas (${unassignedCount})`,
+      });
+    }
+
+    if (availableSchoolClasses.length > 0) {
+      availableSchoolClasses.forEach((cls) => {
+        const count = students.filter(s => (s.kelas_sekolah || "").trim().toLowerCase() === cls.toLowerCase()).length;
+        const cleanName = cls.toLowerCase().startsWith("kelas") ? cls : `Kelas ${cls}`;
+        opts.push({
+          value: `sekolah:${cls}`,
+          label: `🏫 ${cleanName} - Sekolah (${count})`,
+        });
+      });
+    }
+
+    if (availableRecitationClasses.length > 0) {
+      availableRecitationClasses.forEach((cls) => {
+        const count = students.filter(s => (s.kelas_pengajian || "").trim().toLowerCase() === cls.toLowerCase()).length;
+        const cleanName = cls.toLowerCase().startsWith("kelas") ? cls : `Kelas ${cls}`;
+        opts.push({
+          value: `pengajian:${cls}`,
+          label: `📖 ${cleanName} - Pengajian (${count})`,
+        });
+      });
+    }
+
+    return opts;
+  }, [availableSchoolClasses, availableRecitationClasses, students]);
 
   // Filter students based on search query and category/daerah selections
   const filteredStudents = students.filter((s) => {
@@ -128,7 +216,27 @@ export default function SantriList({
     const matchesGender = filterGender === "All" || s.jenis_kelamin === filterGender;
     const matchesStatus = filterStatus === "All" || (s.status || "Aktif") === filterStatus;
 
-    return matchesSearch && matchesCategory && matchesDaerah && matchesGender && matchesStatus;
+    const matchesClass = (() => {
+      if (filterClass === "All") return true;
+      if (filterClass === "none") {
+        return !s.kelas_sekolah && !s.kelas_pengajian;
+      }
+      if (filterClass.startsWith("sekolah:")) {
+        const target = filterClass.slice(8).trim().toLowerCase();
+        return (s.kelas_sekolah || "").trim().toLowerCase() === target;
+      }
+      if (filterClass.startsWith("pengajian:")) {
+        const target = filterClass.slice(10).trim().toLowerCase();
+        return (s.kelas_pengajian || "").trim().toLowerCase() === target;
+      }
+      const target = filterClass.trim().toLowerCase();
+      return (
+        (s.kelas_sekolah || "").trim().toLowerCase() === target ||
+        (s.kelas_pengajian || "").trim().toLowerCase() === target
+      );
+    })();
+
+    return matchesSearch && matchesCategory && matchesClass && matchesDaerah && matchesGender && matchesStatus;
   });
 
   // Extract unique regions/daerah for filter dropdown
@@ -149,6 +257,9 @@ export default function SantriList({
       "NIK",
       "NISN",
       "NPSN",
+      "Kamar",
+      "Kelas Sekolah",
+      "Kelas Pengajian",
       "Tempat Lahir",
       "Tanggal Lahir",
       "Alamat",
@@ -175,6 +286,9 @@ export default function SantriList({
       `'${s.nik}`,
       s.nisn ? `'${s.nisn}` : "",
       s.npsn ? `'${s.npsn}` : "",
+      `"${(s.kamar || "").replace(/"/g, '""')}"`,
+      `"${(s.kelas_sekolah || "").replace(/"/g, '""')}"`,
+      `"${(s.kelas_pengajian || "").replace(/"/g, '""')}"`,
       s.tempat_lahir,
       s.tanggal_lahir,
       `"${s.alamat.replace(/"/g, '""')}"`,
@@ -312,12 +426,16 @@ export default function SantriList({
       {/* Search & Filter Header Card */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
         <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-          <h3 className="font-bold text-slate-900 dark:text-white text-base">Filter</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+            <Filter className="w-4 h-4 text-blue-600" />
+            <span>Filter Data Santri</span>
+          </h3>
           <button 
             type="button"
             onClick={() => {
               setSearchQuery("");
               setFilterCategory("All");
+              setFilterClass("All");
               setFilterDaerah("All");
               setFilterGender("All");
               setFilterStatus("All");
@@ -328,7 +446,7 @@ export default function SantriList({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {/* Pencarian */}
           <div className="space-y-1.5">
             <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">Pencarian</label>
@@ -342,6 +460,22 @@ export default function SantriList({
                 className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400"
               />
             </div>
+          </div>
+
+          {/* Kelas Filter */}
+          <div className="space-y-1.5">
+            <label className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+              <span>Kelas</span>
+              {filterClass !== "All" && (
+                <span className="inline-block w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+              )}
+            </label>
+            <SearchableSelect
+              value={filterClass}
+              onChange={setFilterClass}
+              options={classFilterOptions}
+              placeholder="Semua Kelas"
+            />
           </div>
 
           {/* Gender Filter */}
@@ -472,7 +606,7 @@ export default function SantriList({
               <thead>
                 <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-500 uppercase bg-slate-50/50 select-none tracking-wider">
                   <th className="p-4 py-3.5 pl-6">NAMA LENGKAP</th>
-                  <th className="p-4 py-3.5">KAMAR & PENGAJIAN</th>
+                  <th className="p-4 py-3.5">KAMAR & KELAS</th>
                   <th className="p-4 py-3.5">KATEGORI</th>
                   <th className="p-4 py-3.5">ALAMAT SAMBUNG</th>
                   <th className="p-4 py-3.5">STATUS</th>
@@ -531,15 +665,27 @@ export default function SantriList({
                         </div>
                       </td>
 
-                      {/* Kamar & Pengajian (representing policy amount / description) */}
+                      {/* Kamar & Kelas (Sekolah & Pengajian) */}
                       <td className="p-4 py-3 whitespace-nowrap">
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-1">
                           <span className="font-semibold text-slate-800 text-xs">
                             {s.kamar ? `🛏️ ${s.kamar}` : <span className="text-slate-400 font-normal">Belum Set Kamar</span>}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                            {s.kelas_pengajian ? `📖 ${s.kelas_pengajian}` : "Tanpa Kelas Ngaji"}
-                          </span>
+                          <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+                            {s.kelas_sekolah && (
+                              <span className="bg-sky-50 text-sky-700 font-semibold px-1.5 py-0.5 rounded border border-sky-200/60" title="Kelas Sekolah Formal">
+                                🏫 {s.kelas_sekolah}
+                              </span>
+                            )}
+                            {s.kelas_pengajian && (
+                              <span className="bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded border border-emerald-200/60" title="Kelas Pengajian Pondok">
+                                📖 {s.kelas_pengajian}
+                              </span>
+                            )}
+                            {!s.kelas_sekolah && !s.kelas_pengajian && (
+                              <span className="text-slate-400 font-normal">Tanpa Kelas</span>
+                            )}
+                          </div>
                         </div>
                       </td>
 
