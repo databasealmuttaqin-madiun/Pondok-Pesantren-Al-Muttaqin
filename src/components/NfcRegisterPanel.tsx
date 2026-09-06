@@ -1,7 +1,7 @@
 import { PageHeader } from './ui/PageHeader';
 import React, { useState, useEffect, useRef } from "react";
 import { SantriData } from "../supabaseClient";
-import { Fingerprint, Search, User, Home, HelpCircle, Check, AlertTriangle, Trash2, Shield, RefreshCw, Cpu, Wifi, Usb, Radio, ArrowRightLeft, Copy, Sparkles, CheckCircle2 } from "lucide-react";
+import { Fingerprint, Search, User, Home, HelpCircle, Check, AlertTriangle, Trash2, Shield, RefreshCw, Cpu, Wifi, Usb, Radio, ArrowRightLeft, Copy, Sparkles, CheckCircle2, X } from "lucide-react";
 import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
 import NfcUidConverterModal from "./NfcUidConverterModal";
@@ -127,9 +127,22 @@ export default function NfcRegisterPanel({
   // Assignment states for unregistered cards
   const [selectedRoom, setSelectedRoom] = useState<string>("");
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [selectedStudent, setSelectedStudent] = useState<SantriData | null>(null);
   const [assignSearch, setAssignSearch] = useState<string>("");
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Search filter for Registered Database Tab
   const [dbSearch, setDbSearch] = useState<string>("");
@@ -260,22 +273,35 @@ export default function NfcRegisterPanel({
     if (!res.matchedStudent) {
       setSelectedRoom("");
       setSelectedStudentId("");
+      setSelectedStudent(null);
+      setAssignSearch("");
     } else {
       setSelectedRoom(res.matchedStudent.kamar || "");
-      setSelectedStudentId(String(res.matchedStudent.id));
+      setSelectedStudentId(String(res.matchedStudent.id ?? res.matchedStudent.nik));
+      setSelectedStudent(res.matchedStudent);
+      setAssignSearch(res.matchedStudent.nama_lengkap);
     }
+  };
+
+  // Select student handler
+  const handleSelectStudent = (s: SantriData) => {
+    setSelectedStudent(s);
+    setSelectedStudentId(String(s.id ?? s.nik));
+    setAssignSearch(s.nama_lengkap);
+    setIsDropdownOpen(false);
   };
 
   // Trigger registration to database
   const handleAssignCard = async () => {
     if (!scannedCode) return;
-    if (!selectedStudentId) {
-      alert("Harap pilih nama santri terlebih dahulu.");
+    const target = selectedStudent || students.find(s => String(s.id) === selectedStudentId || (s.nik && s.nik === selectedStudentId));
+    if (!target) {
+      alert("Harap cari dan pilih nama santri terlebih dahulu.");
       return;
     }
 
     setIsRegistering(true);
-    const studentId = parseInt(selectedStudentId, 10);
+    const studentId = Number(target.id) || (target.id as any);
     const success = await onUpdateNfc(studentId, scannedCode);
     
     setIsRegistering(false);
@@ -283,6 +309,8 @@ export default function NfcRegisterPanel({
       // Clear form after successful registration
       setSelectedRoom("");
       setSelectedStudentId("");
+      setSelectedStudent(null);
+      setAssignSearch("");
     }
   };
 
@@ -302,8 +330,16 @@ export default function NfcRegisterPanel({
 
   // Get student list filtered by the selected room and search text (for assignment form)
   const filteredStudentsForAssign = students.filter((s) => {
-    const matchRoom = selectedRoom ? (s.kamar || "").trim() === selectedRoom.trim() : true;
-    const matchSearch = assignSearch ? (s.nama_lengkap || "").toLowerCase().includes(assignSearch.toLowerCase()) || (s.kamar || "").toLowerCase().includes(assignSearch.toLowerCase()) : true;
+    const matchRoom = selectedRoom ? (s.kamar || "").trim().toLowerCase() === selectedRoom.trim().toLowerCase() : true;
+    const query = assignSearch.trim().toLowerCase();
+    const matchSearch = query
+      ? (s.nama_lengkap || "").toLowerCase().includes(query) ||
+        (s.nama_panggilan || "").toLowerCase().includes(query) ||
+        (s.nik || "").toLowerCase().includes(query) ||
+        (s.kamar || "").toLowerCase().includes(query) ||
+        (s.kelas_sekolah || "").toLowerCase().includes(query) ||
+        (s.kelas_pengajian || "").toLowerCase().includes(query)
+      : true;
     return matchRoom && matchSearch;
   });
 
@@ -551,13 +587,14 @@ export default function NfcRegisterPanel({
                         {/* Step 1: Select Room (kamar) */}
                         <div className="space-y-1">
                           <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                            1. Pilih Kamar / Rayon
+                            1. Filter Kamar (Opsional)
                           </label>
                           <select
                             value={selectedRoom}
                             onChange={(e) => {
                               setSelectedRoom(e.target.value);
-                              setSelectedStudentId(""); // reset selected student when room changes
+                              setSelectedStudentId("");
+                              setSelectedStudent(null);
                             }}
                             className="w-full text-xs font-medium px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-white transition-all shadow-inner"
                           >
@@ -571,56 +608,164 @@ export default function NfcRegisterPanel({
                         </div>
 
                         {/* Step 2: Search and Select Student */}
-                        <div className="space-y-1 relative">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                            2. Cari & Pilih Santri
-                          </label>
+                        <div className="space-y-1 relative" ref={dropdownRef}>
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                              2. Cari & Pilih Santri <span className="text-rose-500">*</span>
+                            </label>
+                            {selectedStudent && (
+                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Terpilih
+                              </span>
+                            )}
+                          </div>
+                          
                           <div className="relative w-full">
                             <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
                               <Search className="w-3.5 h-3.5" />
                             </span>
                             <input
                               type="text"
-                              placeholder="Ketik nama santri..."
+                              placeholder="Ketik nama lengkap / panggilan / NIK..."
                               value={assignSearch}
                               onChange={(e) => {
                                 setAssignSearch(e.target.value);
                                 setIsDropdownOpen(true);
-                                setSelectedStudentId("");
+                                if (selectedStudent && e.target.value !== selectedStudent.nama_lengkap) {
+                                  setSelectedStudent(null);
+                                  setSelectedStudentId("");
+                                }
                               }}
                               onFocus={() => setIsDropdownOpen(true)}
-                              onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
-                              className="w-full text-xs font-medium pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-white transition-all shadow-inner"
+                              onClick={() => setIsDropdownOpen(true)}
+                              className="w-full text-xs font-medium pl-9 pr-8 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-white transition-all shadow-inner"
                               required={!selectedStudentId}
                             />
+                            {assignSearch && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssignSearch("");
+                                  setSelectedStudent(null);
+                                  setSelectedStudentId("");
+                                  setIsDropdownOpen(false);
+                                }}
+                                className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                title="Hapus pencarian"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             
                             {isDropdownOpen && (
-                              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
+                              <div 
+                                onMouseDown={(e) => e.preventDefault()}
+                                className="absolute z-20 w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800"
+                              >
                                 {filteredStudentsForAssign.length > 0 ? (
-                                  filteredStudentsForAssign.map((s) => {
-                                    const isSelected = selectedStudentId === String(s.id);
+                                  filteredStudentsForAssign.slice(0, 40).map((s) => {
+                                    const isSelected = selectedStudentId === String(s.id ?? s.nik);
                                     return (
                                       <div
-                                        key={s.id}
-                                        onClick={() => {
-                                          setSelectedStudentId(String(s.id));
-                                          setAssignSearch(`${s.nama_lengkap} ${s.kamar ? `(Kamar: ${s.kamar})` : ""}`);
-                                          setIsDropdownOpen(false);
+                                        key={s.id ?? s.nik}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          handleSelectStudent(s);
                                         }}
-                                        className={`p-2.5 text-xs font-semibold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-0 ${isSelected ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" : "text-slate-700 dark:text-slate-300"}`}
+                                        onClick={() => handleSelectStudent(s)}
+                                        className={`p-2.5 text-xs cursor-pointer transition-colors flex items-center justify-between gap-2.5 ${
+                                          isSelected 
+                                            ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold" 
+                                            : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                        }`}
                                       >
-                                        {s.nama_lengkap} <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">{s.kamar ? `(Kamar: ${s.kamar})` : ""}</span>
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs shrink-0 border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                            {s.foto ? (
+                                              <img src={s.foto} alt="" className="w-full h-full object-cover" />
+                                            ) : (
+                                              <span>{s.jenis_kelamin === "P" ? "🧕" : "👳"}</span>
+                                            )}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="font-semibold text-slate-900 dark:text-white truncate">
+                                              {s.nama_lengkap}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5 truncate">
+                                              <span>{s.kategori}</span>
+                                              {s.kamar && <span>• Kamar: {s.kamar}</span>}
+                                              {s.kelas_sekolah && <span>• {s.kelas_sekolah}</span>}
+                                              {s.nik && <span className="font-mono">• NIK: {s.nik}</span>}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {isSelected ? (
+                                          <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
+                                            <Check className="w-3 h-3" />
+                                          </div>
+                                        ) : s.nfc_id ? (
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium shrink-0">
+                                            Ada Kartu
+                                          </span>
+                                        ) : null}
                                       </div>
                                     );
                                   })
                                 ) : (
-                                  <div className="p-3 text-xs text-center text-slate-500 font-medium">Tidak ada nama santri yang cocok</div>
+                                  <div className="p-4 text-xs text-center text-slate-500 font-medium">
+                                    Tidak ada nama santri yang cocok
+                                  </div>
                                 )}
                               </div>
                             )}
                           </div>
                         </div>
                       </div>
+
+                      {/* Selected Student Confirmation Card */}
+                      {selectedStudent && (
+                        <div className="bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/60 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs animate-slide-up">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center text-xl shrink-0 border border-emerald-200 dark:border-emerald-800 overflow-hidden shadow-xs">
+                              {selectedStudent.foto ? (
+                                <img src={selectedStudent.foto} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <span>{selectedStudent.jenis_kelamin === "P" ? "🧕" : "👳"}</span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9.5px] uppercase font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded">
+                                  Santri Terpilih
+                                </span>
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                  {selectedStudent.kategori}
+                                </span>
+                              </div>
+                              <div className="text-sm font-bold text-slate-900 dark:text-white truncate mt-0.5">
+                                {selectedStudent.nama_lengkap}
+                              </div>
+                              <div className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-2 flex-wrap">
+                                <span>Kamar: <strong className="text-slate-800 dark:text-slate-200">{selectedStudent.kamar || "Belum diplot"}</strong></span>
+                                {selectedStudent.kelas_sekolah && <span>• Kelas: <strong>{selectedStudent.kelas_sekolah}</strong></span>}
+                                {selectedStudent.nik && <span>• NIK: <span className="font-mono">{selectedStudent.nik}</span></span>}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedStudent(null);
+                              setSelectedStudentId("");
+                              setAssignSearch("");
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900 rounded-xl transition-all shrink-0 cursor-pointer"
+                          >
+                            Ganti Santri
+                          </button>
+                        </div>
+                      )}
 
                       {/* Guidance note */}
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-3.5 rounded-xl flex items-start gap-2">
@@ -647,6 +792,8 @@ export default function NfcRegisterPanel({
                               <RefreshCw className="w-4 h-4 animate-spin" />
                               Menyinkronkan ke Database...
                             </span>
+                          ) : selectedStudent ? (
+                            `Hubungkan & Daftarkan Kartu untuk ${selectedStudent.nama_lengkap}`
                           ) : (
                             "Hubungkan & Daftarkan Kartu ini"
                           )}

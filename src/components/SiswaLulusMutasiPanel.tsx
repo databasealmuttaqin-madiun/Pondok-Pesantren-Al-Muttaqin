@@ -115,27 +115,16 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
   // Active Student Selection Search
   const [activeSearch, setActiveSearch] = useState("");
 
-  // Form Fields
+  // Form Fields (simplified: Nama & Alasan Mutasi/Lulus)
   const [formNama, setFormNama] = useState("");
+  const [formAlasan, setFormAlasan] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState<SantriData | null>(null);
+
+  // Background/fallback metadata fields (auto-populated from active student or existing record)
   const [formNik, setFormNik] = useState("");
   const [formNisn, setFormNisn] = useState("");
   const [formGender, setFormGender] = useState<"L" | "P">("L");
   const [formKategori, setFormKategori] = useState<"SMP" | "SMA" | "Reguler">("SMP");
-  
-  // Lulus Form Fields
-  const [formTahunLulus, setFormTahunLulus] = useState(new Date().getFullYear().toString());
-  const [formTanggalLulus, setFormTanggalLulus] = useState(new Date().toISOString().split("T")[0]);
-  const [formNoIjazah, setFormNoIjazah] = useState("");
-  const [formLanjutanStudi, setFormLanjutanStudi] = useState("");
-  
-  // Mutasi Form Fields
-  const [formJenisMutasi, setFormJenisMutasi] = useState<"Pindah Sekolah" | "Pindah Pondok" | "Keluar/Berhenti" | "Lainnya">("Pindah Sekolah");
-  const [formTanggalMutasi, setFormTanggalMutasi] = useState(new Date().toISOString().split("T")[0]);
-  const [formTujuanMutasi, setFormTujuanMutasi] = useState("");
-  const [formAlasanMutasi, setFormAlasanMutasi] = useState("");
-  const [formNoSuratMutasi, setFormNoSuratMutasi] = useState("");
-  
-  const [formKeterangan, setFormKeterangan] = useState("");
 
   // Load real data from Supabase
   useEffect(() => {
@@ -229,21 +218,20 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
   // Select student from dropdown in add form
   const handleSelectStudentFromDropdown = (studentId: string) => {
     setSelectedStudentId(studentId);
-    if (!studentId) return;
+    if (!studentId) {
+      setSelectedStudent(null);
+      return;
+    }
     const student = activeStudents.find(
       (s) => String(s.id) === studentId || s.nik === studentId
     );
     if (student) {
+      setSelectedStudent(student);
       setFormNama(student.nama_lengkap);
       setFormNik(student.nik);
       setFormNisn(student.nisn || "");
       setFormGender(student.jenis_kelamin === "P" ? "P" : "L");
       setFormKategori(student.kategori);
-      setFormKeterangan(
-        `Diambil dari data siswa aktif (Kamar: ${student.kamar || "-"}, Kelas: ${
-          student.kelas_sekolah || student.kelas_pengajian || "-"
-        })`
-      );
     }
   };
 
@@ -251,35 +239,29 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
   const handleSelectActiveStudent = (student: SantriData) => {
     setShowSelectActiveModal(false);
     setEditingItem(null);
+    setSelectedStudent(student);
     setSelectedStudentId(String(student.id || student.nik));
     setFormNama(student.nama_lengkap);
     setFormNik(student.nik);
     setFormNisn(student.nisn || "");
     setFormGender(student.jenis_kelamin === "P" ? "P" : "L");
     setFormKategori(student.kategori);
-    setFormKeterangan(`Diubah dari siswa aktif (Kamar: ${student.kamar || "-"}, Kelas: ${student.kelas_sekolah || student.kelas_pengajian || "-"})`);
+    setFormAlasan("");
     setShowAddModal(true);
   };
 
   // Open new add modal
   const handleOpenAddModal = () => {
     setEditingItem(null);
+    setSelectedStudent(null);
     setSelectedStudentId("");
     setFormNama("");
+    setFormAlasan("");
     setFormNik("");
     setFormNisn("");
     setFormGender("L");
     setFormKategori("SMP");
-    setFormTahunLulus(new Date().getFullYear().toString());
-    setFormTanggalLulus(new Date().toISOString().split("T")[0]);
-    setFormNoIjazah("");
-    setFormLanjutanStudi("");
-    setFormJenisMutasi("Pindah Sekolah");
-    setFormTanggalMutasi(new Date().toISOString().split("T")[0]);
-    setFormTujuanMutasi("");
-    setFormAlasanMutasi("");
-    setFormNoSuratMutasi("");
-    setFormKeterangan("");
+    setShowPredictions(false);
     setShowAddModal(true);
   };
 
@@ -287,46 +269,60 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
   const handleOpenEditModal = (item: SiswaLulus | SiswaMutasi) => {
     setEditingItem(item);
     setFormNama(item.nama_lengkap);
-    setFormNik(item.nik);
+    setFormNik(item.nik || "");
     setFormNisn(item.nisn || "");
-    setFormGender(item.jenis_kelamin);
-    setFormKategori(item.kategori);
-    setFormKeterangan(item.keterangan || "");
+    setFormGender(item.jenis_kelamin || "L");
+    setFormKategori(item.kategori || "SMP");
 
     if (viewMode === "lulus") {
-      const l = item as SiswaLulus;
-      setFormTahunLulus(l.tahun_lulus || new Date().getFullYear().toString());
-      setFormTanggalLulus(l.tanggal_lulus || "");
-      setFormNoIjazah(l.no_ijazah || "");
-      setFormLanjutanStudi(l.lanjutan_studi || "");
+      const l = item as any;
+      setFormAlasan(l.alasan_lulus || l.keterangan || l.lanjutan_studi || "");
     } else {
-      const m = item as SiswaMutasi;
-      setFormJenisMutasi(m.jenis_mutasi || "Pindah Sekolah");
-      setFormTanggalMutasi(m.tanggal_mutasi || "");
-      setFormTujuanMutasi(m.tujuan_mutasi || "");
-      setFormAlasanMutasi(m.alasan_mutasi || "");
-      setFormNoSuratMutasi(m.no_surat_mutasi || "");
+      const m = item as any;
+      setFormAlasan(m.alasan_mutasi || m.keterangan || "");
     }
+    const matched = activeStudents.find(
+      (s) => s.nik === item.nik || s.nama_lengkap.trim().toLowerCase() === item.nama_lengkap.trim().toLowerCase()
+    ) || null;
+    setSelectedStudent(matched);
+    setSelectedStudentId(matched ? String(matched.id || matched.nik) : "");
+    setShowPredictions(false);
     setShowAddModal(true);
   };
 
   // Save submit
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formNama.trim()) return;
+    if (!formNama.trim()) {
+      alert("Harap masukkan nama siswa.");
+      return;
+    }
+    if (!formAlasan.trim()) {
+      alert(`Harap masukkan alasan ${viewMode === "lulus" ? "kelulusan" : "mutasi"}.`);
+      return;
+    }
+
+    const matchedStudent = selectedStudent || activeStudents.find(
+      (s) => s.nama_lengkap.trim().toLowerCase() === formNama.trim().toLowerCase()
+    );
+
+    const studentNik = matchedStudent?.nik || formNik || (editingItem ? editingItem.nik : `ID_${Date.now()}`);
+    const studentGender = matchedStudent?.jenis_kelamin || formGender || (editingItem ? editingItem.jenis_kelamin : "L");
+    const studentKategori = matchedStudent?.kategori || formKategori || (editingItem ? editingItem.kategori : "SMP");
+    const studentNisn = matchedStudent?.nisn || formNisn || (editingItem ? editingItem.nisn : undefined);
 
     if (viewMode === "lulus") {
       const payload: Partial<SiswaLulus> = {
         nama_lengkap: formNama.trim(),
-        nik: formNik.trim(),
-        nisn: formNisn.trim() || undefined,
-        jenis_kelamin: formGender,
-        kategori: formKategori,
-        tahun_lulus: formTahunLulus.trim(),
-        tanggal_lulus: formTanggalLulus,
-        no_ijazah: formNoIjazah.trim() || undefined,
-        lanjutan_studi: formLanjutanStudi.trim() || undefined,
-        keterangan: formKeterangan.trim() || undefined,
+        nik: studentNik,
+        nisn: studentNisn,
+        jenis_kelamin: studentGender,
+        kategori: studentKategori,
+        tahun_lulus: (editingItem as SiswaLulus)?.tahun_lulus || new Date().getFullYear().toString(),
+        tanggal_lulus: (editingItem as SiswaLulus)?.tanggal_lulus || new Date().toISOString().split("T")[0],
+        no_ijazah: (editingItem as SiswaLulus)?.no_ijazah || undefined,
+        lanjutan_studi: (editingItem as SiswaLulus)?.lanjutan_studi || formAlasan.trim() || undefined,
+        keterangan: formAlasan.trim(),
       };
 
       if (editingItem) {
@@ -386,16 +382,16 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     } else {
       const payload: Partial<SiswaMutasi> = {
         nama_lengkap: formNama.trim(),
-        nik: formNik.trim(),
-        nisn: formNisn.trim() || undefined,
-        jenis_kelamin: formGender,
-        kategori: formKategori,
-        jenis_mutasi: formJenisMutasi,
-        tanggal_mutasi: formTanggalMutasi,
-        tujuan_mutasi: formTujuanMutasi.trim(),
-        alasan_mutasi: formAlasanMutasi.trim(),
-        no_surat_mutasi: formNoSuratMutasi.trim() || undefined,
-        keterangan: formKeterangan.trim() || undefined,
+        nik: studentNik,
+        nisn: studentNisn,
+        jenis_kelamin: studentGender,
+        kategori: studentKategori,
+        jenis_mutasi: (editingItem as SiswaMutasi)?.jenis_mutasi || "Pindah Sekolah",
+        tanggal_mutasi: (editingItem as SiswaMutasi)?.tanggal_mutasi || new Date().toISOString().split("T")[0],
+        tujuan_mutasi: (editingItem as SiswaMutasi)?.tujuan_mutasi || formAlasan.trim() || "-",
+        alasan_mutasi: formAlasan.trim(),
+        no_surat_mutasi: (editingItem as SiswaMutasi)?.no_surat_mutasi || undefined,
+        keterangan: formAlasan.trim(),
       };
 
       if (editingItem) {
@@ -794,8 +790,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                     <th className="py-3.5 px-4">NIK / NISN</th>
                     <th className="py-3.5 px-4">Kategori</th>
                     <th className="py-3.5 px-4">Thn & Tgl Lulus</th>
-                    <th className="py-3.5 px-4">No. Ijazah</th>
-                    <th className="py-3.5 px-4">Lanjutan Studi / Pekerjaan</th>
+                    <th className="py-3.5 px-4">Alasan / Keterangan Lulus</th>
                     <th className="py-3.5 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -827,11 +822,11 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                         <div className="font-bold text-slate-800 dark:text-slate-200">Tahun {item.tahun_lulus}</div>
                         <div className="text-[10px] text-slate-400">{item.tanggal_lulus}</div>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-700 dark:text-slate-300">
-                        {item.no_ijazah || <span className="text-slate-400 font-sans italic">-</span>}
-                      </td>
                       <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
-                        {item.lanjutan_studi || <span className="text-slate-400 italic">-</span>}
+                        <div className="font-medium max-w-xs truncate" title={item.keterangan || item.lanjutan_studi || "-"}>
+                          {item.keterangan || item.lanjutan_studi || <span className="text-slate-400 italic">-</span>}
+                        </div>
+                        {item.no_ijazah && <div className="text-[10px] font-mono text-slate-400">Ijazah: {item.no_ijazah}</div>}
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -1031,12 +1026,8 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                           setFormNisn(student.nisn || "");
                           setFormGender(student.jenis_kelamin === "P" ? "P" : "L");
                           setFormKategori(student.kategori);
+                          setSelectedStudent(student);
                           setSelectedStudentId(String(student.id || student.nik));
-                          setFormKeterangan(
-                            `Diambil dari data siswa aktif (Kamar: ${student.kamar || "-"}, Kelas: ${
-                              student.kelas_sekolah || student.kelas_pengajian || "-"
-                            })`
-                          );
                           setShowPredictions(false);
                         }}
                         className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors flex items-center justify-between group"
@@ -1050,7 +1041,9 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                               NIK: {student.nik}
                             </span>
                             <span>•</span>
-                            <span>{student.jenis_kelamin === "P" ? "Siswi (Perempuan)" : "Siswa (Laki-laki)"}</span>
+                            <span>Kamar: {student.kamar || "-"}</span>
+                            <span>•</span>
+                            <span>{student.jenis_kelamin === "P" ? "Siswi" : "Siswa"}</span>
                           </div>
                         </div>
                         <span className="text-[10px] font-extrabold px-2 py-1 rounded-md bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 shrink-0">
@@ -1060,182 +1053,50 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                     ))}
                   </div>
                 )}
+
+                {/* Selected Student Confirmation Card */}
+                {selectedStudent && (
+                  <div className="mt-2 flex items-center justify-between p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <div>
+                        <span className="font-bold">{selectedStudent.nama_lengkap}</span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1.5">
+                          ({selectedStudent.kategori} • Kamar: {selectedStudent.kamar || "-"} • NIK: {selectedStudent.nik})
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedStudent(null);
+                        setSelectedStudentId("");
+                        setFormNama("");
+                      }}
+                      className="text-slate-400 hover:text-rose-600 text-[11px] font-semibold px-2 py-0.5"
+                    >
+                      Ganti
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">NIK (16 digit) *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="NIK siswa"
-                    value={formNik}
-                    onChange={(e) => setFormNik(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">NISN (Opsional)</label>
-                  <input
-                    type="text"
-                    placeholder="NISN"
-                    value={formNisn}
-                    onChange={(e) => setFormNisn(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Jenis Kelamin</label>
-                  <select
-                    value={formGender}
-                    onChange={(e) => setFormGender(e.target.value as "L" | "P")}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                  >
-                    <option value="L">Laki-laki (Siswa)</option>
-                    <option value="P">Perempuan (Siswi)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Kategori</label>
-                  <select
-                    value={formKategori}
-                    onChange={(e) => setFormKategori(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                  >
-                    <option value="SMP">SMP</option>
-                    <option value="SMA">SMA</option>
-                    <option value="Reguler">Reguler</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Specific fields for LULUS */}
-              {viewMode === "lulus" && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tahun Lulus *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Contoh: 2025"
-                        value={formTahunLulus}
-                        onChange={(e) => setFormTahunLulus(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tanggal Lulus</label>
-                      <input
-                        type="date"
-                        value={formTanggalLulus}
-                        onChange={(e) => setFormTanggalLulus(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Nomor Ijazah</label>
-                    <input
-                      type="text"
-                      placeholder="Nomor Ijazah resmi"
-                      value={formNoIjazah}
-                      onChange={(e) => setFormNoIjazah(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-slate-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Lanjutan Studi / Pekerjaan</label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: Universitas Airlangga / Bekerja"
-                      value={formLanjutanStudi}
-                      onChange={(e) => setFormLanjutanStudi(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Specific fields for MUTASI */}
-              {viewMode === "mutasi" && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Jenis Mutasi *</label>
-                      <select
-                        value={formJenisMutasi}
-                        onChange={(e) => setFormJenisMutasi(e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                      >
-                        <option value="Pindah Sekolah">Pindah Sekolah</option>
-                        <option value="Pindah Pondok">Pindah Pondok</option>
-                        <option value="Keluar/Berhenti">Keluar / Berhenti</option>
-                        <option value="Lainnya">Lainnya</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tanggal Mutasi</label>
-                      <input
-                        type="date"
-                        value={formTanggalMutasi}
-                        onChange={(e) => setFormTanggalMutasi(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tujuan Mutasi *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Contoh: SMP Negeri 1 Surabaya / Pondok Gontor"
-                      value={formTujuanMutasi}
-                      onChange={(e) => setFormTujuanMutasi(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Alasan Mutasi</label>
-                      <input
-                        type="text"
-                        placeholder="Alasan mutasi"
-                        value={formAlasanMutasi}
-                        onChange={(e) => setFormAlasanMutasi(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">No. Surat Mutasi</label>
-                      <input
-                        type="text"
-                        placeholder="No. Surat Resmi"
-                        value={formNoSuratMutasi}
-                        onChange={(e) => setFormNoSuratMutasi(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-slate-100"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
+              {/* Field 2: Alasan Mutasi / Alasan Kelulusan */}
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Catatan / Keterangan Tambahan</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  {viewMode === "lulus" ? "Alasan / Keterangan Kelulusan *" : "Alasan Mutasi *"}
+                </label>
                 <textarea
-                  rows={2}
-                  placeholder="Catatan tambahan..."
-                  value={formKeterangan}
-                  onChange={(e) => setFormKeterangan(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100"
+                  required
+                  rows={4}
+                  placeholder={
+                    viewMode === "lulus"
+                      ? "Tuliskan alasan atau keterangan kelulusan siswa (contoh: Telah menyelesaikan kurikulum pendidikan SMP & kepondokan, lulus ujian akhir)..."
+                      : "Tuliskan alasan mutasi siswa (contoh: Pindah sekolah mengikuti orang tua pindah dinas, pindah ke pondok pesantren lain, dsb)..."
+                  }
+                  value={formAlasan}
+                  onChange={(e) => setFormAlasan(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-sky-400 resize-none leading-relaxed"
                 />
               </div>
 
@@ -1363,6 +1224,13 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
 
               {viewMode === "lulus" ? (
                 <>
+                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 rounded-lg">
+                    <span className="text-[10px] text-amber-700 dark:text-amber-300 block font-bold uppercase tracking-wider">Alasan / Keterangan Kelulusan</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs mt-0.5 block leading-relaxed">
+                      {(viewingItem as SiswaLulus).keterangan || (viewingItem as SiswaLulus).lanjutan_studi || "-"}
+                    </span>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Tahun Lulus</span>
@@ -1374,18 +1242,22 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                    <span className="text-[10px] text-slate-400 block font-bold">No. Ijazah Resmi</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaLulus).no_ijazah || "-"}</span>
-                  </div>
-
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                    <span className="text-[10px] text-slate-400 block font-bold">Lanjutan Studi / Pekerjaan</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaLulus).lanjutan_studi || "-"}</span>
-                  </div>
+                  {(viewingItem as SiswaLulus).no_ijazah && (
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-400 block font-bold">No. Ijazah Resmi</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaLulus).no_ijazah}</span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
+                  <div className="p-2.5 bg-sky-50 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-800/40 rounded-lg">
+                    <span className="text-[10px] text-sky-700 dark:text-sky-300 block font-bold uppercase tracking-wider">Alasan Mutasi</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs mt-0.5 block leading-relaxed">
+                      {(viewingItem as SiswaMutasi).alasan_mutasi || (viewingItem as SiswaMutasi).keterangan || "-"}
+                    </span>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Jenis Mutasi</span>
@@ -1397,20 +1269,19 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                    <span className="text-[10px] text-slate-400 block font-bold">Tujuan Mutasi</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).tujuan_mutasi}</span>
-                  </div>
+                  {(viewingItem as SiswaMutasi).tujuan_mutasi && (
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-400 block font-bold">Tujuan Mutasi</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).tujuan_mutasi}</span>
+                    </div>
+                  )}
 
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                    <span className="text-[10px] text-slate-400 block font-bold">Alasan Mutasi</span>
-                    <span className="text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).alasan_mutasi}</span>
-                  </div>
-
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                    <span className="text-[10px] text-slate-400 block font-bold">No. Surat Resmi</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).no_surat_mutasi || "-"}</span>
-                  </div>
+                  {(viewingItem as SiswaMutasi).no_surat_mutasi && (
+                    <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                      <span className="text-[10px] text-slate-400 block font-bold">No. Surat Resmi</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).no_surat_mutasi}</span>
+                    </div>
+                  )}
                 </>
               )}
 

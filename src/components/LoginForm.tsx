@@ -56,6 +56,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           else if (rLower === "guru pondok" || rLower === "guru pondok") userRole = "guru pondok";
           else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru SMP") userRole = "guru SMP";
           else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") userRole = "siswa";
+          else if (rLower === "kantin" || rLower === "petugas kantin") userRole = "kantin";
 
           const inferredGender = user.gender || extra.gender || (
             cleanUsername.includes("siswi") || String(user.nama || "").toLowerCase().includes("siswi") ? "P" : 
@@ -71,7 +72,8 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
             jabatan: user.jabatan || extra.jabatan || (userRole === "admin" || userRole === "super admin" ? "pengurus" : userRole === "guru SMP" ? "guru mapel" : "guru pondok"),
             tugas_kamar: user.tugas_kamar || extra.tugas_kamar || "",
             tugas_kelas_sekolah: user.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
-            tugas_kelas_pengajian: user.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || ""
+            tugas_kelas_pengajian: user.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",
+            tugas_kantin: user.tugas_kantin || extra.tugas_kantin || ""
           };
           
           setIsSuccess(true);
@@ -104,6 +106,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
         else if (rLower === "guru pondok" || rLower === "guru pondok") userRole = "guru pondok";
         else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru SMP") userRole = "guru SMP";
         else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") userRole = "siswa";
+        else if (rLower === "kantin" || rLower === "petugas kantin") userRole = "kantin";
 
         const inferredGender = extra.gender || (
           cleanUsername.includes("siswi") || String(extra.nama_lengkap || "").toLowerCase().includes("siswi") ? "P" : 
@@ -119,13 +122,35 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           jabatan: extra.jabatan || "",
           tugas_kamar: extra.tugas_kamar || "",
           tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
-          tugas_kelas_pengajian: extra.tugas_kelas_pengajian || ""
+          tugas_kelas_pengajian: extra.tugas_kelas_pengajian || "",
+          tugas_kantin: extra.tugas_kantin || ""
         };
         setIsSuccess(true);
         setIsLoading(false);
         localStorage.setItem("admin_token", "session_token_registered_guru");
         localStorage.setItem("admin_user", JSON.stringify(dbUserVal));
         setTimeout(() => onSuccess(dbUserVal), 2200);
+        return;
+      }
+    }
+
+    // Default pre-seeded login for kantin
+    if (cleanUsername === "kantin" || cleanUsername === "kantin1") {
+      if (cleanPassword === "kantin" || cleanPassword === "kantin123" || cleanPassword === "123456" || cleanPassword === "admin") {
+        const kantinUserVal = {
+          username: "kantin",
+          role: "kantin",
+          name: "Petugas Kantin Utama",
+          gender: "Semua",
+          bagian: "kantin",
+          jabatan: "pengelola_kantin",
+          tugas_kantin: "Semua"
+        };
+        setIsSuccess(true);
+        setIsLoading(false);
+        localStorage.setItem("admin_token", "session_token_kantin");
+        localStorage.setItem("admin_user", JSON.stringify(kantinUserVal));
+        setTimeout(() => onSuccess(kantinUserVal), 2200);
         return;
       }
     }

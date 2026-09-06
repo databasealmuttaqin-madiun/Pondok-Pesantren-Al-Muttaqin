@@ -1,5 +1,3 @@
-import { SearchableSelect } from './ui/SearchableSelect';
-import { PageHeader } from './ui/PageHeader';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   AlertTriangle,
@@ -11,39 +9,29 @@ import {
   Trash2,
   Edit3,
   Filter,
-  User,
   Calendar,
   ShieldAlert,
   X,
   ChevronDown,
   UserCheck,
-  Check,
-  Award,
-  AlertCircle,
-  FileText,
   RefreshCw,
+  Database,
+  Info,
+  Copy,
+  Check,
 } from "lucide-react";
 import { supabase, SantriData } from "../supabaseClient";
+import { SearchableSelect } from "./ui/SearchableSelect";
+import { PageHeader } from "./ui/PageHeader";
 
 export interface PelanggaranData {
-  id: string;
-  created_at: string;
-  tanggal: string;
-  santri_id?: number | string;
+  id: number | string;
+  created_at?: string;
   nama_siswa: string;
-  nik?: string;
-  nisn?: string;
-  kamar?: string;
-  kelas_sekolah?: string;
-  kelas_pengajian?: string;
-  jenis_pelanggaran: "Ringan" | "Sedang" | "Berat";
-  kategori: string;
-  nama_pelanggaran: string;
-  poin: number;
-  hukuman: string;
-  status_sanksi: "Belum Ditindak" | "Proses Takzir" | "Selesai Takzir";
-  pencatat: string;
-  catatan?: string;
+  pelanggaran: string;
+  tanggal: string;
+  status: "Belum Selesai" | "Selesai";
+  isLocalOnly?: boolean;
 }
 
 interface PelanggaranPanelProps {
@@ -57,107 +45,17 @@ interface PelanggaranPanelProps {
   currentUser?: any;
 }
 
-const KATEGORI_OPTIONS = [
-  "Kedisiplinan & Waktu",
-  "Perizinan & Kehadiran",
-  "Ketertiban & Kebersihan",
-  "Etika & Akhlak",
-  "Barang Terlarang & Elektronik",
-  "Kelakuan & Perkelahian",
-  "Lainnya",
-];
-
-const PRESET_PELANGGARAN: {
-  nama: string;
-  jenis: "Ringan" | "Sedang" | "Berat";
-  kategori: string;
-  poin: number;
-  hukuman: string;
-}[] = [
-  {
-    nama: "Terlambat Sholat Berjamaah di Masjid",
-    jenis: "Ringan",
-    kategori: "Kedisiplinan & Waktu",
-    poin: 5,
-    hukuman: "Membaca Al-Qur'an 1 Halaman di Teras Masjid",
-  },
-  {
-    nama: "Kamar atau Lemari Berantakan Saat Sidak Kebersihan",
-    jenis: "Ringan",
-    kategori: "Ketertiban & Kebersihan",
-    poin: 5,
-    hukuman: "Membersihkan Kamar & Lorong Sektor",
-  },
-  {
-    nama: "Tidak Memakai Seragam / Atribut Pesantren Sesuai Jadwal",
-    jenis: "Ringan",
-    kategori: "Kedisiplinan & Waktu",
-    poin: 10,
-    hukuman: "Teguran Tertulis & Rapikan Pakaian",
-  },
-  {
-    nama: "Makan/Minum Sambil Berdiri / Tidak Sesuai Adab",
-    jenis: "Ringan",
-    kategori: "Etika & Akhlak",
-    poin: 5,
-    hukuman: "Hafalan Adab Makan & Setor Piket",
-  },
-  {
-    nama: "Kabur / Tidak Mengikuti Pengajian / Madrasah",
-    jenis: "Sedang",
-    kategori: "Perizinan & Kehadiran",
-    poin: 25,
-    hukuman: "Membaca Surat Yasin / Al-Waqi'ah & Melengkapi Catatan",
-  },
-  {
-    nama: "Membawa / Menggunakan HP atau Elektronik Tanpa Izin",
-    jenis: "Sedang",
-    kategori: "Barang Terlarang & Elektronik",
-    poin: 35,
-    hukuman: "Penyitaan HP 1 Bulan & Tugas Piket Khusus",
-  },
-  {
-    nama: "Keluar Area Pesantren Tanpa Surat Izin Resmi",
-    jenis: "Sedang",
-    kategori: "Perizinan & Kehadiran",
-    poin: 30,
-    hukuman: "Bersihkan Teras Masjid & Panggilan Wali Santri",
-  },
-  {
-    nama: "Merokok atau Membawa Rokok/Vape di Lingkungan Pesantren",
-    jenis: "Sedang",
-    kategori: "Barang Terlarang & Elektronik",
-    poin: 40,
-    hukuman: "Membersihkan WC Masjid 3 Hari & Peringatan Tertulis",
-  },
-  {
-    nama: "Keluar Malam Tanpa Izin (Kabur dari Kompleks Pondok)",
-    jenis: "Berat",
-    kategori: "Perizinan & Kehadiran",
-    poin: 75,
-    hukuman: "Skorsing / Pemanggilan Orang Tua & Surat Peringatan II",
-  },
-  {
-    nama: "Berkelahi / Tindak Kekerasan Fisik Antar Santri",
-    jenis: "Berat",
-    kategori: "Kelakuan & Perkelahian",
-    poin: 80,
-    hukuman: "Panggilan Orang Tua + Takzir Khusus Kedisiplinan",
-  },
-  {
-    nama: "Mencuri atau Mengambil Barang/Uang Santri Lain",
-    jenis: "Berat",
-    kategori: "Etika & Akhlak",
-    poin: 100,
-    hukuman: "Mengembalikan Barang + Surat Peringatan Keras (SP III)",
-  },
-  {
-    nama: "Merusak Fasilitas / Inventaris Utama Pesantren",
-    jenis: "Berat",
-    kategori: "Ketertiban & Kebersihan",
-    poin: 60,
-    hukuman: "Mengganti Kerusakan & Denda Poin",
-  },
+const CONTOH_PELANGGARAN_PRESET = [
+  "Terlambat Sholat Berjamaah di Masjid",
+  "Kamar atau Lemari Berantakan Saat Sidak",
+  "Tidak Mengikuti Pengajian / Madrasah",
+  "Membawa HP / Barang Elektronik Tanpa Izin",
+  "Keluar Area Pondok Tanpa Surat Izin Resmi",
+  "Merokok / Membawa Rokok atau Vape",
+  "Keluar Malam Hari Tanpa Izin",
+  "Berkelahi / Tindakan Kekerasan Fisik",
+  "Tidak Mengenakan Busana / Seragam Sesuai Jadwal",
+  "Makan / Minum Sambil Berdiri (Melanggar Adab)",
 ];
 
 export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
@@ -165,10 +63,7 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
   onSwitchMode,
   students = [],
   rooms = [],
-  schoolClasses = [],
-  recitationClasses = [],
   triggerNotification,
-  currentUser,
 }) => {
   const [pelanggaranList, setPelanggaranList] = useState<PelanggaranData[]>(() => {
     const saved = localStorage.getItem("pelanggaran_siswa_data");
@@ -181,22 +76,134 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [rlsErrorDetected, setRlsErrorDetected] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
 
-  // Load from Supabase on mount
-  const fetchPelanggaran = async () => {
-    setIsLoading(true);
+  // Load data dari Supabase tabel pelanggaran (versi ringkas)
+  const fetchPelanggaran = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
-      const { data, error } = await supabase.from("pelanggaran").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("pelanggaran")
+        .select("*")
+        .order("id", { ascending: false });
+
       if (error) {
         console.warn("Gagal memuat tabel pelanggaran Supabase:", error.message);
+        if (error.code === "42501" || error.message.toLowerCase().includes("row-level security")) {
+          setRlsErrorDetected(true);
+        }
       } else if (data) {
-        setPelanggaranList(data);
-        localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(data));
+        setRlsErrorDetected(false);
+        // Normalisasi data dari database
+        const cloudRows: PelanggaranData[] = data.map((row: any) => ({
+          id: row.id,
+          created_at: row.created_at || new Date().toISOString(),
+          nama_siswa: row.nama_siswa || "-",
+          pelanggaran: row.pelanggaran || row.nama_pelanggaran || "-",
+          tanggal: row.tanggal || new Date().toISOString().split("T")[0],
+          status:
+            row.status === "Selesai" || row.status_sanksi === "Selesai Takzir"
+              ? "Selesai"
+              : "Belum Selesai",
+          isLocalOnly: false,
+        }));
+
+        // Pertahankan data lokal yang belum tersinkronisasi ke cloud
+        const saved = localStorage.getItem("pelanggaran_siswa_data");
+        let pendingLocal: PelanggaranData[] = [];
+        if (saved) {
+          try {
+            const parsed: PelanggaranData[] = JSON.parse(saved);
+            pendingLocal = parsed.filter(
+              (item) => item.isLocalOnly && !cloudRows.some(
+                (cr) => cr.nama_siswa === item.nama_siswa && cr.pelanggaran === item.pelanggaran && cr.tanggal === item.tanggal
+              )
+            );
+          } catch {
+            pendingLocal = [];
+          }
+        }
+
+        const merged = [...pendingLocal, ...cloudRows];
+        setPelanggaranList(merged);
+        localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(merged));
       }
     } catch (err) {
       console.warn("Table pelanggaran fallback to localStorage");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
+    }
+  };
+
+  // Fungsi sinkronisasi manual atau otomatis untuk data lokal yang belum masuk ke database Supabase
+  const syncPendingLocalRecords = async () => {
+    const pending = pelanggaranList.filter((item) => item.isLocalOnly);
+    setIsSyncing(true);
+
+    try {
+      // 1. Tes koneksi baca/tulis tabel pelanggaran terlebih dahulu
+      if (pending.length === 0) {
+        await fetchPelanggaran();
+        if (triggerNotification) {
+          triggerNotification("Koneksi database aktif. Seluruh data telah tersinkron!", "success");
+        }
+        return;
+      }
+
+      const recordsToInsert = pending.map((p) => ({
+        nama_siswa: p.nama_siswa,
+        pelanggaran: p.pelanggaran,
+        tanggal: p.tanggal,
+        status: p.status,
+      }));
+
+      // Coba insert dengan select, atau fallback tanpa select
+      let insertRes = await supabase.from("pelanggaran").insert(recordsToInsert).select();
+      if (insertRes.error) {
+        insertRes = await supabase.from("pelanggaran").insert(recordsToInsert);
+      }
+
+      if (!insertRes.error) {
+        setRlsErrorDetected(false);
+        if (triggerNotification) {
+          triggerNotification(
+            `Berhasil menyinkronkan ${pending.length} data pelanggaran lokal ke Supabase!`,
+            "success"
+          );
+        }
+        await fetchPelanggaran(true);
+      } else {
+        console.warn("Gagal sinkron data lokal ke Supabase:", insertRes.error.message);
+        if (
+          insertRes.error.code === "42501" ||
+          insertRes.error.message.toLowerCase().includes("row-level security")
+        ) {
+          setRlsErrorDetected(true);
+        }
+        if (triggerNotification) {
+          triggerNotification(
+            `Sinkronisasi gagal: ${insertRes.error.message}. Pastikan izin RLS telah dinonaktifkan.`,
+            "error"
+          );
+        }
+      }
+    } catch (e: any) {
+      console.warn("Error saat sinkronisasi:", e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleCopySql = () => {
+    const sql = "ALTER TABLE public.pelanggaran DISABLE ROW LEVEL SECURITY;";
+    navigator.clipboard.writeText(sql);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2500);
+    if (triggerNotification) {
+      triggerNotification("Perintah SQL berhasil disalin ke clipboard!", "success");
     }
   };
 
@@ -204,174 +211,257 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
     fetchPelanggaran();
   }, []);
 
-  // Form State for Input Pelanggaran (Supports Multi-Select)
-  const [selectedStudents, setSelectedStudents] = useState<SantriData[]>([]);
+  // Form State: 4 Kolom Utama
+  // 1. Nama Siswa (bisa pilih dari santri atau ketik manual)
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [manualStudentName, setManualStudentName] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
 
-  const handleSelectStudent = (s: SantriData) => {
-    const exists = selectedStudents.some(
-      (item) => (item.id && item.id === s.id) || (item.nik && item.nik === s.nik && item.nama_lengkap === s.nama_lengkap)
-    );
-    if (!exists) {
-      setSelectedStudents([...selectedStudents, s]);
-    }
-    setStudentSearch("");
-  };
+  // 2. Pelanggarannya
+  const [pelanggaranText, setPelanggaranText] = useState("");
 
-  const handleRemoveStudent = (s: SantriData) => {
-    setSelectedStudents(
-      selectedStudents.filter(
-        (item) => !((item.id && item.id === s.id) || (item.nik && item.nik === s.nik && item.nama_lengkap === s.nama_lengkap))
-      )
-    );
-  };
-
+  // 3. Tanggal
   const [tanggal, setTanggal] = useState<string>(() => {
     return new Date().toISOString().split("T")[0];
   });
-  const [jenisPelanggaran, setJenisPelanggaran] = useState<"Ringan" | "Sedang" | "Berat">("Ringan");
-  const [kategori, setKategori] = useState("Kedisiplinan & Waktu");
-  const [namaPelanggaran, setNamaPelanggaran] = useState("");
-  const [poin, setPoin] = useState<number>(10);
-  const [hukuman, setHukuman] = useState("");
-  const [statusSanksi, setStatusSanksi] = useState<"Belum Ditindak" | "Proses Takzir" | "Selesai Takzir">("Belum Ditindak");
-  const [pencatat, setPencatat] = useState<string>(currentUser?.nama || "Pengurus / Keamanan");
-  const [catatan, setCatatan] = useState("");
+
+  // 4. Status (sudah selesai atau belum prosesnya)
+  const [status, setStatus] = useState<"Belum Selesai" | "Selesai">("Belum Selesai");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filters for Rekap Pelanggaran
+  // Filter & Search Rekap List
   const [rekapSearch, setRekapSearch] = useState("");
-  const [filterJenis, setFilterJenis] = useState<string>("semua");
   const [filterStatus, setFilterStatus] = useState<string>("semua");
-  const [filterKamar, setFilterKamar] = useState<string>("semua");
 
   // Edit Modal State
   const [editingRecord, setEditingRecord] = useState<PelanggaranData | null>(null);
 
-  // Auto set recommended points when changing level
-  const handleJenisChange = (jenis: "Ringan" | "Sedang" | "Berat") => {
-    setJenisPelanggaran(jenis);
-    if (jenis === "Ringan") setPoin(10);
-    else if (jenis === "Sedang") setPoin(30);
-    else if (jenis === "Berat") setPoin(75);
+  // Helper untuk mencari data santri berdasarkan nama (untuk display kamar/kelas)
+  const studentMetaMap = useMemo(() => {
+    const map = new Map<string, SantriData>();
+    students.forEach((s) => {
+      if (s.nama_lengkap) map.set(s.nama_lengkap.trim().toLowerCase(), s);
+    });
+    return map;
+  }, [students]);
+
+  // Handle pilih siswa dari dropdown
+  const handleSelectStudent = (s: SantriData) => {
+    if (!selectedStudents.includes(s.nama_lengkap)) {
+      setSelectedStudents([...selectedStudents, s.nama_lengkap]);
+    }
+    setStudentSearch("");
+    setShowStudentDropdown(false);
   };
 
-  // Apply preset to form
-  const handleApplyPreset = (preset: (typeof PRESET_PELANGGARAN)[0]) => {
-    setNamaPelanggaran(preset.nama);
-    setJenisPelanggaran(preset.jenis);
-    setKategori(preset.kategori);
-    setPoin(preset.poin);
-    setHukuman(preset.hukuman);
+  // Handle tambah siswa manual jika nama tidak ada di database
+  const handleAddManualStudent = () => {
+    const trimmed = (studentSearch || manualStudentName).trim();
+    if (trimmed && !selectedStudents.includes(trimmed)) {
+      setSelectedStudents([...selectedStudents, trimmed]);
+      setStudentSearch("");
+      setManualStudentName("");
+      setShowStudentDropdown(false);
+    }
   };
 
-  // Student filtering for selector (excluding already selected students)
-  const filteredStudents = useMemo(() => {
-    const availableStudents = students.filter(
-      (s) =>
-        !selectedStudents.some(
-          (selected) =>
-            (selected.id && selected.id === s.id) ||
-            (selected.nik && selected.nik === s.nik && selected.nama_lengkap === s.nama_lengkap)
-        )
-    );
+  const handleRemoveStudent = (name: string) => {
+    setSelectedStudents(selectedStudents.filter((item) => item !== name));
+  };
 
-    if (!studentSearch.trim()) return availableStudents.slice(0, 10);
+  // Filter kandidat siswa di dropdown
+  const filteredCandidateStudents = useMemo(() => {
+    const available = students.filter((s) => !selectedStudents.includes(s.nama_lengkap));
+    if (!studentSearch.trim()) return available.slice(0, 10);
     const q = studentSearch.toLowerCase().trim();
-    return availableStudents.filter(
-      (s) =>
-        s.nama_lengkap.toLowerCase().includes(q) ||
-        (s.nik && s.nik.includes(q)) ||
-        (s.nisn && s.nisn.includes(q)) ||
-        (s.kamar && s.kamar.toLowerCase().includes(q)) ||
-        (s.kelas_sekolah && s.kelas_sekolah.toLowerCase().includes(q))
-    ).slice(0, 15);
+    return available
+      .filter(
+        (s) =>
+          s.nama_lengkap.toLowerCase().includes(q) ||
+          (s.kamar && s.kamar.toLowerCase().includes(q)) ||
+          (s.kelas_sekolah && s.kelas_sekolah.toLowerCase().includes(q)) ||
+          (s.kelas_pengajian && s.kelas_pengajian.toLowerCase().includes(q))
+      )
+      .slice(0, 15);
   }, [students, studentSearch, selectedStudents]);
 
-  // Submit new Pelanggaran (Batch insert for selected students)
+  // Submit Form Pelanggaran ke Supabase
   const handleSubmitPelanggaran = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedStudents.length === 0) {
-      if (triggerNotification) triggerNotification("Pilih minimal 1 santri / siswa terlebih dahulu!", "warning");
+
+    // Gabungkan siswa yang dipilih atau nama yang sedang diketik
+    const namesToSubmit = [...selectedStudents];
+    if (namesToSubmit.length === 0 && studentSearch.trim()) {
+      namesToSubmit.push(studentSearch.trim());
+    }
+
+    if (namesToSubmit.length === 0) {
+      if (triggerNotification) {
+        triggerNotification("Tulis atau pilih minimal 1 nama siswa!", "warning");
+      }
       return;
     }
-    if (!namaPelanggaran.trim()) {
-      if (triggerNotification) triggerNotification("Isi uraian nama pelanggaran!", "warning");
+
+    if (!pelanggaranText.trim()) {
+      if (triggerNotification) {
+        triggerNotification("Uraian pelanggaran wajib diisi!", "warning");
+      }
       return;
     }
 
     setIsSubmitting(true);
 
-    const newRecords: PelanggaranData[] = selectedStudents.map((student, idx) => ({
-      id: "PLG-" + Date.now() + "-" + idx + "-" + Math.floor(Math.random() * 1000),
-      created_at: new Date().toISOString(),
-      tanggal,
-      santri_id: student.id,
-      nama_siswa: student.nama_lengkap,
-      nik: student.nik || "",
-      nisn: student.nisn || "",
-      kamar: student.kamar || "Belum Set",
-      kelas_sekolah: student.kelas_sekolah || "",
-      kelas_pengajian: student.kelas_pengajian || "",
-      jenis_pelanggaran: jenisPelanggaran,
-      kategori,
-      nama_pelanggaran: namaPelanggaran.trim(),
-      poin: Number(poin) || 0,
-      hukuman: hukuman.trim() || "Teguran lisan & pengawasan",
-      status_sanksi: statusSanksi,
-      pencatat: pencatat.trim() || "Pengurus Keamanan",
-      catatan: catatan.trim(),
+    // Siapkan data sesuai 4 kolom ringkas Supabase
+    const newRecords = namesToSubmit.map((nama) => ({
+      nama_siswa: nama.trim(),
+      pelanggaran: pelanggaranText.trim(),
+      tanggal: tanggal || new Date().toISOString().split("T")[0],
+      status: status,
     }));
 
-    // Save to LocalStorage immediately
-    const updatedList = [...newRecords, ...pelanggaranList];
-    setPelanggaranList(updatedList);
-    localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(updatedList));
-
-    // Try sync to Supabase
     try {
-      const { error } = await supabase.from("pelanggaran").insert(newRecords);
-      if (error) console.warn("Notice: Saved locally, Supabase insert warning:", error.message);
-    } catch (err) {
-      console.warn("Supabase insert fallback local state saved");
-    }
+      let insertedData: PelanggaranData[] = [];
+      let savedToCloud = false;
 
-    if (triggerNotification) {
-      if (selectedStudents.length === 1) {
-        triggerNotification(`Pelanggaran untuk ${selectedStudents[0].nama_lengkap} berhasil dicatat! (+${poin} poin)`, "success");
+      // 1. Coba insert dengan .select()
+      const resWithSelect = await supabase
+        .from("pelanggaran")
+        .insert(newRecords)
+        .select();
+
+      if (!resWithSelect.error && resWithSelect.data && resWithSelect.data.length > 0) {
+        insertedData = resWithSelect.data.map((row: any) => ({
+          id: row.id,
+          created_at: row.created_at || new Date().toISOString(),
+          nama_siswa: row.nama_siswa,
+          pelanggaran: row.pelanggaran,
+          tanggal: row.tanggal,
+          status: row.status === "Selesai" ? "Selesai" : "Belum Selesai",
+          isLocalOnly: false,
+        }));
+        savedToCloud = true;
+        setRlsErrorDetected(false);
       } else {
-        triggerNotification(`Pelanggaran untuk ${selectedStudents.length} santri/siswa berhasil dicatat masing-masing! (+${poin} poin/anak)`, "success");
+        // 2. Jika select() ditolak (misal policy SELECT berbeda), coba insert langsung
+        console.warn("Insert dengan .select() dialihkan ke insert standar");
+        const resWithoutSelect = await supabase
+          .from("pelanggaran")
+          .insert(newRecords);
+
+        if (!resWithoutSelect.error) {
+          savedToCloud = true;
+          setRlsErrorDetected(false);
+          const refetch = await supabase
+            .from("pelanggaran")
+            .select("*")
+            .order("id", { ascending: false })
+            .limit(newRecords.length);
+
+          if (refetch.data && refetch.data.length > 0) {
+            insertedData = refetch.data.map((row: any) => ({
+              id: row.id,
+              created_at: row.created_at || new Date().toISOString(),
+              nama_siswa: row.nama_siswa,
+              pelanggaran: row.pelanggaran,
+              tanggal: row.tanggal,
+              status: row.status === "Selesai" ? "Selesai" : "Belum Selesai",
+              isLocalOnly: false,
+            }));
+          } else {
+            insertedData = newRecords.map((r, i) => ({
+              id: Date.now() + i,
+              created_at: new Date().toISOString(),
+              nama_siswa: r.nama_siswa,
+              pelanggaran: r.pelanggaran,
+              tanggal: r.tanggal,
+              status: r.status as "Belum Selesai" | "Selesai",
+              isLocalOnly: false,
+            }));
+          }
+        } else {
+          // 3. Jika koneksi atau RLS Supabase menolak insert
+          const err = resWithoutSelect.error || resWithSelect.error;
+          console.warn("Pemberitahuan izin Supabase:", err?.message);
+          if (err?.code === "42501" || err?.message?.toLowerCase().includes("row-level security")) {
+            setRlsErrorDetected(true);
+          }
+          // Simpan ke local state sebagai fallback aman
+          insertedData = newRecords.map((r, i) => ({
+            id: Date.now() + i,
+            created_at: new Date().toISOString(),
+            nama_siswa: r.nama_siswa,
+            pelanggaran: r.pelanggaran,
+            tanggal: r.tanggal,
+            status: r.status as "Belum Selesai" | "Selesai",
+            isLocalOnly: true,
+          }));
+        }
       }
+
+      const updated = [...insertedData, ...pelanggaranList];
+      setPelanggaranList(updated);
+      localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(updated));
+
+      if (triggerNotification) {
+        if (savedToCloud) {
+          triggerNotification(
+            `Data pelanggaran untuk ${namesToSubmit.length} siswa berhasil disimpan ke database!`,
+            "success"
+          );
+        } else {
+          triggerNotification(
+            `Data tersimpan secara lokal (${namesToSubmit.length} siswa). Klik sinkronisasi setelah izin RLS aktif.`,
+            "warning"
+          );
+        }
+      }
+
+      // Reset form
+      setSelectedStudents([]);
+      setStudentSearch("");
+      setManualStudentName("");
+      setPelanggaranText("");
+      setStatus("Belum Selesai");
+    } catch (err: any) {
+      console.warn("Peringatan submitting pelanggaran:", err?.message || err);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Reset Form fields
-    setSelectedStudents([]);
-    setStudentSearch("");
-    setNamaPelanggaran("");
-    setHukuman("");
-    setCatatan("");
-
-    setIsSubmitting(false);
   };
 
-  // Toggle Sanksi status (e.g., mark as Selesai Takzir)
-  const handleToggleStatus = async (item: PelanggaranData, nextStatus: "Belum Ditindak" | "Proses Takzir" | "Selesai Takzir") => {
-    const updatedList = pelanggaranList.map((rec) => (rec.id === item.id ? { ...rec, status_sanksi: nextStatus } : rec));
+  // Toggle status langsung di tabel (Belum Selesai <-> Selesai)
+  const handleToggleStatus = async (item: PelanggaranData) => {
+    const nextStatus: "Belum Selesai" | "Selesai" = item.status === "Selesai" ? "Belum Selesai" : "Selesai";
+
+    const updatedList = pelanggaranList.map((rec) =>
+      rec.id === item.id ? { ...rec, status: nextStatus } : rec
+    );
     setPelanggaranList(updatedList);
     localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(updatedList));
 
     try {
-      await supabase.from("pelanggaran").update({ status_sanksi: nextStatus }).eq("id", item.id);
-    } catch {}
+      const { error } = await supabase
+        .from("pelanggaran")
+        .update({ status: nextStatus })
+        .eq("id", item.id);
 
-    if (triggerNotification) {
-      triggerNotification(`Status takzir ${item.nama_siswa} diubah ke "${nextStatus}"`, "success");
+      if (error) {
+        console.warn("Gagal update status di Supabase:", error.message);
+      } else if (triggerNotification) {
+        triggerNotification(
+          `Status pelanggaran ${item.nama_siswa} diubah menjadi "${nextStatus}"`,
+          "success"
+        );
+      }
+    } catch (err) {
+      console.warn("Update status offline fallback");
     }
   };
 
-  // Delete Pelanggaran Record
-  const handleDeleteRecord = async (id: string, name: string) => {
+  // Hapus catatan pelanggaran
+  const handleDeleteRecord = async (id: number | string, name: string) => {
     if (!window.confirm(`Yakin ingin menghapus catatan pelanggaran untuk "${name}"?`)) return;
 
     const updatedList = pelanggaranList.filter((rec) => rec.id !== id);
@@ -379,510 +469,545 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
     localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(updatedList));
 
     try {
-      await supabase.from("pelanggaran").delete().eq("id", id);
+      const { error } = await supabase.from("pelanggaran").delete().eq("id", id);
+      if (error) console.warn("Gagal hapus dari Supabase:", error.message);
     } catch {}
 
     if (triggerNotification) {
-      triggerNotification(`Catatan pelanggaran ${name} telah dihapus`, "warning");
+      triggerNotification(`Catatan pelanggaran ${name} telah dihapus dari database`, "warning");
     }
   };
 
-  // Save Edit Record
+  // Simpan hasil edit modal ke Supabase
   const handleSaveEdit = async () => {
     if (!editingRecord) return;
-    const updatedList = pelanggaranList.map((rec) => (rec.id === editingRecord.id ? editingRecord : rec));
+
+    const updatedList = pelanggaranList.map((rec) =>
+      rec.id === editingRecord.id ? editingRecord : rec
+    );
     setPelanggaranList(updatedList);
     localStorage.setItem("pelanggaran_siswa_data", JSON.stringify(updatedList));
 
     try {
-      await supabase.from("pelanggaran").update(editingRecord).eq("id", editingRecord.id);
+      const { error } = await supabase
+        .from("pelanggaran")
+        .update({
+          nama_siswa: editingRecord.nama_siswa.trim(),
+          pelanggaran: editingRecord.pelanggaran.trim(),
+          tanggal: editingRecord.tanggal,
+          status: editingRecord.status,
+        })
+        .eq("id", editingRecord.id);
+
+      if (error) {
+        console.warn("Gagal update edit di Supabase:", error.message);
+      }
     } catch {}
 
+    const savedName = editingRecord.nama_siswa;
     setEditingRecord(null);
     if (triggerNotification) {
-      triggerNotification(`Perubahan pelanggaran ${editingRecord.nama_siswa} disimpan`, "success");
+      triggerNotification(`Perubahan pelanggaran ${savedName} berhasil disimpan`, "success");
     }
   };
 
-  // Filtering Rekap List
+  // Filter daftar rekap
   const filteredRekapList = useMemo(() => {
     return pelanggaranList.filter((item) => {
-      // Search
+      // Search text
       if (rekapSearch.trim()) {
         const q = rekapSearch.toLowerCase();
-        const matchesName = item.nama_siswa.toLowerCase().includes(q);
-        const matchesPelanggaran = item.nama_pelanggaran.toLowerCase().includes(q);
-        const matchesKamar = item.kamar?.toLowerCase().includes(q);
-        const matchesPencatat = item.pencatat.toLowerCase().includes(q);
-        if (!matchesName && !matchesPelanggaran && !matchesKamar && !matchesPencatat) return false;
+        const matchNama = item.nama_siswa.toLowerCase().includes(q);
+        const matchPelanggaran = item.pelanggaran.toLowerCase().includes(q);
+        if (!matchNama && !matchPelanggaran) return false;
       }
-      // Jenis
-      if (filterJenis !== "semua" && item.jenis_pelanggaran !== filterJenis) return false;
-      // Status
-      if (filterStatus !== "semua" && item.status_sanksi !== filterStatus) return false;
-      // Kamar
-      if (filterKamar !== "semua" && item.kamar !== filterKamar) return false;
+      // Status filter
+      if (filterStatus !== "semua" && item.status !== filterStatus) return false;
 
       return true;
     });
-  }, [pelanggaranList, rekapSearch, filterJenis, filterStatus, filterKamar]);
+  }, [pelanggaranList, rekapSearch, filterStatus]);
 
-  // Summary stats
+  // Statistik Ringkas
   const stats = useMemo(() => {
-    const totalCount = pelanggaranList.length;
-    const totalPoints = pelanggaranList.reduce((acc, curr) => acc + (curr.poin || 0), 0);
-    const ringanCount = pelanggaranList.filter((p) => p.jenis_pelanggaran === "Ringan").length;
-    const sedangCount = pelanggaranList.filter((p) => p.jenis_pelanggaran === "Sedang").length;
-    const beratCount = pelanggaranList.filter((p) => p.jenis_pelanggaran === "Berat").length;
-    const belumSelesaiCount = pelanggaranList.filter((p) => p.status_sanksi !== "Selesai Takzir").length;
-    return { totalCount, totalPoints, ringanCount, sedangCount, beratCount, belumSelesaiCount };
+    const total = pelanggaranList.length;
+    const belumSelesai = pelanggaranList.filter((p) => p.status === "Belum Selesai").length;
+    const selesai = pelanggaranList.filter((p) => p.status === "Selesai").length;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const hariIni = pelanggaranList.filter((p) => p.tanggal === todayStr).length;
+    return { total, belumSelesai, selesai, hariIni };
   }, [pelanggaranList]);
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
+      {/* BANNER JIKA MEMERLUKAN AKSES RLS SUPABASE */}
+      {rlsErrorDetected && !isBannerDismissed && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/60 rounded-2xl text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3 shadow-xs">
+          <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-sm">
+                Izin Akses Tabel Pelanggaran (Supabase RLS)
+              </div>
+              <button
+                onClick={() => setIsBannerDismissed(true)}
+                className="text-amber-500 hover:text-amber-800 dark:hover:text-amber-200 p-1 rounded-md"
+                title="Tutup pemberitahuan"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+              Tabel <code className="font-mono bg-amber-200/60 dark:bg-amber-900/60 px-1 py-0.5 rounded">public.pelanggaran</code> berhasil terhubung. Jika penulisan data dibatasi oleh aturan RLS (Row-Level Security), data Anda tetap tersimpan aman di perangkat dan dapat disinkronkan. Untuk membuka izin tulis penuh di Supabase, jalankan di <strong>SQL Editor</strong> Supabase:
+            </p>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex-1 p-2 bg-slate-900 text-amber-200 font-mono text-[11px] rounded-xl select-all overflow-x-auto">
+                ALTER TABLE public.pelanggaran DISABLE ROW LEVEL SECURITY;
+              </div>
+              <button
+                onClick={handleCopySql}
+                className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shrink-0 transition-colors shadow-2xs"
+              >
+                {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSql ? "Tersalin!" : "Salin SQL"}</span>
+              </button>
+              <button
+                onClick={syncPendingLocalRecords}
+                disabled={isSyncing}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 shrink-0 transition-colors shadow-2xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                <span>{isSyncing ? "Memeriksa..." : "Tes & Sinkronkan"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* STATS OVERVIEW CARDS */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Pelanggaran</span>
-            <span className="text-2xl font-black text-slate-800 dark:text-slate-100">{stats.totalCount}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs">
-            📝
-          </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">Total Pelanggaran</span>
+          <span className="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 block">{stats.total}</span>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 block">Pelanggaran Ringan</span>
-            <span className="text-2xl font-black text-amber-600 dark:text-amber-400">{stats.ringanCount}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center font-bold text-xs">
-            🟡
-          </div>
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <span className="text-[11px] font-semibold text-rose-500 block">Belum Selesai</span>
+          <span className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1 block">{stats.belumSelesai}</span>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-orange-500 block">Sedang / Berat</span>
-            <span className="text-2xl font-black text-orange-600 dark:text-orange-400">
-              {stats.sedangCount + stats.beratCount}
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-950/40 text-orange-600 flex items-center justify-center font-bold text-xs">
-            🔴
-          </div>
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 block">Sudah Selesai</span>
+          <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 block">{stats.selesai}</span>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-red-500 block">Perlu Takzir / Proses</span>
-            <span className="text-2xl font-black text-red-600 dark:text-red-400">{stats.belumSelesaiCount}</span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 flex items-center justify-center font-bold text-xs">
-            ⚠️
-          </div>
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <span className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 block">Hari Ini</span>
+          <span className="text-2xl font-bold text-sky-600 dark:text-sky-400 mt-1 block">{stats.hariIni}</span>
         </div>
       </div>
 
       {/* VIEW MODE 1: FORM INPUT PELANGGARAN */}
       {viewMode === "input" && (
-        <div className="w-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-            <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <PlusCircle className="w-5 h-5 text-blue-600" />
-              Form Input Pelanggaran
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              Isi nama siswa, detail pelanggaran, tanggal, lalu klik simpan.
-            </p>
+        <div className="w-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+          <div className="border-b border-slate-100 dark:border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Form Input Pelanggaran Santri
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Tersinkronisasi langsung dengan tabel database Supabase <code className="font-mono text-sky-600 dark:text-sky-400 font-semibold">pelanggaran</code>.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSwitchMode("rekap")}
+              className="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors"
+            >
+              Lihat Rekap Data
+            </button>
           </div>
 
-          <form onSubmit={handleSubmitPelanggaran} className="space-y-6">
-            {/* LANGKAH 1: INPUT NAMA (MULTI-SELECT) */}
-            <div className="space-y-3 p-4 bg-slate-50/60 dark:bg-slate-950/40 rounded-2xl border border-slate-200/60 dark:border-slate-800">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">1</span>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    Input Nama / Pilih Siswa Santri *
-                  </h4>
-                </div>
+          <form onSubmit={handleSubmitPelanggaran} className="space-y-5">
+            {/* NAMA SISWA */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Nama Siswa <span className="text-rose-500">*</span>
+                </label>
                 {selectedStudents.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setSelectedStudents([])}
-                    className="text-[11px] font-bold text-red-500 hover:text-red-600 hover:underline transition-all cursor-pointer"
+                    className="text-[11px] font-medium text-rose-500 hover:underline"
                   >
-                    Hapus Semua ({selectedStudents.length})
+                    Reset Pilihan ({selectedStudents.length})
                   </button>
                 )}
               </div>
 
-              {/* Multi-Select Field Wrapper */}
+              {/* Multi-chip selector wrapper */}
               <div className="relative">
                 <div
                   onClick={() => setShowStudentDropdown(true)}
-                  className="w-full min-h-[48px] p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-white flex flex-wrap items-center gap-1.5 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all cursor-text"
+                  className="w-full min-h-[44px] px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white flex flex-wrap items-center gap-2 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 transition-all cursor-text"
                 >
-                  {/* Selected Pills / Chips */}
-                  {selectedStudents.map((s) => (
+                  {/* Selected Student Chips */}
+                  {selectedStudents.map((name) => (
                     <span
-                      key={s.id || s.nik || s.nama_lengkap}
-                      className="px-3 py-1 bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 shadow-2xs animate-in zoom-in-95 duration-150"
+                      key={name}
+                      className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 shrink-0"
                     >
-                      <span>{s.nama_lengkap}</span>
+                      <span>{name}</span>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRemoveStudent(s);
+                          handleRemoveStudent(name);
                         }}
-                        className="p-0.5 hover:bg-blue-200/60 dark:hover:bg-blue-900/60 rounded-sm transition-colors text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
-                        title="Hapus"
+                        className="text-slate-400 hover:text-rose-600 rounded p-0.5"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </span>
                   ))}
 
-                  {/* Search Input */}
-                  <div className="flex-1 min-w-[140px] flex items-center gap-2 px-1 py-0.5">
-                    <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                    <input
-                      type="text"
-                      value={studentSearch}
-                      onChange={(e) => {
-                        setStudentSearch(e.target.value);
-                        setShowStudentDropdown(true);
-                      }}
-                      onFocus={() => setShowStudentDropdown(true)}
-                      placeholder={selectedStudents.length === 0 ? "Ketik Nama Siswa, NIK, Kamar, atau Kelas..." : "Cari/tambah siswa lain..."}
-                      className="w-full text-xs font-semibold bg-transparent outline-none text-slate-800 dark:text-white placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <ChevronDown className="w-4 h-4 text-slate-400 ml-auto mr-1 shrink-0 pointer-events-none" />
+                  {/* Input Search or Manual Entry */}
+                  <input
+                    type="text"
+                    value={studentSearch}
+                    onChange={(e) => {
+                      setStudentSearch(e.target.value);
+                      setShowStudentDropdown(true);
+                    }}
+                    onFocus={() => setShowStudentDropdown(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddManualStudent();
+                      }
+                    }}
+                    placeholder={
+                      selectedStudents.length === 0
+                        ? "Ketik nama santri atau pilih dari database..."
+                        : "Tambah siswa lain..."
+                    }
+                    className="flex-1 min-w-[160px] text-xs font-medium bg-transparent outline-none text-slate-800 dark:text-white placeholder:text-slate-400 py-1"
+                  />
                 </div>
 
-                {/* Dropdown Candidate list */}
+                {/* Dropdown Hasil Pencarian */}
                 {showStudentDropdown && (
                   <>
                     <div
                       className="fixed inset-0 z-20"
                       onClick={() => setShowStudentDropdown(false)}
                     />
-                    <div className="absolute z-30 w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden max-h-64 overflow-y-auto p-1.5">
-                      {filteredStudents.length === 0 ? (
-                        <div className="p-3 text-xs text-slate-400 text-center font-medium">
-                          Siswa tidak ditemukan atau sudah dipilih.
-                        </div>
-                      ) : (
-                        filteredStudents.map((s) => (
-                          <div
-                            key={s.id || s.nik || s.nama_lengkap}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectStudent(s);
-                            }}
-                            className="p-2.5 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors flex items-center justify-between text-xs my-0.5"
-                          >
-                            <div>
-                              <div className="font-bold text-slate-800 dark:text-slate-100">{s.nama_lengkap}</div>
-                              <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                                <span>Kamar: {s.kamar || "Belum Set"}</span>
-                                <span>•</span>
-                                <span>Kelas: {s.kelas_sekolah || s.kelas_pengajian || "-"}</span>
-                              </div>
-                            </div>
-                            <span className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold rounded-lg text-[10px] hover:bg-blue-600 hover:text-white transition-colors">
-                              + Pilih
-                            </span>
+                    <div className="absolute z-30 w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto p-1.5">
+                      {filteredCandidateStudents.length > 0 ? (
+                        <>
+                          <div className="px-3 py-1 text-[10px] font-semibold uppercase text-slate-400 tracking-wider">
+                            Pilih Dari Database Santri:
                           </div>
-                        ))
+                          {filteredCandidateStudents.map((s) => (
+                            <div
+                              key={s.id || s.nik || s.nama_lengkap}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectStudent(s);
+                              }}
+                              className="p-2.5 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-between text-xs my-0.5"
+                            >
+                              <div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-100">
+                                  {s.nama_lengkap}
+                                </div>
+                                <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                  <span>Kamar: {s.kamar || "-"}</span>
+                                  <span>•</span>
+                                  <span>Kelas: {s.kelas_sekolah || s.kelas_pengajian || "-"}</span>
+                                </div>
+                              </div>
+                              <span className="text-sky-600 dark:text-sky-400 font-medium text-xs">
+                                Pilih
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {/* Opsi masukkan nama manual jika tidak ditemukan */}
+                      {studentSearch.trim() && (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddManualStudent();
+                          }}
+                          className="p-2.5 border-t border-slate-100 dark:border-slate-800 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 text-xs text-sky-600 dark:text-sky-400 font-semibold flex items-center justify-between"
+                        >
+                          <span>Gunakan nama: &quot;{studentSearch.trim()}&quot;</span>
+                          <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded">
+                            Enter
+                          </span>
+                        </div>
                       )}
                     </div>
                   </>
                 )}
               </div>
-
-              {/* Info summary */}
-              {selectedStudents.length > 0 && (
-                <div className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pt-0.5">
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>{selectedStudents.length} siswa terpilih. Sistem akan mencatat data pelanggaran untuk masing-masing siswa.</span>
-                </div>
-              )}
             </div>
 
-            {/* LANGKAH 2: INPUT PELANGGARAN & TANGGAL */}
-            <div className="space-y-4 p-4 bg-slate-50/60 dark:bg-slate-950/40 rounded-2xl border border-slate-200/60 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">2</span>
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                  Input Pelanggaran & Tanggal *
-                </h4>
-              </div>
+            {/* URAIAN PELANGGARAN */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Masukkan Pelanggaran <span className="text-rose-500">*</span>
+              </label>
 
-              {/* Nama Pelanggaran */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black uppercase text-slate-600 dark:text-slate-300 tracking-wider">
-                  Nama / Uraian Pelanggaran *
-                </label>
-                <input
-                  type="text"
-                  value={namaPelanggaran}
-                  onChange={(e) => setNamaPelanggaran(e.target.value)}
-                  placeholder="Contoh: Terlambat Sholat Berjamaah / Membawa HP Tanpa Izin..."
-                  className="w-full text-xs font-semibold px-3.5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-white outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
+              <textarea
+                rows={3}
+                required
+                value={pelanggaranText}
+                onChange={(e) => setPelanggaranText(e.target.value)}
+                placeholder="Masukkan pelanggaran..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-normal focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 resize-none leading-relaxed"
+              />
+            </div>
 
+            {/* TANGGAL & STATUS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               {/* Tanggal */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black uppercase text-slate-600 dark:text-slate-300 tracking-wider">
-                  Tanggal Kejadian *
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Tanggal Pelanggaran <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="date"
+                  required
                   value={tanggal}
                   onChange={(e) => setTanggal(e.target.value)}
-                  className="w-full text-xs font-semibold px-3.5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-white outline-none focus:border-blue-500"
-                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-xs font-medium focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                 />
               </div>
-            </div>
 
-            {/* LANGKAH 3: SIMPAN */}
-            <div className="space-y-3 p-4 bg-slate-50/60 dark:bg-slate-950/40 rounded-2xl border border-slate-200/60 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">3</span>
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                  Simpan Pelanggaran
-                </h4>
+              {/* Status */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Status Penanganan <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStatus("Belum Selesai")}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all text-center ${
+                      status === "Belum Selesai"
+                        ? "bg-rose-500 text-white border-rose-500"
+                        : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    Belum Selesai
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStatus("Selesai")}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all text-center ${
+                      status === "Selesai"
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    Selesai
+                  </button>
+                </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2 border-0 disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Menyimpan Pelanggaran...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="w-4 h-4" />
-                    <span>SIMPAN PELANGGARAN</span>
-                  </>
-                )}
-              </button>
             </div>
+
+            {/* TOMBOL SIMPAN */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold text-sm rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Catatan Pelanggaran</span>
+              )}
+            </button>
           </form>
         </div>
       )}
 
-      {/* VIEW MODE 2: REKAP & DAFTAR PELANGGARAN */}
+      {/* VIEW MODE 2: REKAP DATA PELANGGARAN */}
       {viewMode === "rekap" && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-xs space-y-5">
-          {/* SEARCH & FILTERS BAR */}
-          <PageHeader breadcrumbs={["Pelanggaran & Takzir", "Rekapitulasi"]} title="Data Pelanggaran Santri" />
-      
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-          <h3 className="font-bold text-slate-900 text-base">Filter</h3>
-          <button 
-            onClick={() => {
-              setFilterJenis("semua");
-              setFilterStatus("semua");
-              setFilterKamar("semua");
-              setRekapSearch("");
-            }}
-            className="text-red-500 hover:text-red-600 text-sm font-medium"
-          >
-            Atur ulang filter
-          </button>
-        </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-base flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                Rekap Data Pelanggaran Siswa
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                Daftar semua pelanggaran yang tercatat di tabel database Supabase.
+              </p>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Pencarian</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <div className="flex flex-wrap items-center gap-2">
+              {pelanggaranList.some((p) => p.isLocalOnly) && (
+                <button
+                  onClick={syncPendingLocalRecords}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs animate-pulse"
+                  title="Sinkronkan data yang masih tersimpan di perangkat lokal ke Supabase"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                  <span>Sinkronkan Cloud ({pelanggaranList.filter((p) => p.isLocalOnly).length})</span>
+                </button>
+              )}
+              <button
+                onClick={() => fetchPelanggaran()}
+                disabled={isLoading}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors flex items-center gap-1.5"
+                title="Muat ulang dari Supabase"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+                <span>Segarkan</span>
+              </button>
+              <button
+                onClick={() => onSwitchMode("input")}
+                className="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>+ Input Baru</span>
+              </button>
+            </div>
+          </div>
+
+          {/* FILTER & PENCARIAN BAR */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 relative">
+              <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={rekapSearch}
                 onChange={(e) => setRekapSearch(e.target.value)}
-                placeholder="Cari nama santri, kamar..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none text-sm"
+                placeholder="Cari berdasarkan nama siswa atau uraian pelanggaran..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-sky-500"
               />
+            </div>
+
+            <div>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="semua">Semua Status</option>
+                <option value="Belum Selesai">Belum Selesai</option>
+                <option value="Selesai">Selesai</option>
+              </select>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Tingkat</label>
-            <SearchableSelect
-              value={filterJenis}
-              onChange={setFilterJenis}
-              options={[
-                { value: "semua", label: "Semua Tingkat" },
-                { value: "Ringan", label: "Ringan" },
-                { value: "Sedang", label: "Sedang" },
-                { value: "Berat", label: "Berat" }
-              ]}
-              placeholder="Pilih Tingkat"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Status Takzir</label>
-            <SearchableSelect
-              value={filterStatus}
-              onChange={setFilterStatus}
-              options={[
-                { value: "semua", label: "Semua Status" },
-                { value: "Belum Ditindak", label: "Belum Ditindak" },
-                { value: "Proses Takzir", label: "Proses Takzir" },
-                { value: "Selesai Takzir", label: "Selesai Takzir" }
-              ]}
-              placeholder="Pilih Status"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Asrama/Kamar</label>
-            <SearchableSelect
-              value={filterKamar}
-              onChange={setFilterKamar}
-              options={[
-                { value: "semua", label: "Semua Kamar" },
-                ...rooms.map(rm => ({ value: rm, label: rm }))
-              ]}
-              placeholder="Pilih Kamar"
-            />
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors">
-            Terapkan filter
-          </button>
-        </div>
-      </div>
-
-      {/* TABLE LIST */}
+          {/* TABEL REKAP */}
           {filteredRekapList.length === 0 ? (
-            <div className="py-12 text-center space-y-3">
-              <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center text-2xl">
-                🛡️
-              </div>
-              <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                Belum ada data pelanggaran ditemukan.
+            <div className="py-12 text-center space-y-2">
+              <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                Belum ada catatan pelanggaran ditemukan.
               </div>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                {rekapSearch || filterJenis !== "semua" || filterStatus !== "semua"
-                  ? "Coba ubah kata kunci pencarian atau filter yang digunakan."
-                  : "Klik tombol 'Input Pelanggaran' di atas untuk menambah catatan pelanggaran baru."}
+                {rekapSearch || filterStatus !== "semua"
+                  ? "Coba sesuaikan kata kunci pencarian atau filter status."
+                  : "Klik tombol 'Input Baru' untuk menambah catatan pelanggaran siswa."}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    <th className="py-3 px-3">Tanggal</th>
-                    <th className="py-3 px-3">Nama Santri</th>
-                    <th className="py-3 px-3">Kamar / Kelas</th>
-                    <th className="py-3 px-3">Pelanggaran & Kategori</th>
-                    <th className="py-3 px-3 text-center">Tingkat & Poin</th>
-                    <th className="py-3 px-3">Takzir / Sanksi</th>
-                    <th className="py-3 px-3 text-center">Status Takzir</th>
-                    <th className="py-3 px-3 text-right">Aksi</th>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    <th className="py-3 px-3.5">Tanggal</th>
+                    <th className="py-3 px-3.5">Nama Siswa</th>
+                    <th className="py-3 px-3.5">Pelanggarannya</th>
+                    <th className="py-3 px-3.5 text-center">Status (Klik untuk Ubah)</th>
+                    <th className="py-3 px-3.5 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
-                  {filteredRekapList.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-3 font-semibold text-slate-500 whitespace-nowrap">
-                        {item.tanggal}
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="font-extrabold text-slate-800 dark:text-slate-100">{item.nama_siswa}</div>
-                        {item.nik && <div className="text-[10px] font-mono text-slate-400">{item.nik}</div>}
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="font-semibold text-slate-700 dark:text-slate-300">🛏️ {item.kamar || "-"}</div>
-                        <div className="text-[10px] text-slate-400">{item.kelas_sekolah || item.kelas_pengajian || "-"}</div>
-                      </td>
-                      <td className="py-3 px-3 max-w-xs">
-                        <div className="font-bold text-slate-800 dark:text-slate-100">{item.nama_pelanggaran}</div>
-                        <div className="text-[10px] text-slate-400 font-medium">{item.kategori}</div>
-                      </td>
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-black ${
-                            item.jenis_pelanggaran === "Ringan"
-                              ? "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400"
-                              : item.jenis_pelanggaran === "Sedang"
-                              ? "bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400"
-                              : "bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400"
-                          }`}
-                        >
-                          {item.jenis_pelanggaran} (+{item.poin})
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 max-w-xs font-medium text-slate-700 dark:text-slate-300">
-                        {item.hukuman || "Teguran Lisan"}
-                      </td>
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1">
-                          {item.status_sanksi === "Selesai Takzir" ? (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
-                              🟢 Selesai
+                  {filteredRekapList.map((item) => {
+                    const studentMeta = studentMetaMap.get(item.nama_siswa.trim().toLowerCase());
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <td className="py-3 px-3.5 font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {item.tanggal}
+                        </td>
+                        <td className="py-3 px-3.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-800 dark:text-slate-100">
+                              {item.nama_siswa}
                             </span>
-                          ) : item.status_sanksi === "Proses Takzir" ? (
-                            <button
-                              onClick={() => handleToggleStatus(item, "Selesai Takzir")}
-                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 hover:bg-amber-200 transition-colors cursor-pointer"
-                              title="Klik untuk tandai selesai"
-                            >
-                              🟡 Proses (Tandai Selesai)
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleToggleStatus(item, "Proses Takzir")}
-                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 hover:bg-red-200 transition-colors cursor-pointer"
-                              title="Klik untuk proses takzir"
-                            >
-                              🔴 Belum Ditindak
-                            </button>
+                            {item.isLocalOnly && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80"
+                                title="Data ini tersimpan di memori perangkat lokal dan menunggu disinkronkan ke Supabase"
+                              >
+                                💾 Lokal
+                              </span>
+                            )}
+                          </div>
+                          {studentMeta && (
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <span>Kamar: {studentMeta.kamar || "-"}</span>
+                              <span>•</span>
+                              <span>{studentMeta.kategori}</span>
+                            </div>
                           )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
+                        </td>
+                        <td className="py-3 px-3.5 max-w-md">
+                          <div className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
+                            {item.pelanggaran}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           <button
-                            onClick={() => setEditingRecord(item)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                            title="Edit Catatan"
+                            onClick={() => handleToggleStatus(item)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                              item.status === "Selesai"
+                                ? "bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/70 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                                : "bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/70 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300"
+                            }`}
+                            title="Klik untuk mengubah status"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
+                            {item.status === "Selesai" ? "Selesai" : "Belum Selesai"}
                           </button>
-                          <button
-                            onClick={() => handleDeleteRecord(item.id, item.nama_siswa)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                            title="Hapus Catatan"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setEditingRecord(item)}
+                              className="p-1.5 text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Catatan"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecord(item.id, item.nama_siswa)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Catatan"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -892,11 +1017,11 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
 
       {/* EDIT MODAL */}
       {editingRecord && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Edit3 className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-sky-600" />
                 Edit Catatan Pelanggaran
               </h3>
               <button
@@ -907,87 +1032,88 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3.5 text-xs">
+              {/* Nama Siswa */}
               <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Nama Siswa</label>
-                <div className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">
-                  {editingRecord.nama_siswa}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Tingkat</label>
-                  <select
-                    value={editingRecord.jenis_pelanggaran}
-                    onChange={(e) =>
-                      setEditingRecord({ ...editingRecord, jenis_pelanggaran: e.target.value as any })
-                    }
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold"
-                  >
-                    <option value="Ringan">Ringan</option>
-                    <option value="Sedang">Sedang</option>
-                    <option value="Berat">Berat</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Poin</label>
-                  <input
-                    type="number"
-                    value={editingRecord.poin}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, poin: Number(e.target.value) })}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Nama Pelanggaran</label>
+                <label className="text-[11px] font-bold uppercase text-slate-400 block mb-1">
+                  Nama Siswa *
+                </label>
                 <input
                   type="text"
-                  value={editingRecord.nama_pelanggaran}
-                  onChange={(e) => setEditingRecord({ ...editingRecord, nama_pelanggaran: e.target.value })}
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-semibold"
+                  required
+                  value={editingRecord.nama_siswa}
+                  onChange={(e) =>
+                    setEditingRecord({ ...editingRecord, nama_siswa: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold text-slate-800 dark:text-slate-100"
                 />
               </div>
 
+              {/* Pelanggaran */}
               <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Hukuman / Takzir</label>
-                <input
-                  type="text"
-                  value={editingRecord.hukuman}
-                  onChange={(e) => setEditingRecord({ ...editingRecord, hukuman: e.target.value })}
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-semibold"
+                <label className="text-[11px] font-bold uppercase text-slate-400 block mb-1">
+                  Pelanggarannya *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editingRecord.pelanggaran}
+                  onChange={(e) =>
+                    setEditingRecord({ ...editingRecord, pelanggaran: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-medium text-slate-800 dark:text-slate-100 resize-none leading-relaxed"
                 />
               </div>
 
+              {/* Tanggal */}
               <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Status Sanksi</label>
+                <label className="text-[11px] font-bold uppercase text-slate-400 block mb-1">
+                  Tanggal *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editingRecord.tanggal}
+                  onChange={(e) =>
+                    setEditingRecord({ ...editingRecord, tanggal: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-semibold text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="text-[11px] font-bold uppercase text-slate-400 block mb-1">
+                  Status Proses *
+                </label>
                 <select
-                  value={editingRecord.status_sanksi}
-                  onChange={(e) => setEditingRecord({ ...editingRecord, status_sanksi: e.target.value as any })}
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold"
+                  value={editingRecord.status}
+                  onChange={(e) =>
+                    setEditingRecord({
+                      ...editingRecord,
+                      status: e.target.value as "Belum Selesai" | "Selesai",
+                    })
+                  }
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold text-slate-800 dark:text-slate-100"
                 >
-                  <option value="Belum Ditindak">Belum Ditindak</option>
-                  <option value="Proses Takzir">Proses Takzir</option>
-                  <option value="Selesai Takzir">Selesai Takzir</option>
+                  <option value="Belum Selesai">Belum Selesai</option>
+                  <option value="Selesai">Selesai</option>
                 </select>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setEditingRecord(null)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs shadow-sm"
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors"
               >
                 Simpan Perubahan
               </button>

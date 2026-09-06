@@ -15,6 +15,7 @@ interface PenggunaData {
   tugas_kelas_sekolah?: string;
   tugas_kelas_pengajian?: string;
   tugas_mapel?: string;
+  tugas_kantin?: string;
 }
 
 export default function ManajemenPenggunaPanel() {
@@ -46,15 +47,25 @@ export default function ManajemenPenggunaPanel() {
   const [tugasKelasSekolah, setTugasKelasSekolah] = useState("");
   const [tugasKelasPengajian, setTugasKelasPengajian] = useState("");
   const [tugasMapel, setTugasMapel] = useState("");
+  const [tugasKantin, setTugasKantin] = useState("Semua");
 
   // Master options lists
   const [optRooms, setOptRooms] = useState<string[]>([]);
   const [optSchoolClasses, setOptSchoolClasses] = useState<string[]>([]);
   const [optRecitationClasses, setOptRecitationClasses] = useState<string[]>([]);
+  const [optKantin, setOptKantin] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("master_kantin_list");
+      return saved ? JSON.parse(saved) : ["Kantin Utama", "Kantin Putra", "Kantin Putri"];
+    } catch {
+      return ["Kantin Utama", "Kantin Putra", "Kantin Putri"];
+    }
+  });
 
   const roles = [
     { id: "guru pondok", label: "Guru Pondok" },
     { id: "guru SMP", label: "Guru SMP" },
+    { id: "kantin", label: "Petugas Kantin" },
     { id: "siswa", label: "Siswa / Santri" }
   ];
 
@@ -141,7 +152,8 @@ export default function ManajemenPenggunaPanel() {
             tugas_kamar: extra.tugas_kamar || "",
             tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
             tugas_kelas_pengajian: extra.tugas_kelas_pengajian || "",
-            tugas_mapel: extra.tugas_mapel || ""
+            tugas_mapel: extra.tugas_mapel || "",
+            tugas_kantin: extra.tugas_kantin || ""
           };
         });
         setUsers(merged);
@@ -155,7 +167,8 @@ export default function ManajemenPenggunaPanel() {
             tugas_kamar: u.tugas_kamar || extra.tugas_kamar || "",
             tugas_kelas_sekolah: u.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
             tugas_kelas_pengajian: u.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",
-            tugas_mapel: u.tugas_mapel || extra.tugas_mapel || ""
+            tugas_mapel: u.tugas_mapel || extra.tugas_mapel || "",
+            tugas_kantin: u.tugas_kantin || extra.tugas_kantin || ""
           };
         });
         setUsers(merged);
@@ -206,6 +219,7 @@ export default function ManajemenPenggunaPanel() {
       setTugasKelasSekolah(user.tugas_kelas_sekolah || "");
       setTugasKelasPengajian(user.tugas_kelas_pengajian || "");
       setTugasMapel(user.tugas_mapel || "");
+      setTugasKantin(user.tugas_kantin || "Semua");
     } else {
       setEditingId(null);
       setUsername("");
@@ -220,6 +234,7 @@ export default function ManajemenPenggunaPanel() {
       setTugasKelasSekolah("");
       setTugasKelasPengajian("");
       setTugasMapel("");
+      setTugasKantin("Semua");
     }
     setIsDropdownOpen(false);
     setSearchQuery("");
@@ -264,7 +279,8 @@ export default function ManajemenPenggunaPanel() {
         tugas_kamar: selectedJabatans.includes("wali_kamar") ? tugasKamar : "",
         tugas_kelas_sekolah: (selectedJabatans.includes("wali_kelas") || selectedJabatans.includes("guru_mapel")) ? tugasKelasSekolah : "",
         tugas_kelas_pengajian: selectedJabatans.includes("guru pondok") ? tugasKelasPengajian : "",
-        tugas_mapel: selectedJabatans.includes("guru_mapel") ? tugasMapel : ""
+        tugas_mapel: selectedJabatans.includes("guru_mapel") ? tugasMapel : "",
+        tugas_kantin: role === "kantin" ? tugasKantin : ""
       };
 
       if (password.trim()) {
@@ -279,7 +295,8 @@ export default function ManajemenPenggunaPanel() {
         tugas_kamar: payload.tugas_kamar,
         tugas_kelas_sekolah: payload.tugas_kelas_sekolah,
         tugas_kelas_pengajian: payload.tugas_kelas_pengajian,
-        tugas_mapel: payload.tugas_mapel
+        tugas_mapel: payload.tugas_mapel,
+        tugas_kantin: payload.tugas_kantin
       };
       localStorage.setItem("user_additional_details", JSON.stringify(localDetails));
 
@@ -683,6 +700,25 @@ export default function ManajemenPenggunaPanel() {
                 </select>
               </div>
 
+              {role === "kantin" && (
+                <div className="space-y-2 p-3.5 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 animate-in fade-in duration-200">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 block">Konfigurasi Penugasan Kantin</span>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Kantin yang Dikelola</label>
+                    <select
+                      value={tugasKantin}
+                      onChange={(e) => setTugasKantin(e.target.value)}
+                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
+                    >
+                      <option value="Semua">Semua Kantin</option>
+                      {optKantin.map(k => (
+                        <option key={k} value={k}>{k}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Batasi Akses Santri (Gender)</label>
                 <select
@@ -808,6 +844,14 @@ export default function ManajemenPenggunaPanel() {
                       <span className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[9px]">Kelas (Pondok):</span>
                       <span className="font-black text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/20 px-2 py-0.5 rounded-md">
                         {user.tugas_kelas_pengajian}
+                      </span>
+                    </div>
+                  )}
+                  {user.tugas_kantin && (
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[9px]">Tugas Kantin:</span>
+                      <span className="font-black text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/20 px-2 py-0.5 rounded-md">
+                        {user.tugas_kantin}
                       </span>
                     </div>
                   )}

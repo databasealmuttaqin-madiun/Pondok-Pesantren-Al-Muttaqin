@@ -1,5 +1,5 @@
 import { SearchableSelect } from './ui/SearchableSelect';
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
@@ -30,12 +30,26 @@ import {
   Cpu,
   ArrowRightLeft,
   Usb,
-  Sparkles
+  Sparkles,
+  AlertCircle,
+  Lock,
+  ArrowUpDown,
+  FileSpreadsheet,
+  Eye,
+  Sunrise,
+  Sun,
+  Sunset,
+  Moon,
+  ChevronLeft,
+  XCircle,
+  School,
+  BookOpen
 } from "lucide-react";
 import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
 import NfcUidConverterModal from "./NfcUidConverterModal";
 import { convertNfcUid } from "../utils/nfcConverter";
+import RekapSekolahComingSoon from "./RekapSekolahComingSoon";
 
 interface PresensiPanelProps {
   students: SantriData[];
@@ -44,6 +58,8 @@ interface PresensiPanelProps {
   defaultTab?: "input" | "rekap" | "statistik" | "whatsapp";
   activeMenu?: string; // made optional to support seamless transition to unified absensi menu
   currentUserGender?: string;
+  defaultRekapSubMenu?: "sholat" | "sekolah";
+  onSubMenuChange?: (sub: "sholat" | "sekolah") => void;
 }
 
 type AttendanceStatus = "hadir" | "terlambat" | "sakit" | "izin" | "alpa" | "unmarked" | "pulang";
@@ -86,9 +102,17 @@ function detectSession(timeStr: string, sessions: SessionInfo[]): string {
 function mapLocalSessionToDbSession(sessionId: string, sessions: SessionInfo[]): { sesi: string; presensi: string } {
   const sess = sessions.find(s => s.id === sessionId);
   if (sess) {
+    let presensi = sess.presensi;
+    if (!presensi || presensi === "ngaji") {
+      const lblL = (sess.label || "").toLowerCase();
+      const idL = (sess.id || "").toLowerCase();
+      if (["subuh", "dzuhur", "zuhur", "dhuhur", "asar", "ashar", "maghrib", "isya"].some(p => lblL.includes(p) || idL.includes(p))) {
+        presensi = "sholat";
+      }
+    }
     return {
       sesi: sess.label,
-      presensi: sess.presensi || "ngaji"
+      presensi: presensi || "sholat"
     };
   }
 
@@ -100,7 +124,9 @@ function mapLocalSessionToDbSession(sessionId: string, sessions: SessionInfo[]):
   if (idLower.includes("makan")) {
     presensi = "makan";
   } else if (idLower.includes("doa")) {
-    presensi = "doa";
+    presensi = "doa malam";
+  } else if (idLower.includes("ngaji")) {
+    presensi = "ngaji";
   }
 
   // Determine "sesi" column value
@@ -120,32 +146,85 @@ function mapLocalSessionToDbSession(sessionId: string, sessions: SessionInfo[]):
 
 // Map supabase database "sesi" and "presensi" columns back to local session ID
 function mapDbSessionToLocalSession(dbSesi: string, dbPresensi: string | undefined, sessions: SessionInfo[]): string {
-  const sess = sessions.find(s => s.label === dbSesi && s.presensi === dbPresensi);
+  const sLower = (dbSesi || "").toLowerCase().trim();
+  const pLower = (dbPresensi || "").toLowerCase().trim();
+
+  // 1. Direct match with matching label and presensi
+  const sess = sessions.find(s => 
+    s.label.toLowerCase().trim() === sLower && 
+    (!pLower || !s.presensi || s.presensi.toLowerCase().trim() === pLower)
+  );
   if (sess) return sess.id;
   
-  // Also try to find just by label if presensi was omitted or null in older records
-  const sessByLabel = sessions.find(s => s.label === dbSesi);
+  // 2. Direct match by label or ID
+  const sessByLabel = sessions.find(s => 
+    s.label.toLowerCase().trim() === sLower || 
+    s.id.toLowerCase().trim() === sLower
+  );
   if (sessByLabel) return sessByLabel.id;
 
-  const sesiLower = (dbSesi || "").toLowerCase();
-  const presensiLower = (dbPresensi || "").toLowerCase();
+  // 3. Normalized names (e.g. ashar <-> asar, zuhur <-> dzuhur)
+  const norm = (str: string) => str.toLowerCase()
+    .replace(/ashar/g, "asar")
+    .replace(/zuhur/g, "dzuhur")
+    .replace(/dhuhur/g, "dzuhur")
+    .replace(/isya'/g, "isya")
+    .trim();
+  const normDb = norm(sLower);
+  const sessByNorm = sessions.find(s => norm(s.label) === normDb || norm(s.id) === normDb);
+  if (sessByNorm) return sessByNorm.id;
 
-  if (sesiLower === "pagi" || (presensiLower === "makan" && sesiLower === "pagi")) {
+  // 4. Meal sessions
+  if (sLower === "pagi" || (pLower === "makan" && sLower === "pagi")) {
     return "makan_pagi";
   }
-  if (sesiLower === "siang" || (presensiLower === "makan" && sesiLower === "siang")) {
+  if (sLower === "siang" || (pLower === "makan" && sLower === "siang")) {
     return "makan_siang";
   }
-  if (sesiLower === "sore" || (presensiLower === "makan" && sesiLower === "sore")) {
+  if (sLower === "sore" || (pLower === "makan" && sLower === "sore")) {
     return "makan_sore";
   }
-  if (sesiLower === "doa_malam" || sesiLower === "doa_malam_sesi") {
+  if (sLower === "doa_malam" || sLower === "doa_malam_sesi") {
     return "doa_malam_sesi";
   }
+
+  // 5. Canonical prayer id fallbacks
+  if (normDb.includes("subuh")) return "subuh";
+  if (normDb.includes("dzuhur")) return "dzuhur";
+  if (normDb.includes("asar")) return "asar";
+  if (normDb.includes("maghrib")) return "maghrib";
+  if (normDb.includes("isya")) return "isya";
+
   return dbSesi;
 }
 
-export default function PresensiPanel({ students, rooms, viewMode = "absensi", defaultTab }: PresensiPanelProps) {
+export default function PresensiPanel({ 
+  students, 
+  rooms, 
+  viewMode = "absensi", 
+  defaultTab,
+  defaultRekapSubMenu = "sholat",
+  onSubMenuChange
+}: PresensiPanelProps) {
+  // Sub-menu Rekap: "sholat" | "sekolah"
+  const [rekapSubMenu, setRekapSubMenu] = useState<"sholat" | "sekolah">(defaultRekapSubMenu || "sholat");
+
+  useEffect(() => {
+    if (defaultRekapSubMenu) {
+      setRekapSubMenu(defaultRekapSubMenu);
+    }
+  }, [defaultRekapSubMenu]);
+
+  const handleRekapSubMenuChange = (sub: "sholat" | "sekolah") => {
+    setRekapSubMenu(sub);
+    if (sub === "sholat") {
+      setRekapPresensiType("sholat");
+    }
+    if (onSubMenuChange) {
+      onSubMenuChange(sub);
+    }
+  };
+
   // Configured date
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
@@ -167,15 +246,15 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
     }
     // Standard defaults
     const defaults = [
-      { id: "subuh", label: "Subuh", time: "04.00 - 10.00", icon: "🌅" },
-      { id: "dzuhur", label: "Dzuhur", time: "11.30 - 12.30", icon: "☀️" },
-      { id: "asar", label: "Asar", time: "14.50 - 15.30", icon: "🌤️" },
-      { id: "maghrib", label: "Maghrib", time: "17.20 - 18.00", icon: "🌇" },
-      { id: "isya", label: "Isya", time: "18.40 - 19.30", icon: "🌌" },
-      { id: "doa_malam_sesi", label: "Doa Malam", time: "03.30 - 04.15", icon: "🌌" },
-      { id: "makan_pagi", label: "Makan Pagi", time: "06.00 - 07.15", icon: "🍳" },
-      { id: "makan_siang", label: "Makan Siang", time: "11.00 - 12.00", icon: "🍛" },
-      { id: "makan_sore", label: "Makan Sore", time: "16.30 - 17.15", icon: "🍲" }
+      { id: "subuh", label: "Subuh", time: "04.00 - 08.00", icon: "🌅", presensi: "sholat" },
+      { id: "dzuhur", label: "Dzuhur", time: "11.45 - 12.30", icon: "☀️", presensi: "sholat" },
+      { id: "asar", label: "Asar", time: "14.50 - 15.30", icon: "🌤️", presensi: "sholat" },
+      { id: "maghrib", label: "Maghrib", time: "17.20 - 18.00", icon: "🌇", presensi: "sholat" },
+      { id: "isya", label: "Isya", time: "18.30 - 19.15", icon: "🌌", presensi: "sholat" },
+      { id: "doa_malam_sesi", label: "Doa Malam", time: "03.30 - 04.15", icon: "🌌", presensi: "doa malam" },
+      { id: "makan_pagi", label: "Makan Pagi", time: "06.00 - 07.15", icon: "🍳", presensi: "makan" },
+      { id: "makan_siang", label: "Makan Siang", time: "11.00 - 12.00", icon: "🍛", presensi: "makan" },
+      { id: "makan_sore", label: "Makan Sore", time: "16.30 - 17.15", icon: "🍲", presensi: "makan" }
     ];
     return defaults;
   });
@@ -186,13 +265,28 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const loadedSessions = data.map((d: any) => ({
-          id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
-          label: d.sesi,
-          time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
-          icon: d.ikon || "⏰",
-          presensi: d.presensi || "ngaji"
-        }));
+        const loadedSessions = data.map((d: any) => {
+          let presensi = d.presensi;
+          if (!presensi) {
+            const sLower = (d.sesi || "").toLowerCase();
+            if (["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya"].some(p => sLower.includes(p))) {
+              presensi = "sholat";
+            } else if (sLower.includes("makan")) {
+              presensi = "makan";
+            } else if (sLower.includes("doa")) {
+              presensi = "doa malam";
+            } else {
+              presensi = "sholat";
+            }
+          }
+          return {
+            id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
+            label: d.sesi,
+            time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
+            icon: d.ikon || "⏰",
+            presensi
+          };
+        });
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
       } else {
@@ -348,16 +442,28 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
   const [rekapTimeframe, setRekapTimeframe] = useState<"harian" | "mingguan" | "bulanan">("harian");
   const [rekapPresensiType, setRekapPresensiType] = useState<string>("sholat");
   const [rekapSesiFilter, setRekapSesiFilter] = useState<string>("semua");
+  const [rekapBelumAbsenFilter, setRekapBelumAbsenFilter] = useState<"semua" | "belum_absen" | "sudah_absen">("semua");
+  const [rekapSortBy, setRekapSortBy] = useState<"ranking" | "terendah" | "nama">("ranking");
   
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  
+  // Modal for clicking student name to view detailed 5 prayer sessions
+  const [selectedStudentForPrayerDetail, setSelectedStudentForPrayerDetail] = useState<any | null>(null);
+  const [studentPrayerRecords, setStudentPrayerRecords] = useState<any[]>([]);
+  const [isLoadingPrayerDetail, setIsLoadingPrayerDetail] = useState<boolean>(false);
+  const [prayerDetailDate, setPrayerDetailDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [rawAttendanceRows, setRawAttendanceRows] = useState<any[]>([]);
+
   const [downloadOptions, setDownloadOptions] = useState<{
     kamar: string;
     timeframe: "harian" | "mingguan" | "bulanan";
     tanggal: string;
+    filterStatus?: "semua" | "belum_absen" | "sudah_absen";
   }>({
     kamar: "All",
     timeframe: "harian",
     tanggal: new Date().toISOString().slice(0, 10),
+    filterStatus: "semua",
   });
 
   const [attendancePopup, setAttendancePopup] = useState<{
@@ -908,6 +1014,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       }
 
       setSupabaseSyncStatus("connected");
+      setRawAttendanceRows(allData);
 
       if (allData.length > 0 || page === 0) {
         setAttendanceDb(prevDb => {
@@ -1435,30 +1542,126 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
     return { monday, sunday };
   };
 
-  const getPassedSessions = (dateStr: string) => {
-    if (dateStr !== selectedDate) {
-      return sessions.map(s => s.id);
-    } else {
-      if (!isSimulatingTime) {
-        const now = new Date();
-        const curH = now.getHours();
-        const curM = now.getMinutes();
-        const totalMinutes = curH * 60 + curM;
-        const passedIds: string[] = [];
+  const getPassedSessions = (_dateStr: string) => {
+    // Pastikan seluruh 5 waktu sholat (Subuh, Dzuhur, Asar, Maghrib, Isya) selalu terdata dan dievaluasi lengkap
+    return sessions.map(s => s.id);
+  };
 
-        sessions.forEach(sess => {
-          try {
-            const [startStr] = sess.time.replace(/\s/g, "").split("-");
-            const [h, m] = startStr.split(".").map(Number);
-            if (totalMinutes >= (h * 60 + m)) {
-              passedIds.push(sess.id);
-            }
-          } catch(e) {}
-        });
-        return passedIds;
+  // Session matcher for Rekap and filtering
+  const isSessionMatched = (sess: any, filterVal: string = rekapSesiFilter) => {
+    if (!filterVal || filterVal === "semua") return true;
+    const f = filterVal.toLowerCase().trim();
+    const l = (sess.label || "").toLowerCase();
+    const id = (sess.id || "").toLowerCase();
+    
+    if (id === f || l === f) return true;
+    if (l.includes(f) || id.includes(f)) return true;
+    if (f.includes(id) || f.includes(l)) return true;
+    if (f === "ashar" && (l.includes("asar") || id.includes("asar"))) return true;
+    if (f === "asar" && (l.includes("ashar") || id.includes("ashar"))) return true;
+    if (f === "dzuhur" && (l.includes("zuhur") || id.includes("zuhur"))) return true;
+    if (f === "zuhur" && (l.includes("dzuhur") || id.includes("dzuhur"))) return true;
+    return false;
+  };
+
+  const isSesiSelected = Boolean(rekapSesiFilter && rekapSesiFilter !== "semua");
+
+  // Dynamic session options matching the chosen presensi type
+  const sesiOptions = useMemo(() => {
+    const baseOptions = [{ value: "semua", label: "Semua Sesi" }];
+
+    const matched = sessions.filter(s => {
+      const mapped = mapLocalSessionToDbSession(s.id, sessions);
+      if (mapped.presensi === rekapPresensiType) return true;
+      if (rekapPresensiType === "sholat") {
+        return ["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya", "doa"].some(k => 
+          s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
+        );
       }
-      return sessions.map(s => s.id);
+      if (rekapPresensiType === "makan") {
+        return ["makan", "pagi", "siang", "sore", "malam"].some(k => 
+          s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
+        );
+      }
+      if (rekapPresensiType === "ngaji") {
+        return ["ngaji", "quran", "kitab", "pagi", "sore", "malam"].some(k => 
+          s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
+        );
+      }
+      return true;
+    });
+
+    if (matched.length > 0) {
+      matched.forEach(s => {
+        baseOptions.push({
+          value: s.id,
+          label: `${s.label} (${s.time})`
+        });
+      });
+    } else {
+      if (rekapPresensiType === "sholat") {
+        baseOptions.push(
+          { value: "subuh", label: "Subuh (04.00 - 10.00)" },
+          { value: "dzuhur", label: "Dzuhur (11.30 - 12.30)" },
+          { value: "ashar", label: "Ashar (14.50 - 15.30)" },
+          { value: "maghrib", label: "Maghrib (17.20 - 18.00)" },
+          { value: "isya", label: "Isya (18.40 - 19.30)" }
+        );
+      } else if (rekapPresensiType === "makan") {
+        baseOptions.push(
+          { value: "pagi", label: "Makan Pagi" },
+          { value: "siang", label: "Makan Siang" },
+          { value: "sore", label: "Makan Sore / Malam" }
+        );
+      } else if (rekapPresensiType === "ngaji") {
+        baseOptions.push(
+          { value: "pagi", label: "Ngaji Pagi" },
+          { value: "sore", label: "Ngaji Sore" },
+          { value: "malam", label: "Ngaji Malam" }
+        );
+      }
     }
+    return baseOptions;
+  }, [sessions, rekapPresensiType]);
+
+  // Check a student's attendance for the selected session
+  const getStudentSessionStatus = (studentId: string | number, dateStr: string = selectedDate) => {
+    const sId = String(studentId);
+    if (!isSesiSelected) {
+      return { hasRecorded: false, status: "unmarked", sessionLabel: "" };
+    }
+
+    const matchedSessions = sessions.filter(s => isSessionMatched(s, rekapSesiFilter));
+    if (matchedSessions.length === 0) {
+      const key = `${dateStr}_absensi_${rekapSesiFilter}`;
+      const status = attendanceDb[key]?.[sId];
+      const hasRec = Boolean(status && status !== "unmarked");
+      return {
+        hasRecorded: hasRec,
+        status: status || "unmarked",
+        sessionLabel: rekapSesiFilter
+      };
+    }
+
+    for (const sess of matchedSessions) {
+      const key = `${dateStr}_absensi_${sess.id}`;
+      const status = attendanceDb[key]?.[sId];
+      if (status && status !== "unmarked") {
+        return {
+          hasRecorded: true,
+          status,
+          sessionLabel: sess.label,
+          sessionId: sess.id
+        };
+      }
+    }
+
+    return {
+      hasRecorded: false,
+      status: "unmarked",
+      sessionLabel: matchedSessions[0]?.label || rekapSesiFilter,
+      sessionId: matchedSessions[0]?.id
+    };
   };
 
   const getStudentPeriodStats = (studentId: string | number, tfOverride?: string, dateOverride?: string, typeOverride?: string) => {
@@ -1484,11 +1687,6 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       return status;
     };
 
-    const isSessionMatched = (sess: any) => {
-      if (!rekapSesiFilter || rekapSesiFilter === "semua") return true;
-      return sess.label.toLowerCase().includes(rekapSesiFilter.toLowerCase());
-    };
-
     if (tf === "harian") {
       sessionsData[date] = {};
       const passedSessionIds = getPassedSessions(date);
@@ -1496,7 +1694,6 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
         if (!passedSessionIds.includes(sess.id)) return;
         const mappedPresensi = mapLocalSessionToDbSession(sess.id, sessions).presensi;
         if (mappedPresensi !== type) return;
-          if (!isSessionMatched(sess)) return;
         if (!isSessionMatched(sess)) return;
         
         const key = `${date}_absensi_${sess.id}`;
@@ -1570,6 +1767,175 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
     return { hadir, terlambat, alpa, sakit, pulang, sessionsData };
   };
 
+  // Count unrecorded students for the selected session
+  const unrecordedCountForSelectedSession = useMemo(() => {
+    if (!isSesiSelected) return 0;
+    return filteredStudents.filter((s: any) => {
+      const sessionInfo = getStudentSessionStatus(s.id, selectedDate);
+      return !sessionInfo.hasRecorded;
+    }).length;
+  }, [filteredStudents, isSesiSelected, selectedDate, rekapSesiFilter, attendanceDb]);
+
+  // Display list for Rekap Presensi with filters and sorting
+  const displayRekapStudents = useMemo(() => {
+    let list = filteredStudents.filter((student: any) => {
+      if (isSesiSelected) {
+        const sessionInfo = getStudentSessionStatus(student.id, selectedDate);
+        if (rekapBelumAbsenFilter === "belum_absen") {
+          return !sessionInfo.hasRecorded;
+        }
+        if (rekapBelumAbsenFilter === "sudah_absen") {
+          return sessionInfo.hasRecorded;
+        }
+      }
+      return true;
+    });
+
+    return list.map((student: any) => {
+      const pPeriodStats = getStudentPeriodStats(student.id);
+      const totalHadir = pPeriodStats.hadir + pPeriodStats.terlambat;
+      return {
+        ...student,
+        pPeriodStats,
+        totalHadir
+      };
+    }).sort((a: any, b: any) => {
+      if (rekapSortBy === "ranking") {
+        if (b.totalHadir !== a.totalHadir) return b.totalHadir - a.totalHadir;
+        if (b.pPeriodStats.hadir !== a.pPeriodStats.hadir) return b.pPeriodStats.hadir - a.pPeriodStats.hadir;
+        if (a.pPeriodStats.alpa !== b.pPeriodStats.alpa) return a.pPeriodStats.alpa - b.pPeriodStats.alpa;
+        return (a.nama_lengkap || "").localeCompare(b.nama_lengkap || "");
+      } else if (rekapSortBy === "terendah") {
+        if (a.totalHadir !== b.totalHadir) return a.totalHadir - b.totalHadir;
+        if (a.pPeriodStats.hadir !== b.pPeriodStats.hadir) return a.pPeriodStats.hadir - b.pPeriodStats.hadir;
+        if (b.pPeriodStats.alpa !== a.pPeriodStats.alpa) return b.pPeriodStats.alpa - a.pPeriodStats.alpa;
+        return (a.nama_lengkap || "").localeCompare(b.nama_lengkap || "");
+      } else {
+        return (a.nama_lengkap || "").localeCompare(b.nama_lengkap || "");
+      }
+    });
+  }, [filteredStudents, isSesiSelected, rekapBelumAbsenFilter, selectedDate, rekapSesiFilter, attendanceDb, rekapSortBy, rekapTimeframe, rekapPresensiType]);
+
+  // Helper for opening 5 prayers detail modal for a student
+  const openStudentPrayerDetail = async (student: any, dateToUse: string = selectedDate) => {
+    setSelectedStudentForPrayerDetail(student);
+    setPrayerDetailDate(dateToUse);
+    setIsLoadingPrayerDetail(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("absensi")
+        .select("*")
+        .eq("tanggal", dateToUse)
+        .ilike("nama", (student.nama_lengkap || "").trim());
+
+      if (!error && data && data.length > 0) {
+        setStudentPrayerRecords(data);
+      } else {
+        const localMatches = (rawAttendanceRows || []).filter(
+          (r: any) => r.tanggal === dateToUse && (r.nama || "").toLowerCase() === (student.nama_lengkap || "").toLowerCase()
+        );
+        setStudentPrayerRecords(localMatches);
+      }
+    } catch (err) {
+      console.warn("Error fetching student prayer detail:", err);
+      const localMatches = (rawAttendanceRows || []).filter(
+        (r: any) => r.tanggal === dateToUse && (r.nama || "").toLowerCase() === (student.nama_lengkap || "").toLowerCase()
+      );
+      setStudentPrayerRecords(localMatches);
+    } finally {
+      setIsLoadingPrayerDetail(false);
+    }
+  };
+
+  const handlePrayerDateChange = async (newDate: string) => {
+    if (!selectedStudentForPrayerDetail || !newDate) return;
+    setPrayerDetailDate(newDate);
+    setIsLoadingPrayerDetail(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("absensi")
+        .select("*")
+        .eq("tanggal", newDate)
+        .ilike("nama", (selectedStudentForPrayerDetail.nama_lengkap || "").trim());
+
+      if (!error && data) {
+        setStudentPrayerRecords(data);
+      } else {
+        setStudentPrayerRecords([]);
+      }
+    } catch (err) {
+      console.warn("Error changing prayer detail date:", err);
+      setStudentPrayerRecords([]);
+    } finally {
+      setIsLoadingPrayerDetail(false);
+    }
+  };
+
+  // 5 Canonical Prayer times
+  const PRAYER_SCHEDULE = [
+    { key: "subuh", label: "Subuh", name: "Sholat Subuh", time: "04:00 - 08:00 WIB", icon: "🌅" },
+    { key: "dzuhur", label: "Dzuhur", name: "Sholat Dzuhur", time: "11:45 - 12:30 WIB", icon: "☀️" },
+    { key: "asar", label: "Asar", name: "Sholat Asar", time: "14:50 - 15:30 WIB", icon: "🌤️" },
+    { key: "maghrib", label: "Maghrib", name: "Sholat Maghrib", time: "17:20 - 18:00 WIB", icon: "🌇" },
+    { key: "isya", label: "Isya", name: "Sholat Isya", time: "18:30 - 19:15 WIB", icon: "🌌" }
+  ];
+
+  const getPrayerDetailForSession = (prayerKey: string, student: any, date: string) => {
+    const norm = (s: string) => (s || "").toLowerCase().replace(/ashar/g, "asar").replace(/zuhur/g, "dzuhur").replace(/dhuhur/g, "dzuhur").trim();
+    const targetKey = norm(prayerKey);
+
+    // 1. Check in fetched records from Supabase
+    const record = studentPrayerRecords.find((r: any) => {
+      const dbSesiNorm = norm(r.sesi);
+      return dbSesiNorm.includes(targetKey) || targetKey.includes(dbSesiNorm);
+    });
+
+    if (record) {
+      let status = record.status || "hadir";
+      if (status === "telat") status = "terlambat";
+      if (status === "alpha") status = "alpa";
+
+      return {
+        status,
+        waktu: record.waktu || "",
+        hasRecord: true,
+        source: "database",
+        recordId: record.id
+      };
+    }
+
+    // 2. Fallback to local attendanceDb
+    const matchedSession = sessions.find(s => {
+      const sNorm = norm(s.label || s.id);
+      return sNorm.includes(targetKey) || targetKey.includes(sNorm);
+    });
+
+    if (matchedSession) {
+      const key = `${date}_absensi_${matchedSession.id}`;
+      const statusInDb = attendanceDb[key]?.[student.id];
+      if (statusInDb && statusInDb !== "unmarked") {
+        return {
+          status: statusInDb,
+          waktu: "",
+          hasRecord: true,
+          source: "local_state",
+          recordId: null
+        };
+      }
+    }
+
+    return {
+      status: "unmarked",
+      waktu: "",
+      hasRecord: false,
+      source: "none",
+      recordId: null
+    };
+  };
+
+  // Download Rekap PDF - Strictly sorted from HIGHEST attendance to LOWEST
   const downloadRekapPDF = () => {
     import("jspdf").then(({ jsPDF }) => {
       import("jspdf-autotable").then(({ default: autoTable }) => {
@@ -1587,75 +1953,231 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
         } else {
           dateLabel = formatIndoMonth(dt);
         }
+
+        const sessionObj = isSesiSelected ? sessions.find(s => isSessionMatched(s, rekapSesiFilter)) : null;
+        const sessionLabel = sessionObj ? sessionObj.label : (isSesiSelected ? rekapSesiFilter.toUpperCase() : "");
         
-        const title = `Rekapitulasi Presensi ${rekapPresensiType === "sholat" ? "Sholat" : rekapPresensiType === "makan" ? "Makan" : "Ngaji"} ${timeframeLabel} - ${downloadOptions.kamar !== "All" ? `Kamar ${downloadOptions.kamar}` : "Semua Kamar"}`;
+        const title = `Rekapitulasi Presensi ${rekapPresensiType === "sholat" ? "Sholat" : rekapPresensiType === "makan" ? "Makan" : "Ngaji"} ${timeframeLabel} - ${downloadOptions.kamar !== "All" ? `Kamar ${downloadOptions.kamar}` : "Semua Kamar"}${sessionLabel ? ` (${sessionLabel})` : ""}`;
         
-        doc.setFontSize(14);
+        doc.setFontSize(13);
         doc.text(title, 14, 15);
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.text(`Periode: ${dateLabel}`, 14, 22);
-        
+
+        let pdfStudents = hydratedStudentsList.filter((s: any) => 
+          downloadOptions.kamar === "All" || (s.kamar || "").trim().toLowerCase() === downloadOptions.kamar.trim().toLowerCase()
+        );
+
+        // Apply status filter if set in download options
+        if (isSesiSelected && downloadOptions.filterStatus === "belum_absen") {
+          pdfStudents = pdfStudents.filter((s: any) => !getStudentSessionStatus(s.id, dt).hasRecorded);
+        } else if (isSesiSelected && downloadOptions.filterStatus === "sudah_absen") {
+          pdfStudents = pdfStudents.filter((s: any) => getStudentSessionStatus(s.id, dt).hasRecorded);
+        }
+
+        // Calculate statistics & SORT FROM HIGHEST ATTENDANCE TO LOWEST ATTENDANCE
+        const sortedStudentsWithStats = pdfStudents.map((student: any) => {
+          const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
+          const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
+          const totalHadir = pPeriodStats.hadir + pPeriodStats.terlambat;
+          const persentase = total > 0 ? Math.round((totalHadir / total) * 100) : 0;
+          
+          let pagi = "unmarked", siang = "unmarked", sore = "unmarked", countMakan = 0;
+          if (rekapPresensiType === "makan" && tf === "harian") {
+            const sessionsTodayData = pPeriodStats.sessionsData[dt] || {};
+            const getSessionStatus = (keyword: string) => {
+              const s = sessions.find(sess => mapLocalSessionToDbSession(sess.id, sessions).presensi === "makan" && sess.label.toLowerCase().includes(keyword));
+              if (!s) return "unmarked";
+              return sessionsTodayData[s.id] || "unmarked";
+            };
+            pagi = getSessionStatus("pagi");
+            siang = getSessionStatus("siang");
+            sore = getSessionStatus("sore");
+            countMakan = (pagi === "hadir" ? 1 : 0) + (siang === "hadir" ? 1 : 0) + (sore === "hadir" ? 1 : 0);
+          }
+
+          return {
+            student,
+            pPeriodStats,
+            total,
+            totalHadir,
+            persentase,
+            pagi,
+            siang,
+            sore,
+            countMakan
+          };
+        }).sort((a: any, b: any) => {
+          // URUTKAN DARI TINGKAT KEHADIRAN PALING TINGGI KE PALING RENDAH
+          if (rekapPresensiType === "makan" && tf === "harian") {
+            if (b.countMakan !== a.countMakan) return b.countMakan - a.countMakan;
+            return (a.student.nama_lengkap || "").localeCompare(b.student.nama_lengkap || "");
+          }
+          if (b.totalHadir !== a.totalHadir) {
+            return b.totalHadir - a.totalHadir; // Kehadiran terbanyak di atas
+          }
+          if (b.pPeriodStats.hadir !== a.pPeriodStats.hadir) {
+            return b.pPeriodStats.hadir - a.pPeriodStats.hadir; // Hadir tepat waktu terbanyak
+          }
+          if (b.persentase !== a.persentase) {
+            return b.persentase - a.persentase; // Persentase tertinggi
+          }
+          if (a.pPeriodStats.alpa !== b.pPeriodStats.alpa) {
+            return a.pPeriodStats.alpa - b.pPeriodStats.alpa; // Alfa paling sedikit
+          }
+          return (a.student.nama_lengkap || "").localeCompare(b.student.nama_lengkap || "");
+        });
+
+        doc.setTextColor(100);
+        doc.text(`* Diurutkan dari tingkat kehadiran tertinggi sampai terendah (${sortedStudentsWithStats.length} Santri)`, 14, 27);
+
         let tableData: any[][] = [];
         let head: string[][] = [];
 
-        const pdfStudents = hydratedStudentsList.filter((s: any) => 
-          downloadOptions.kamar === "All" || (s.kamar || "").trim().toLowerCase() === downloadOptions.kamar.trim().toLowerCase()
-        );
-        
         if (rekapPresensiType === "makan" && tf === "harian") {
-          head = [["No", "Nama Santri", "Kamar", "Pagi", "Siang", "Sore", "Total"]];
-          tableData = pdfStudents.map((student: any, idx: number) => {
-            const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
-            const sessionsTodayData = pPeriodStats.sessionsData[dt] || {};
-            const getSessionStatus = (keyword: string) => {
-                const s = sessions.find(sess => mapLocalSessionToDbSession(sess.id, sessions).presensi === "makan" && sess.label.toLowerCase().includes(keyword));
-                if (!s) return "unmarked";
-                return sessionsTodayData[s.id] || "unmarked";
-            };
-            const pagi = getSessionStatus("pagi");
-            const siang = getSessionStatus("siang");
-            const sore = getSessionStatus("sore");
-            const countMakan = (pagi==="hadir"?1:0) + (siang==="hadir"?1:0) + (sore==="hadir"?1:0);
-            return [
-              idx + 1,
-              student.nama_lengkap,
-              student.kamar || "-",
-              pagi === "hadir" ? "V" : "X",
-              siang === "hadir" ? "V" : "X",
-              sore === "hadir" ? "V" : "X",
-              countMakan
-            ];
-          });
+          head = [["No", "Nama Santri", "Kamar", "Pagi", "Siang", "Sore", "Total Makan"]];
+          tableData = sortedStudentsWithStats.map((item: any, idx: number) => [
+            idx + 1,
+            item.student.nama_lengkap,
+            item.student.kamar || "-",
+            item.pagi === "hadir" ? "V" : "X",
+            item.siang === "hadir" ? "V" : "X",
+            item.sore === "hadir" ? "V" : "X",
+            item.countMakan
+          ]);
         } else {
-          head = [["No", "Nama Santri", "Kamar", "Hadir/Makan", "Telat", "Izin/Sakit", "Alfa"]];
-          tableData = pdfStudents.map((student: any, idx: number) => {
-            const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
-            const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
-            const persentase = total > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / total) * 100) : 0;
-            return [
-              idx + 1,
-              student.nama_lengkap,
-              student.kamar || "-",
-              pPeriodStats.hadir,
-              pPeriodStats.terlambat,
-              pPeriodStats.sakit + pPeriodStats.pulang,
-              pPeriodStats.alpa
-            ];
-          });
+          head = [["No", "Nama Santri", "Kamar", "Hadir", "Telat", "Izin/Sakit", "Alfa", "Kehadiran (%)"]];
+          tableData = sortedStudentsWithStats.map((item: any, idx: number) => [
+            idx + 1,
+            item.student.nama_lengkap,
+            item.student.kamar || "-",
+            item.pPeriodStats.hadir,
+            item.pPeriodStats.terlambat,
+            item.pPeriodStats.sakit + item.pPeriodStats.pulang,
+            item.pPeriodStats.alpa,
+            `${item.persentase}%`
+          ]);
         }
 
         autoTable(doc, {
-          startY: 28,
+          startY: 32,
           head: head,
           body: tableData,
           theme: 'grid',
-          headStyles: { fillColor: [62, 70, 202] }
+          headStyles: { fillColor: [62, 70, 202] },
+          styles: { fontSize: 8 }
         });
 
-        doc.save(`Rekap_${rekapPresensiType}_${timeframeLabel}_${dateLabel.replace(/\s+/g, '_')}.pdf`);
+        doc.save(`Rekap_${rekapPresensiType}_${timeframeLabel}_${dateLabel.replace(/\s+/g, '_')}_UrutKehadiran.pdf`);
         setIsDownloadModalOpen(false);
       });
     });
+  };
+
+  // Download Rekap CSV - Strictly sorted from HIGHEST attendance to LOWEST
+  const downloadRekapCSV = () => {
+    const tf = downloadOptions.timeframe;
+    const dt = downloadOptions.tanggal;
+    
+    const timeframeLabel = tf === "harian" ? "Harian" : tf === "mingguan" ? "Mingguan" : "Bulanan";
+    let dateLabel = "";
+    if (tf === "harian") {
+      dateLabel = formatIndoDate(dt);
+    } else if (tf === "mingguan") {
+      const { monday, sunday } = getWeekRange(dt);
+      dateLabel = `${formatIndoDate(monday.toISOString().slice(0,10))} - ${formatIndoDate(sunday.toISOString().slice(0,10))}`;
+    } else {
+      dateLabel = formatIndoMonth(dt);
+    }
+
+    let pdfStudents = hydratedStudentsList.filter((s: any) => 
+      downloadOptions.kamar === "All" || (s.kamar || "").trim().toLowerCase() === downloadOptions.kamar.trim().toLowerCase()
+    );
+
+    if (isSesiSelected && downloadOptions.filterStatus === "belum_absen") {
+      pdfStudents = pdfStudents.filter((s: any) => !getStudentSessionStatus(s.id, dt).hasRecorded);
+    } else if (isSesiSelected && downloadOptions.filterStatus === "sudah_absen") {
+      pdfStudents = pdfStudents.filter((s: any) => getStudentSessionStatus(s.id, dt).hasRecorded);
+    }
+
+    const sortedStudentsWithStats = pdfStudents.map((student: any) => {
+      const pPeriodStats = getStudentPeriodStats(student.id, tf, dt, rekapPresensiType);
+      const total = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
+      const totalHadir = pPeriodStats.hadir + pPeriodStats.terlambat;
+      const persentase = total > 0 ? Math.round((totalHadir / total) * 100) : 0;
+      
+      let pagi = "unmarked", siang = "unmarked", sore = "unmarked", countMakan = 0;
+      if (rekapPresensiType === "makan" && tf === "harian") {
+        const sessionsTodayData = pPeriodStats.sessionsData[dt] || {};
+        const getSessionStatus = (keyword: string) => {
+          const s = sessions.find(sess => mapLocalSessionToDbSession(sess.id, sessions).presensi === "makan" && sess.label.toLowerCase().includes(keyword));
+          if (!s) return "unmarked";
+          return sessionsTodayData[s.id] || "unmarked";
+        };
+        pagi = getSessionStatus("pagi");
+        siang = getSessionStatus("siang");
+        sore = getSessionStatus("sore");
+        countMakan = (pagi === "hadir" ? 1 : 0) + (siang === "hadir" ? 1 : 0) + (sore === "hadir" ? 1 : 0);
+      }
+
+      return {
+        student,
+        pPeriodStats,
+        total,
+        totalHadir,
+        persentase,
+        pagi,
+        siang,
+        sore,
+        countMakan
+      };
+    }).sort((a: any, b: any) => {
+      // URUTKAN DARI TINGKAT KEHADIRAN PALING TINGGI KE PALING RENDAH
+      if (rekapPresensiType === "makan" && tf === "harian") {
+        if (b.countMakan !== a.countMakan) return b.countMakan - a.countMakan;
+        return (a.student.nama_lengkap || "").localeCompare(b.student.nama_lengkap || "");
+      }
+      if (b.totalHadir !== a.totalHadir) {
+        return b.totalHadir - a.totalHadir;
+      }
+      if (b.pPeriodStats.hadir !== a.pPeriodStats.hadir) {
+        return b.pPeriodStats.hadir - a.pPeriodStats.hadir;
+      }
+      if (b.persentase !== a.persentase) {
+        return b.persentase - a.persentase;
+      }
+      if (a.pPeriodStats.alpa !== b.pPeriodStats.alpa) {
+        return a.pPeriodStats.alpa - b.pPeriodStats.alpa;
+      }
+      return (a.student.nama_lengkap || "").localeCompare(b.student.nama_lengkap || "");
+    });
+
+    let csvContent = "\uFEFF"; // UTF-8 BOM
+    if (rekapPresensiType === "makan" && tf === "harian") {
+      csvContent += "No,Nama Santri,Kamar,Pagi,Siang,Sore,Total Makan\n";
+      sortedStudentsWithStats.forEach((item, idx) => {
+        const cleanName = `"${(item.student.nama_lengkap || "").replace(/"/g, '""')}"`;
+        const cleanKamar = `"${(item.student.kamar || "-").replace(/"/g, '""')}"`;
+        csvContent += `${idx + 1},${cleanName},${cleanKamar},${item.pagi === "hadir" ? "V" : "X"},${item.siang === "hadir" ? "V" : "X"},${item.sore === "hadir" ? "V" : "X"},${item.countMakan}\n`;
+      });
+    } else {
+      csvContent += "No,Nama Santri,Kamar,Hadir,Telat,Izin/Sakit,Alfa,Kehadiran (%)\n";
+      sortedStudentsWithStats.forEach((item, idx) => {
+        const cleanName = `"${(item.student.nama_lengkap || "").replace(/"/g, '""')}"`;
+        const cleanKamar = `"${(item.student.kamar || "-").replace(/"/g, '""')}"`;
+        csvContent += `${idx + 1},${cleanName},${cleanKamar},${item.pPeriodStats.hadir},${item.pPeriodStats.terlambat},${item.pPeriodStats.sakit + item.pPeriodStats.pulang},${item.pPeriodStats.alpa},${item.persentase}%\n`;
+      });
+    }
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Rekap_${rekapPresensiType}_${timeframeLabel}_${dateLabel.replace(/\s+/g, '_')}_UrutKehadiran.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setIsDownloadModalOpen(false);
   };
   executeScanRef.current = executeScan;
 
@@ -1665,13 +2187,13 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       {/* 1. HEADER BRANDING */}
       <div className="flex flex-col gap-1 pt-2 pb-6 select-none" id="attendance_brand_header">
         <div className="flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-          <span>{viewMode === "rekap" ? "Rekap Presensi Santri" : "Presensi Santri"}</span>
+          <span>{viewMode === "rekap" ? (rekapSubMenu === "sekolah" ? "Rekap Presensi Sekolah" : "Rekap Presensi Sholat") : "Presensi Santri"}</span>
           <ChevronRight className="w-4 h-4" />
-          <span>Daftar</span>
+          <span>{viewMode === "rekap" ? (rekapSubMenu === "sekolah" ? "Sekolah (Coming Soon)" : "Sholat 5 Waktu") : "Daftar"}</span>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-[28px] font-bold text-slate-900 dark:text-white tracking-tight leading-none">
-            {viewMode === "rekap" ? "Rekap Presensi Santri" : "Presensi Santri"}
+            {viewMode === "rekap" ? (rekapSubMenu === "sekolah" ? "Rekap Presensi Sekolah" : "Rekap Presensi Sholat") : "Presensi Santri"}
           </h2>
           {viewMode !== "rekap" && (
             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide">
@@ -1851,26 +2373,85 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       {/* REKAP VIEW: RENDER SUB-VIEWS */}
       {viewMode === "rekap" && (
         <>
+          {/* SUB-MENU REKAP PRESENSI: SHOLAT & SEKOLAH (COMING SOON) */}
+          <div className="bg-white dark:bg-[#111c44] p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3 animate-fade-in" id="rekap_presensi_submenu_bar">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleRekapSubMenuChange("sholat")}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  rekapSubMenu === "sholat"
+                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/80 dark:border-slate-700 font-bold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                <Moon className="w-4 h-4" />
+                <span>Sholat</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-extrabold border border-emerald-200 dark:border-emerald-800">
+                  5 Waktu
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleRekapSubMenuChange("sekolah")}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  rekapSubMenu === "sekolah"
+                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/80 dark:border-slate-700 font-bold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                <School className="w-4 h-4" />
+                <span>Sekolah</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-black tracking-wide border border-amber-200 dark:border-amber-800">
+                  Coming Soon
+                </span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              {rekapSubMenu === "sholat" ? (
+                <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5 font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Subuh • Dzuhur • Asar • Maghrib • Isya</span>
+                </span>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Modul Presensi Sekolah Sedang Dikembangkan</span>
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* B. REKAP DATA VIEW */}
           {attendanceSubTab === "rekap" && (
+            rekapSubMenu === "sekolah" ? (
+              <RekapSekolahComingSoon onSwitchToSholat={() => handleRekapSubMenuChange("sholat")} />
+            ) : (
         <div className="space-y-4 animate-fade-in" id="attendance_rekap_section">
 
-          {/* CLEAN FILTER CARD MATCHING EXACT DESIGN */}
+          {/* CLEAN FILTER CARD */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-              <h3 className="font-bold text-slate-900 dark:text-white text-base">Filter</h3>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-indigo-600" />
+                <span>Filter Rekap Presensi</span>
+              </h3>
               <button 
                 type="button"
                 onClick={() => {
                   setRekapTimeframe("harian");
                   setRekapPresensiType("sholat");
                   setRekapSesiFilter("semua");
+                  setRekapBelumAbsenFilter("semua");
+                  setRekapSortBy("ranking");
                   setSelectedDate(new Date().toISOString().slice(0, 10));
                   setSearchQuery("");
                   setRoomFilter("All");
                   setCategoryFilter("All");
                 }}
-                className="text-red-500 hover:text-red-600 text-sm font-medium transition-colors"
+                className="text-red-500 hover:text-red-600 text-sm font-medium transition-colors cursor-pointer"
               >
                 Atur ulang filter
               </button>
@@ -1898,6 +2479,7 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
                   onChange={(val) => {
                     setRekapPresensiType(val);
                     setRekapSesiFilter("semua");
+                    setRekapBelumAbsenFilter("semua");
                   }}
                   options={[
                     { value: "sholat", label: "Presensi Sholat" },
@@ -1910,31 +2492,24 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Sesi / Waktu</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Sesi / Waktu</span>
+                  {isSesiSelected && (
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded">
+                      Sesi Aktif
+                    </span>
+                  )}
+                </label>
                 <SearchableSelect
                   value={rekapSesiFilter}
-                  onChange={setRekapSesiFilter}
-                  options={[
-                    { value: "semua", label: "Semua Sesi" },
-                    ...(rekapPresensiType === "sholat" ? [
-                      { value: "subuh", label: "Subuh" },
-                      { value: "dzuhur", label: "Dzuhur" },
-                      { value: "ashar", label: "Ashar" },
-                      { value: "maghrib", label: "Maghrib" },
-                      { value: "isya", label: "Isya" }
-                    ] : []),
-                    ...(rekapPresensiType === "makan" ? [
-                      { value: "pagi", label: "Pagi" },
-                      { value: "siang", label: "Siang" },
-                      { value: "malam", label: "Malam / Sore" }
-                    ] : []),
-                    ...(rekapPresensiType === "ngaji" ? [
-                      { value: "pagi", label: "Pagi" },
-                      { value: "sore", label: "Sore" },
-                      { value: "malam", label: "Malam" }
-                    ] : [])
-                  ]}
-                  placeholder="Pilih salah satu opsi"
+                  onChange={(val) => {
+                    setRekapSesiFilter(val);
+                    if (val === "semua") {
+                      setRekapBelumAbsenFilter("semua");
+                    }
+                  }}
+                  options={sesiOptions}
+                  placeholder="Pilih sesi presensi"
                 />
               </div>
 
@@ -1969,41 +2544,177 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
               </div>
             </div>
 
-            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <button 
-                type="button"
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors shadow-xs w-fit"
-              >
-                Terapkan filter
-              </button>
+            {/* BARIS KHUSUS: FILTER BELUM ABSEN (AKTIF KETIKA MEMILIH SESI TERTENTU) & PENGURUTAN */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
+                  {isSesiSelected ? (
+                    <AlertCircle className="w-4 h-4 text-amber-500" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-slate-400" />
+                  )}
+                  <span>Status Absensi Sesi:</span>
+                </span>
 
-              <div className="flex items-center gap-3">
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                {isSesiSelected ? (
+                  <div className="inline-flex items-center p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xs gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setRekapBelumAbsenFilter("semua")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        rekapBelumAbsenFilter === "semua"
+                          ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs"
+                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      Semua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRekapBelumAbsenFilter("belum_absen")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        rekapBelumAbsenFilter === "belum_absen"
+                          ? "bg-rose-600 text-white shadow-sm ring-2 ring-rose-300 dark:ring-rose-900"
+                          : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      }`}
+                    >
+                      <span>Belum Absen</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                        rekapBelumAbsenFilter === "belum_absen"
+                          ? "bg-white text-rose-700"
+                          : "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
+                      }`}>
+                        {unrecordedCountForSelectedSession}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRekapBelumAbsenFilter("sudah_absen")}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        rekapBelumAbsenFilter === "sudah_absen"
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                      }`}
+                    >
+                      Sudah Absen
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Filter &quot;Belum Absen&quot; aktif setelah Anda memilih salah satu <strong>Sesi / Waktu</strong> di atas</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Sorting options */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <span>Urutan:</span>
+                </span>
+                <select
+                  value={rekapSortBy}
+                  onChange={(e) => setRekapSortBy(e.target.value as any)}
+                  className="text-xs font-semibold px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="ranking">Kehadiran Tertinggi ke Terendah</option>
+                  <option value="terendah">Kehadiran Terendah ke Tertinggi</option>
+                  <option value="nama">Nama Santri (A - Z)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button"
+                  onClick={() => {}}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs"
+                >
+                  Terapkan Filter
+                </button>
+                {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" && (
+                  <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-900">
+                    Fokus: {displayRekapStudents.length} Santri Belum Absen
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 sm:w-60">
+                  <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   <input 
                     type="text"
-                    placeholder="Pencarian nama atau kamar..."
+                    placeholder="Cari nama atau kamar..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full text-xs font-medium pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
+                    className="w-full text-xs font-medium pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
                   />
                 </div>
                 <button
-                  onClick={() => setIsDownloadModalOpen(true)}
-                  className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs shrink-0"
+                  type="button"
+                  onClick={() => {
+                    setDownloadOptions({
+                      ...downloadOptions,
+                      timeframe: rekapTimeframe,
+                      tanggal: selectedDate,
+                      kamar: roomFilter,
+                      filterStatus: isSesiSelected ? rekapBelumAbsenFilter : "semua"
+                    });
+                    setIsDownloadModalOpen(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0 cursor-pointer"
+                  title="Unduh Rekap (Otomatis Terurut dari Kehadiran Tertinggi ke Terendah)"
                 >
-                  <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Unduh PDF</span>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Rekap</span>
                 </button>
               </div>
             </div>
           </div>
 
+          {/* ACTIVE BELUM ABSEN BANNER IF FILTER IS ON */}
+          {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" && (
+            <div className="p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-2xl flex items-center justify-between gap-4 animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center text-rose-600 dark:text-rose-300 shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-rose-900 dark:text-rose-200">
+                    Menampilkan {displayRekapStudents.length} Santri Belum Melakukan Absensi
+                  </h4>
+                  <p className="text-xs text-rose-700 dark:text-rose-400 font-medium mt-0.5">
+                    Sesi: <strong>{sessions.find(s => isSessionMatched(s, rekapSesiFilter))?.label || rekapSesiFilter.toUpperCase()}</strong> • Tanggal: {formatIndoDate(selectedDate)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRekapBelumAbsenFilter("semua")}
+                className="text-xs font-bold text-rose-700 dark:text-rose-300 hover:underline cursor-pointer shrink-0"
+              >
+                Lihat Semua
+              </button>
+            </div>
+          )}
+
+          {/* MAIN REKAP DATA CARD */}
           <div className="bg-white dark:bg-[#111c44] rounded-2xl border border-slate-100 dark:border-slate-800 p-5 shadow-sm space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white">
-                Data Presensi {rekapTimeframe === "harian" ? "Harian" : rekapTimeframe === "mingguan" ? "Mingguan" : "Bulanan"} ({filteredStudents.length} Santri)
-              </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <span>Data Presensi {rekapTimeframe === "harian" ? "Harian" : rekapTimeframe === "mingguan" ? "Mingguan" : "Bulanan"}</span>
+                  <span className="text-xs font-extrabold px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-full">
+                    {displayRekapStudents.length} Santri
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 flex items-center gap-1">
+                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                  <span>Diurutkan: {rekapSortBy === "ranking" ? "Kehadiran Tertinggi ke Terendah" : rekapSortBy === "terendah" ? "Kehadiran Terendah ke Tertinggi" : "Nama A - Z"}</span>
+                </p>
+              </div>
               <span className="text-xs text-slate-500 font-medium">
                 {rekapTimeframe === "harian" ? formatIndoDate(selectedDate) : rekapTimeframe === "mingguan" ? `${formatIndoDate(getWeekRange(selectedDate).monday.toISOString().slice(0, 10))} - ${formatIndoDate(getWeekRange(selectedDate).sunday.toISOString().slice(0, 10))}` : formatIndoMonth(selectedDate)}
               </span>
@@ -2011,35 +2722,77 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
 
             {/* Scrollable list of Rekap */}
             <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[550px] overflow-y-auto pr-1">
-              {filteredStudents.length > 0 ? (
-                filteredStudents.map((student) => {
+              {displayRekapStudents.length > 0 ? (
+                displayRekapStudents.map((student: any, index: number) => {
                   const isFemale = student.jenis_kelamin === "P";
-                  const pPeriodStats = getStudentPeriodStats(student.id);
+                  const pPeriodStats = student.pPeriodStats;
+                  const totalAbsen = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
+                  const persenHadir = totalAbsen > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / totalAbsen) * 100) : 0;
+                  
+                  // Specific session attendance status if session is selected
+                  const sessionInfo = isSesiSelected ? getStudentSessionStatus(student.id, selectedDate) : null;
+
                   return (
-                    <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold">
+                    <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold hover:bg-slate-50/70 dark:hover:bg-slate-800/30 px-2 rounded-xl transition-colors">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs">
+                        <span className="text-[11px] font-black text-slate-400 w-6 text-center shrink-0">
+                          #{index + 1}
+                        </span>
+                        <div 
+                          onClick={() => openStudentPrayerDetail(student)}
+                          className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all"
+                          title="Klik untuk melihat rincian 5 waktu sholat berjamaah"
+                        >
                           {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
                         </div>
                         <div className="min-w-0">
-                          <span className="font-extrabold text-slate-800 dark:text-white block text-sm leading-snug truncate whitespace-nowrap">{student.nama_lengkap}</span>
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold block mt-0.5">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => openStudentPrayerDetail(student)}
+                              className="font-extrabold text-slate-800 dark:text-white text-sm leading-snug truncate hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline text-left cursor-pointer transition-colors flex items-center gap-1.5 group/btn"
+                              title="Klik untuk melihat status 5 waktu sholat berjamaah"
+                            >
+                              <span>{student.nama_lengkap}</span>
+                              <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-900 flex items-center gap-1 opacity-80 group-hover/btn:opacity-100 transition-opacity">
+                                <Eye className="w-3 h-3" />
+                                <span>Rincian Sholat</span>
+                              </span>
+                            </button>
+                            {sessionInfo && (
+                              sessionInfo.hasRecorded ? (
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-green-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  ✓ Sudah Absen ({sessionInfo.status})
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-900 animate-pulse">
+                                  Belum Absen
+                                </span>
+                              )
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
+                            <span className="text-[10px] text-slate-300 dark:text-slate-600">•</span>
+                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">Kehadiran: {persenHadir}%</span>
+                          </div>
                         </div>
                       </div>
+
                       <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
-                        <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs">
+                        <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs" title="Hadir Tepat Waktu">
                           <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir</span>
                           <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
                         </div>
-                        <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-250/60 dark:border-amber-900/40 rounded-xl shadow-3xs">
+                        <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl shadow-3xs" title="Terlambat">
                           <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Telat</span>
                           <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
                         </div>
-                        <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-250/60 dark:border-sky-900/40 rounded-xl shadow-3xs">
+                        <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 rounded-xl shadow-3xs" title="Izin / Sakit">
                           <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Izin/Skt</span>
                           <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
                         </div>
-                        <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-250/60 dark:border-rose-900/40 rounded-xl shadow-3xs">
+                        <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 rounded-xl shadow-3xs" title="Alfa / Tanpa Keterangan">
                           <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Alfa</span>
                           <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
                         </div>
@@ -2049,13 +2802,21 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
                 })
               ) : (
                 <div className="py-12 text-center text-slate-400 bg-slate-50 dark:bg-slate-900 border dark:border-slate-800 rounded-2xl text-xs font-bold leading-normal">
-                  Tidak ada data yang cocok.
+                  {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-emerald-600">Alhamdulillah! Semua santri sudah melakukan absensi pada sesi ini.</p>
+                      <p className="text-xs text-slate-400">Tidak ada santri yang berstatus belum absen.</p>
+                    </div>
+                  ) : (
+                    "Tidak ada data presensi yang cocok dengan filter yang dipilih."
+                  )}
                 </div>
               )}
             </div>
           </div>
 
         </div>
+            )
       )}
 
       {/* D. WHATSAPP CONFIGURATION & LOG PANEL */}
@@ -2680,11 +3441,11 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
       {/* Download Modal */}
       {isDownloadModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-scale-up">
             <div className="bg-indigo-600 p-5 flex items-center justify-between">
               <div>
-                <h3 className="text-white font-black uppercase tracking-wider text-sm">Unduh PDF</h3>
-                <p className="text-indigo-200 text-[10px] font-bold">Atur parameter laporan sebelum mengunduh</p>
+                <h3 className="text-white font-black uppercase tracking-wider text-sm">Unduh Rekap Presensi</h3>
+                <p className="text-indigo-200 text-[10px] font-bold">Laporan resmi presensi santri</p>
               </div>
               <button 
                 onClick={() => setIsDownloadModalOpen(false)}
@@ -2695,6 +3456,14 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
             </div>
             
             <div className="p-5 space-y-4">
+              {/* Notifikasi Pengurutan Sesuai Request */}
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl flex items-start gap-2.5">
+                <ArrowUpDown className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold leading-snug">
+                  Data pada rekap yang didownload <strong>diurutkan dari yang paling tinggi kehadirannya sampai yang paling rendah</strong>.
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Pilih Kamar</label>
                 <SearchableSelect
@@ -2740,21 +3509,48 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
                   className="w-full text-sm font-normal px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                 />
               </div>
+
+              {isSesiSelected && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Filter Santri (Sesi: {sessions.find(s => isSessionMatched(s, rekapSesiFilter))?.label || rekapSesiFilter})
+                  </label>
+                  <SearchableSelect
+                    value={downloadOptions.filterStatus || "semua"}
+                    onChange={(val) => setDownloadOptions({...downloadOptions, filterStatus: val as any})}
+                    options={[
+                      { value: "semua", label: "Semua Santri" },
+                      { value: "belum_absen", label: `Hanya Belum Absen (${unrecordedCountForSelectedSession} santri)` },
+                      { value: "sudah_absen", label: "Hanya yang Sudah Absen" }
+                    ]}
+                    placeholder="Pilih status siswa"
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap justify-end gap-2">
               <button 
                 onClick={() => setIsDownloadModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer"
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 cursor-pointer"
               >
                 Batal
               </button>
               <button 
+                onClick={downloadRekapCSV}
+                className="px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl hover:bg-emerald-100 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Download file format CSV / Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>CSV / Excel</span>
+              </button>
+              <button 
                 onClick={downloadRekapPDF}
                 className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                title="Download dokumen PDF siap cetak"
               >
                 <Download className="w-3.5 h-3.5" />
-                Unduh PDF
+                <span>Unduh PDF</span>
               </button>
             </div>
           </div>
@@ -2779,6 +3575,327 @@ export default function PresensiPanel({ students, rooms, viewMode = "absensi", d
         students={students}
         initialUid={converterInitialUid}
       />
+
+      {/* MODAL RINCIAN 5 WAKTU SHOLAT BERJAMAAH */}
+      {selectedStudentForPrayerDetail && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedStudentForPrayerDetail(null);
+          }}
+        >
+          <div className="bg-white dark:bg-[#111c44] border border-slate-200/80 dark:border-slate-800 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-scale-up my-auto flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white relative">
+              <button
+                type="button"
+                onClick={() => setSelectedStudentForPrayerDetail(null)}
+                className="absolute top-4 right-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Tutup Modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/10 border-2 border-white/20 overflow-hidden shrink-0 shadow-md flex items-center justify-center text-3xl">
+                  {selectedStudentForPrayerDetail.foto ? (
+                    <img 
+                      src={selectedStudentForPrayerDetail.foto} 
+                      alt="" 
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <span>{selectedStudentForPrayerDetail.jenis_kelamin === "P" ? "🧕" : "👳"}</span>
+                  )}
+                </div>
+
+                <div className="min-w-0 pr-8">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-indigo-200">
+                      Rincian Presensi Sholat
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200">
+                      5 Waktu Sholat
+                    </span>
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-black text-white mt-1 leading-snug truncate">
+                    {selectedStudentForPrayerDetail.nama_lengkap}
+                  </h3>
+                  <div className="flex items-center gap-3 text-xs text-indigo-200/90 font-medium mt-1 flex-wrap">
+                    <span>Kamar: <strong>{selectedStudentForPrayerDetail.kamar || "Belum Set"}</strong></span>
+                    {selectedStudentForPrayerDetail.nisn && (
+                      <>
+                        <span>•</span>
+                        <span>NISN: {selectedStudentForPrayerDetail.nisn}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Date navigator bar */}
+              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs text-white/90">
+                  <Calendar className="w-4 h-4 text-indigo-300" />
+                  <span className="font-bold">{formatIndoDate(prayerDetailDate)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(prayerDetailDate);
+                      d.setDate(d.getDate() - 1);
+                      handlePrayerDateChange(d.toISOString().slice(0, 10));
+                    }}
+                    className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold text-white transition-colors cursor-pointer flex items-center gap-1"
+                    title="Hari Sebelumnya"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Kemarin</span>
+                  </button>
+                  <input
+                    type="date"
+                    value={prayerDetailDate}
+                    onChange={(e) => {
+                      if (e.target.value) handlePrayerDateChange(e.target.value);
+                    }}
+                    className="text-xs bg-white/15 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-white/40 cursor-pointer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(prayerDetailDate);
+                      d.setDate(d.getDate() + 1);
+                      handlePrayerDateChange(d.toISOString().slice(0, 10));
+                    }}
+                    className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold text-white transition-colors cursor-pointer flex items-center gap-1"
+                    title="Hari Selanjutnya"
+                  >
+                    <span className="hidden sm:inline">Besok</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+              {isLoadingPrayerDetail ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400">
+                  <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs font-bold">Memuat rincian sholat santri...</span>
+                </div>
+              ) : (() => {
+                // Calculate detailed statistics for the 5 prayers
+                const prayerDetails = PRAYER_SCHEDULE.map(ps => {
+                  const detail = getPrayerDetailForSession(ps.key, selectedStudentForPrayerDetail, prayerDetailDate);
+                  return {
+                    ...ps,
+                    ...detail
+                  };
+                });
+
+                const hadirBerjamaah = prayerDetails.filter(p => p.status === "hadir").length;
+                const terlambat = prayerDetails.filter(p => p.status === "terlambat").length;
+                const izinSakit = prayerDetails.filter(p => p.status === "sakit" || p.status === "izin" || p.status === "pulang").length;
+                const tidakHadir = prayerDetails.filter(p => p.status === "alpa" || p.status === "unmarked").length;
+                const persenTuntas = Math.round(((hadirBerjamaah + terlambat) / 5) * 100);
+
+                return (
+                  <>
+                    {/* Ringkasan 4 Kartu KPI */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
+                        <span className="text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400 tracking-wider">
+                          Berjamaah
+                        </span>
+                        <div className="flex items-baseline gap-1 mt-0.5">
+                          <strong className="text-xl font-black text-emerald-800 dark:text-emerald-300">{hadirBerjamaah}</strong>
+                          <span className="text-[10px] text-emerald-600 font-bold">/ 5</span>
+                        </div>
+                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Tepat Waktu</span>
+                      </div>
+
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
+                        <span className="text-[10px] font-extrabold uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                          Telat / Masbuk
+                        </span>
+                        <div className="flex items-baseline gap-1 mt-0.5">
+                          <strong className="text-xl font-black text-amber-800 dark:text-amber-300">{terlambat}</strong>
+                          <span className="text-[10px] text-amber-600 font-bold">/ 5</span>
+                        </div>
+                        <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Terlambat</span>
+                      </div>
+
+                      <div className="p-3 bg-sky-50 dark:bg-sky-950/30 border border-sky-200/70 dark:border-sky-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
+                        <span className="text-[10px] font-extrabold uppercase text-sky-700 dark:text-sky-400 tracking-wider">
+                          Izin / Sakit
+                        </span>
+                        <div className="flex items-baseline gap-1 mt-0.5">
+                          <strong className="text-xl font-black text-sky-800 dark:text-sky-300">{izinSakit}</strong>
+                          <span className="text-[10px] text-sky-600 font-bold">/ 5</span>
+                        </div>
+                        <span className="text-[9px] text-sky-600 dark:text-sky-400 font-medium">Udzur Syar'i</span>
+                      </div>
+
+                      <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
+                        <span className="text-[10px] font-extrabold uppercase text-rose-700 dark:text-rose-400 tracking-wider">
+                          Alfa / Belum
+                        </span>
+                        <div className="flex items-baseline gap-1 mt-0.5">
+                          <strong className="text-xl font-black text-rose-800 dark:text-rose-300">{tidakHadir}</strong>
+                          <span className="text-[10px] text-rose-600 font-bold">/ 5</span>
+                        </div>
+                        <span className="text-[9px] text-rose-600 dark:text-rose-400 font-medium">Tidak Hadir</span>
+                      </div>
+                    </div>
+
+                    {/* Evaluasi Status Bar */}
+                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
+                      hadirBerjamaah === 5 
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                        : terlambat > 0 && tidakHadir === 0
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300"
+                        : "bg-indigo-500/10 border-indigo-500/30 text-indigo-800 dark:text-indigo-300"
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        {hadirBerjamaah === 5 ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        )}
+                        <span className="font-semibold">
+                          {hadirBerjamaah === 5
+                            ? "Alhamdulillah! Santri ini melaksanakan seluruh 5 waktu sholat secara berjamaah tepat waktu."
+                            : `Kehadiran Sholat Berjamaah: ${persenTuntas}% (${hadirBerjamaah + terlambat} dari 5 waktu dihadiri).`}
+                        </span>
+                      </div>
+                      <span className="font-black text-sm shrink-0">{persenTuntas}%</span>
+                    </div>
+
+                    {/* List 5 Waktu Sholat */}
+                    <div className="space-y-2.5">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                        <span>Rincian Status Per Waktu Sholat</span>
+                        <span className="text-[11px] font-medium text-slate-400">Jadwal Masjid Pesantren</span>
+                      </h4>
+
+                      <div className="space-y-2">
+                        {prayerDetails.map((prayer) => {
+                          const isHadir = prayer.status === "hadir";
+                          const isTelat = prayer.status === "terlambat";
+                          const isSakit = prayer.status === "sakit";
+                          const isIzin = prayer.status === "izin" || prayer.status === "pulang";
+                          const isAlfa = prayer.status === "alpa" || prayer.status === "unmarked";
+
+                          return (
+                            <div 
+                              key={prayer.key}
+                              className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                isHadir 
+                                  ? "bg-emerald-50/40 dark:bg-emerald-950/15 border-emerald-200/80 dark:border-emerald-900/40"
+                                  : isTelat
+                                  ? "bg-amber-50/40 dark:bg-amber-950/15 border-amber-200/80 dark:border-amber-900/40"
+                                  : isSakit || isIzin
+                                  ? "bg-sky-50/40 dark:bg-sky-950/15 border-sky-200/80 dark:border-sky-900/40"
+                                  : "bg-slate-50 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-800"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-lg shrink-0 shadow-3xs">
+                                  {prayer.icon}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h5 className="text-sm font-extrabold text-slate-800 dark:text-white">
+                                      {prayer.name}
+                                    </h5>
+                                    <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500">
+                                      ({prayer.time})
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {isHadir && (
+                                      <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                        Dilaksanakan Berjamaah (Tepat Waktu)
+                                      </span>
+                                    )}
+                                    {isTelat && (
+                                      <span className="text-[11px] text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
+                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                        Terlambat / Masbuk Pada Jamaah
+                                      </span>
+                                    )}
+                                    {isSakit && (
+                                      <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold flex items-center gap-1">
+                                        <Info className="w-3.5 h-3.5 text-sky-600" />
+                                        Tidak Sholat Berjamaah (Sakit)
+                                      </span>
+                                    )}
+                                    {isIzin && (
+                                      <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold flex items-center gap-1">
+                                        <Info className="w-3.5 h-3.5 text-sky-600" />
+                                        Tidak Sholat Berjamaah (Izin/Pulang)
+                                      </span>
+                                    )}
+                                    {isAlfa && (
+                                      <span className="text-[11px] text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1">
+                                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                                        Tidak Mengikuti Berjamaah (Alfa / Belum Absen)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1 self-stretch sm:self-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 dark:border-slate-800">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  isHadir 
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300/60"
+                                    : isTelat
+                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300/60"
+                                    : isSakit || isIzin
+                                    ? "bg-sky-100 text-sky-800 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-300/60"
+                                    : "bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300/60"
+                                }`}>
+                                  {isHadir ? "Berjamaah" : isTelat ? "Terlambat" : isSakit ? "Sakit" : isIzin ? "Izin" : "Alfa"}
+                                </span>
+                                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  {prayer.waktu ? (
+                                    <strong>Jam {prayer.waktu} WIB</strong>
+                                  ) : (
+                                    <span className="italic text-slate-400">Tidak ada jam scan</span>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Data disinkronkan secara real-time dari mesin absensi & database
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedStudentForPrayerDetail(null)}
+                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+              >
+                Tutup Rincian
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
