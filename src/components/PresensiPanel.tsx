@@ -43,7 +43,9 @@ import {
   ChevronLeft,
   XCircle,
   School,
-  BookOpen
+  BookOpen,
+  RotateCw,
+  Filter
 } from "lucide-react";
 import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
@@ -239,22 +241,27 @@ export default function PresensiPanel({
     const saved = localStorage.getItem("santri_absensi_sessions");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((s: any) => {
+            const idLower = (s.id || "").toLowerCase();
+            const labelLower = (s.label || "").toLowerCase();
+            const pLower = (s.presensi || "").toLowerCase();
+            return pLower !== "makan" && pLower !== "ngaji" && !idLower.includes("makan") && !idLower.includes("ngaji") && !labelLower.includes("makan") && !labelLower.includes("ngaji");
+          });
+        }
       } catch (e) {
         // ignore
       }
     }
-    // Standard defaults
+    // Standard defaults (hanya sholat dan ibadah pondok)
     const defaults = [
       { id: "subuh", label: "Subuh", time: "04.00 - 08.00", icon: "🌅", presensi: "sholat" },
       { id: "dzuhur", label: "Dzuhur", time: "11.45 - 12.30", icon: "☀️", presensi: "sholat" },
       { id: "asar", label: "Asar", time: "14.50 - 15.30", icon: "🌤️", presensi: "sholat" },
       { id: "maghrib", label: "Maghrib", time: "17.20 - 18.00", icon: "🌇", presensi: "sholat" },
       { id: "isya", label: "Isya", time: "18.30 - 19.15", icon: "🌌", presensi: "sholat" },
-      { id: "doa_malam_sesi", label: "Doa Malam", time: "03.30 - 04.15", icon: "🌌", presensi: "doa malam" },
-      { id: "makan_pagi", label: "Makan Pagi", time: "06.00 - 07.15", icon: "🍳", presensi: "makan" },
-      { id: "makan_siang", label: "Makan Siang", time: "11.00 - 12.00", icon: "🍛", presensi: "makan" },
-      { id: "makan_sore", label: "Makan Sore", time: "16.30 - 17.15", icon: "🍲", presensi: "makan" }
+      { id: "doa_malam_sesi", label: "Doa Malam", time: "03.30 - 04.15", icon: "🌌", presensi: "doa malam" }
     ];
     return defaults;
   });
@@ -265,28 +272,32 @@ export default function PresensiPanel({
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const loadedSessions = data.map((d: any) => {
-          let presensi = d.presensi;
-          if (!presensi) {
+        const loadedSessions = data
+          .filter((d: any) => {
             const sLower = (d.sesi || "").toLowerCase();
-            if (["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya"].some(p => sLower.includes(p))) {
-              presensi = "sholat";
-            } else if (sLower.includes("makan")) {
-              presensi = "makan";
-            } else if (sLower.includes("doa")) {
-              presensi = "doa malam";
-            } else {
-              presensi = "sholat";
+            const pLower = (d.presensi || "").toLowerCase();
+            return pLower !== "makan" && pLower !== "ngaji" && !sLower.includes("makan") && !sLower.includes("ngaji");
+          })
+          .map((d: any) => {
+            let presensi = d.presensi;
+            if (!presensi) {
+              const sLower = (d.sesi || "").toLowerCase();
+              if (["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya"].some(p => sLower.includes(p))) {
+                presensi = "sholat";
+              } else if (sLower.includes("doa")) {
+                presensi = "doa malam";
+              } else {
+                presensi = "sholat";
+              }
             }
-          }
-          return {
-            id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
-            label: d.sesi,
-            time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
-            icon: d.ikon || "⏰",
-            presensi
-          };
-        });
+            return {
+              id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
+              label: d.sesi,
+              time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
+              icon: d.ikon || "⏰",
+              presensi
+            };
+          });
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
       } else {
@@ -444,6 +455,10 @@ export default function PresensiPanel({
   const [rekapSesiFilter, setRekapSesiFilter] = useState<string>("semua");
   const [rekapBelumAbsenFilter, setRekapBelumAbsenFilter] = useState<"semua" | "belum_absen" | "sudah_absen">("semua");
   const [rekapSortBy, setRekapSortBy] = useState<"ranking" | "terendah" | "nama">("ranking");
+  const [rekapPage, setRekapPage] = useState<number>(1);
+  const [rekapPerPage, setRekapPerPage] = useState<number>(10);
+  const [isRefreshingAttendance, setIsRefreshingAttendance] = useState<boolean>(false);
+  const [isRekapFilterVisible, setIsRekapFilterVisible] = useState<boolean>(true);
   
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   
@@ -1566,63 +1581,45 @@ export default function PresensiPanel({
 
   const isSesiSelected = Boolean(rekapSesiFilter && rekapSesiFilter !== "semua");
 
-  // Dynamic session options matching the chosen presensi type
+  // Dynamic session options matching Sholat 5 waktu sessions (hanya nama waktu sholat tanpa jam)
   const sesiOptions = useMemo(() => {
-    const baseOptions = [{ value: "semua", label: "Semua Sesi" }];
+    const baseOptions = [{ value: "semua", label: "Semua Sesi Sholat" }];
+
+    const formatSessionLabel = (rawLabel: string) => {
+      if (!rawLabel) return "";
+      const stripped = rawLabel.replace(/\s*\([^)]*\)/g, "").trim();
+      return stripped
+        .split(" ")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+    };
 
     const matched = sessions.filter(s => {
       const mapped = mapLocalSessionToDbSession(s.id, sessions);
-      if (mapped.presensi === rekapPresensiType) return true;
-      if (rekapPresensiType === "sholat") {
-        return ["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya", "doa"].some(k => 
-          s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
-        );
-      }
-      if (rekapPresensiType === "makan") {
-        return ["makan", "pagi", "siang", "sore", "malam"].some(k => 
-          s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
-        );
-      }
-      if (rekapPresensiType === "ngaji") {
-        return ["ngaji", "quran", "kitab", "pagi", "sore", "malam"].some(k => 
-          s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
-        );
-      }
-      return true;
+      if (mapped.presensi === "makan" || mapped.presensi === "ngaji") return false;
+      return ["subuh", "dzuhur", "zuhur", "asar", "ashar", "maghrib", "isya", "doa"].some(k => 
+        s.label.toLowerCase().includes(k) || s.id.toLowerCase().includes(k)
+      );
     });
 
     if (matched.length > 0) {
       matched.forEach(s => {
         baseOptions.push({
           value: s.id,
-          label: `${s.label} (${s.time})`
+          label: formatSessionLabel(s.label || s.id)
         });
       });
     } else {
-      if (rekapPresensiType === "sholat") {
-        baseOptions.push(
-          { value: "subuh", label: "Subuh (04.00 - 10.00)" },
-          { value: "dzuhur", label: "Dzuhur (11.30 - 12.30)" },
-          { value: "ashar", label: "Ashar (14.50 - 15.30)" },
-          { value: "maghrib", label: "Maghrib (17.20 - 18.00)" },
-          { value: "isya", label: "Isya (18.40 - 19.30)" }
-        );
-      } else if (rekapPresensiType === "makan") {
-        baseOptions.push(
-          { value: "pagi", label: "Makan Pagi" },
-          { value: "siang", label: "Makan Siang" },
-          { value: "sore", label: "Makan Sore / Malam" }
-        );
-      } else if (rekapPresensiType === "ngaji") {
-        baseOptions.push(
-          { value: "pagi", label: "Ngaji Pagi" },
-          { value: "sore", label: "Ngaji Sore" },
-          { value: "malam", label: "Ngaji Malam" }
-        );
-      }
+      baseOptions.push(
+        { value: "subuh", label: "Subuh" },
+        { value: "dzuhur", label: "Dzuhur" },
+        { value: "ashar", label: "Ashar" },
+        { value: "maghrib", label: "Maghrib" },
+        { value: "isya", label: "Isya" }
+      );
     }
     return baseOptions;
-  }, [sessions, rekapPresensiType]);
+  }, [sessions]);
 
   // Check a student's attendance for the selected session
   const getStudentSessionStatus = (studentId: string | number, dateStr: string = selectedDate) => {
@@ -1815,6 +1812,43 @@ export default function PresensiPanel({
       }
     });
   }, [filteredStudents, isSesiSelected, rekapBelumAbsenFilter, selectedDate, rekapSesiFilter, attendanceDb, rekapSortBy, rekapTimeframe, rekapPresensiType]);
+
+  // Reset page to 1 whenever filters or search change
+  useEffect(() => {
+    setRekapPage(1);
+  }, [searchQuery, roomFilter, selectedDate, rekapTimeframe, rekapSesiFilter, rekapBelumAbsenFilter, rekapSortBy]);
+
+  // Count active filters for filter button badge (like in Image 2)
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (roomFilter && roomFilter !== "All") count++;
+    if (rekapSesiFilter && rekapSesiFilter !== "semua") count++;
+    if (rekapBelumAbsenFilter && rekapBelumAbsenFilter !== "semua") count++;
+    if (rekapTimeframe !== "harian") count++;
+    return count;
+  }, [roomFilter, rekapSesiFilter, rekapBelumAbsenFilter, rekapTimeframe]);
+
+  // Pagination calculations
+  const totalRekapItems = displayRekapStudents.length;
+  const totalRekapPages = Math.max(1, Math.ceil(totalRekapItems / rekapPerPage));
+  const currentRekapPage = Math.min(Math.max(1, rekapPage), totalRekapPages);
+  const rekapStartIndex = totalRekapItems === 0 ? 0 : (currentRekapPage - 1) * rekapPerPage;
+  const rekapEndIndex = Math.min(rekapStartIndex + rekapPerPage, totalRekapItems);
+
+  const paginatedRekapStudents = useMemo(() => {
+    return displayRekapStudents.slice(rekapStartIndex, rekapEndIndex);
+  }, [displayRekapStudents, rekapStartIndex, rekapEndIndex]);
+
+  const handleRefreshAttendance = async () => {
+    setIsRefreshingAttendance(true);
+    try {
+      await fetchAttendanceFromSupabase();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTimeout(() => setIsRefreshingAttendance(false), 500);
+    }
+  };
 
   // Helper for opening 5 prayers detail modal for a student
   const openStudentPrayerDetail = async (student: any, dateToUse: string = selectedDate) => {
@@ -2373,57 +2407,6 @@ export default function PresensiPanel({
       {/* REKAP VIEW: RENDER SUB-VIEWS */}
       {viewMode === "rekap" && (
         <>
-          {/* SUB-MENU REKAP PRESENSI: SHOLAT & SEKOLAH (COMING SOON) */}
-          <div className="bg-white dark:bg-[#111c44] p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3 animate-fade-in" id="rekap_presensi_submenu_bar">
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => handleRekapSubMenuChange("sholat")}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  rekapSubMenu === "sholat"
-                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/80 dark:border-slate-700 font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-                }`}
-              >
-                <Moon className="w-4 h-4" />
-                <span>Sholat</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-extrabold border border-emerald-200 dark:border-emerald-800">
-                  5 Waktu
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleRekapSubMenuChange("sekolah")}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  rekapSubMenu === "sekolah"
-                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/80 dark:border-slate-700 font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-                }`}
-              >
-                <School className="w-4 h-4" />
-                <span>Sekolah</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-black tracking-wide border border-amber-200 dark:border-amber-800">
-                  Coming Soon
-                </span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              {rekapSubMenu === "sholat" ? (
-                <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1.5 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Subuh • Dzuhur • Asar • Maghrib • Isya</span>
-                </span>
-              ) : (
-                <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Modul Presensi Sekolah Sedang Dikembangkan</span>
-                </span>
-              )}
-            </div>
-          </div>
-
           {/* B. REKAP DATA VIEW */}
           {attendanceSubTab === "rekap" && (
             rekapSubMenu === "sekolah" ? (
@@ -2432,247 +2415,216 @@ export default function PresensiPanel({
         <div className="space-y-4 animate-fade-in" id="attendance_rekap_section">
 
           {/* CLEAN FILTER CARD */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-indigo-600" />
-                <span>Filter Rekap Presensi</span>
-              </h3>
-              <button 
-                type="button"
-                onClick={() => {
-                  setRekapTimeframe("harian");
-                  setRekapPresensiType("sholat");
-                  setRekapSesiFilter("semua");
-                  setRekapBelumAbsenFilter("semua");
-                  setRekapSortBy("ranking");
-                  setSelectedDate(new Date().toISOString().slice(0, 10));
-                  setSearchQuery("");
-                  setRoomFilter("All");
-                  setCategoryFilter("All");
-                }}
-                className="text-red-500 hover:text-red-600 text-sm font-medium transition-colors cursor-pointer"
-              >
-                Atur ulang filter
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Periode</label>
-                <SearchableSelect
-                  value={rekapTimeframe}
-                  onChange={(val) => setRekapTimeframe(val as "harian" | "mingguan" | "bulanan")}
-                  options={[
-                    { value: "harian", label: "Harian" },
-                    { value: "mingguan", label: "Mingguan" },
-                    { value: "bulanan", label: "Bulanan" }
-                  ]}
-                  placeholder="Pilih salah satu opsi"
-                />
+          {isRekapFilterVisible && (
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-indigo-600" />
+                  <span>Filter Rekap Presensi</span>
+                </h3>
+                <div className="flex items-center gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setRekapTimeframe("harian");
+                      setRekapPresensiType("sholat");
+                      setRekapSesiFilter("semua");
+                      setRekapBelumAbsenFilter("semua");
+                      setRekapSortBy("ranking");
+                      setSelectedDate(new Date().toISOString().slice(0, 10));
+                      setSearchQuery("");
+                      setRoomFilter("All");
+                      setCategoryFilter("All");
+                    }}
+                    className="text-red-500 hover:text-red-600 text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    Atur ulang filter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsRekapFilterVisible(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-bold cursor-pointer"
+                    title="Tutup Filter"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jenis Presensi</label>
-                <SearchableSelect
-                  value={rekapPresensiType}
-                  onChange={(val) => {
-                    setRekapPresensiType(val);
-                    setRekapSesiFilter("semua");
-                    setRekapBelumAbsenFilter("semua");
-                  }}
-                  options={[
-                    { value: "sholat", label: "Presensi Sholat" },
-                    { value: "makan", label: "Presensi Makan" },
-                    { value: "ngaji", label: "Presensi Ngaji" },
-                    { value: "sekolah", label: "Presensi Sekolah" }
-                  ]}
-                  placeholder="Pilih salah satu opsi"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Periode</label>
+                  <SearchableSelect
+                    value={rekapTimeframe}
+                    onChange={(val) => setRekapTimeframe(val as "harian" | "mingguan" | "bulanan")}
+                    options={[
+                      { value: "harian", label: "Harian" },
+                      { value: "mingguan", label: "Mingguan" },
+                      { value: "bulanan", label: "Bulanan" }
+                    ]}
+                    placeholder="Pilih salah satu opsi"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                    <span>Sesi / Waktu</span>
+                    {isSesiSelected && (
+                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded">
+                        Sesi Aktif
+                      </span>
+                    )}
+                  </label>
+                  <SearchableSelect
+                    value={rekapSesiFilter}
+                    onChange={(val) => {
+                      setRekapSesiFilter(val);
+                      if (val === "semua") {
+                        setRekapBelumAbsenFilter("semua");
+                      }
+                    }}
+                    options={sesiOptions}
+                    placeholder="Pilih sesi presensi"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {rekapTimeframe === "harian" ? "Tanggal" : rekapTimeframe === "mingguan" ? "Tanggal Acuan" : "Bulan"}
+                  </label>
+                  <input 
+                    type={rekapTimeframe === "bulanan" ? "month" : "date"}
+                    value={rekapTimeframe === "bulanan" ? selectedDate.slice(0, 7) : selectedDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedDate(rekapTimeframe === "bulanan" ? e.target.value + "-01" : e.target.value);
+                        setIsManualDate(true);
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-left text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Asrama / Kamar</label>
+                  <SearchableSelect
+                    value={roomFilter}
+                    onChange={setRoomFilter}
+                    options={[
+                      { value: "All", label: "Semua Kamar" },
+                      ...roomsList.map((r: string) => ({ value: r, label: r }))
+                    ]}
+                    placeholder="Pilih kamar"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                  <span>Sesi / Waktu</span>
-                  {isSesiSelected && (
-                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded">
-                      Sesi Aktif
+              {/* BARIS KHUSUS: FILTER BELUM ABSEN (AKTIF KETIKA MEMILIH SESI TERTENTU) & PENGURUTAN */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
+                    {isSesiSelected ? (
+                      <AlertCircle className="w-4 h-4 text-amber-500" />
+                    ) : (
+                      <Lock className="w-4 h-4 text-slate-400" />
+                    )}
+                    <span>Status Absensi Sesi:</span>
+                  </span>
+
+                  {isSesiSelected ? (
+                    <div className="inline-flex items-center p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xs gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setRekapBelumAbsenFilter("semua")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          rekapBelumAbsenFilter === "semua"
+                            ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs"
+                            : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        Semua
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRekapBelumAbsenFilter("belum_absen")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          rekapBelumAbsenFilter === "belum_absen"
+                            ? "bg-rose-600 text-white shadow-sm ring-2 ring-rose-300 dark:ring-rose-900"
+                            : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        }`}
+                      >
+                        <span>Belum Absen</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                          rekapBelumAbsenFilter === "belum_absen"
+                            ? "bg-white text-rose-700"
+                            : "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
+                        }`}>
+                          {unrecordedCountForSelectedSession}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRekapBelumAbsenFilter("sudah_absen")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          rekapBelumAbsenFilter === "sudah_absen"
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                        }`}
+                      >
+                        Sudah Absen
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>Filter &quot;Belum Absen&quot; aktif setelah Anda memilih salah satu <strong>Sesi / Waktu</strong> di atas</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sorting options */}
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <ArrowUpDown className="w-3.5 h-3.5" />
+                    <span>Urutan:</span>
+                  </span>
+                  <select
+                    value={rekapSortBy}
+                    onChange={(e) => setRekapSortBy(e.target.value as any)}
+                    className="text-xs font-semibold px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="ranking">Kehadiran Tertinggi ke Terendah</option>
+                    <option value="terendah">Kehadiran Terendah ke Tertinggi</option>
+                    <option value="nama">Nama Santri (A - Z)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsRekapFilterVisible(false)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs cursor-pointer"
+                  >
+                    Terapkan Filter
+                  </button>
+                  {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" && (
+                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-900">
+                      Fokus: {displayRekapStudents.length} Santri Belum Absen
                     </span>
                   )}
-                </label>
-                <SearchableSelect
-                  value={rekapSesiFilter}
-                  onChange={(val) => {
-                    setRekapSesiFilter(val);
-                    if (val === "semua") {
-                      setRekapBelumAbsenFilter("semua");
-                    }
-                  }}
-                  options={sesiOptions}
-                  placeholder="Pilih sesi presensi"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {rekapTimeframe === "harian" ? "Tanggal" : rekapTimeframe === "mingguan" ? "Tanggal Acuan" : "Bulan"}
-                </label>
-                <input 
-                  type={rekapTimeframe === "bulanan" ? "month" : "date"}
-                  value={rekapTimeframe === "bulanan" ? selectedDate.slice(0, 7) : selectedDate}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setSelectedDate(rekapTimeframe === "bulanan" ? e.target.value + "-01" : e.target.value);
-                      setIsManualDate(true);
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-left text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Asrama / Kamar</label>
-                <SearchableSelect
-                  value={roomFilter}
-                  onChange={setRoomFilter}
-                  options={[
-                    { value: "All", label: "Semua Kamar" },
-                    ...roomsList.map((r: string) => ({ value: r, label: r }))
-                  ]}
-                  placeholder="Pilih kamar"
-                />
-              </div>
-            </div>
-
-            {/* BARIS KHUSUS: FILTER BELUM ABSEN (AKTIF KETIKA MEMILIH SESI TERTENTU) & PENGURUTAN */}
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
-                  {isSesiSelected ? (
-                    <AlertCircle className="w-4 h-4 text-amber-500" />
-                  ) : (
-                    <Lock className="w-4 h-4 text-slate-400" />
-                  )}
-                  <span>Status Absensi Sesi:</span>
-                </span>
-
-                {isSesiSelected ? (
-                  <div className="inline-flex items-center p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xs gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setRekapBelumAbsenFilter("semua")}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        rekapBelumAbsenFilter === "semua"
-                          ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs"
-                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      Semua
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRekapBelumAbsenFilter("belum_absen")}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        rekapBelumAbsenFilter === "belum_absen"
-                          ? "bg-rose-600 text-white shadow-sm ring-2 ring-rose-300 dark:ring-rose-900"
-                          : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                      }`}
-                    >
-                      <span>Belum Absen</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
-                        rekapBelumAbsenFilter === "belum_absen"
-                          ? "bg-white text-rose-700"
-                          : "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
-                      }`}>
-                        {unrecordedCountForSelectedSession}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRekapBelumAbsenFilter("sudah_absen")}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        rekapBelumAbsenFilter === "sudah_absen"
-                          ? "bg-emerald-600 text-white shadow-sm"
-                          : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                      }`}
-                    >
-                      Sudah Absen
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                    <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>Filter &quot;Belum Absen&quot; aktif setelah Anda memilih salah satu <strong>Sesi / Waktu</strong> di atas</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Sorting options */}
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                  <ArrowUpDown className="w-3.5 h-3.5" />
-                  <span>Urutan:</span>
-                </span>
-                <select
-                  value={rekapSortBy}
-                  onChange={(e) => setRekapSortBy(e.target.value as any)}
-                  className="text-xs font-semibold px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                >
-                  <option value="ranking">Kehadiran Tertinggi ke Terendah</option>
-                  <option value="terendah">Kehadiran Terendah ke Tertinggi</option>
-                  <option value="nama">Nama Santri (A - Z)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button 
-                  type="button"
-                  onClick={() => {}}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs"
-                >
-                  Terapkan Filter
-                </button>
-                {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" && (
-                  <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-900">
-                    Fokus: {displayRekapStudents.length} Santri Belum Absen
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1 sm:w-60">
-                  <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                  <input 
-                    type="text"
-                    placeholder="Cari nama atau kamar..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full text-xs font-medium pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-800 text-slate-800 dark:text-white"
-                  />
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setDownloadOptions({
-                      ...downloadOptions,
-                      timeframe: rekapTimeframe,
-                      tanggal: selectedDate,
-                      kamar: roomFilter,
-                      filterStatus: isSesiSelected ? rekapBelumAbsenFilter : "semua"
-                    });
-                    setIsDownloadModalOpen(true);
-                  }}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0 cursor-pointer"
-                  title="Unduh Rekap (Otomatis Terurut dari Kehadiran Tertinggi ke Terendah)"
+                  onClick={() => setIsRekapFilterVisible(false)}
+                  className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 font-medium cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Unduh Rekap</span>
+                  Tutup Panel Filter ✕
                 </button>
               </div>
             </div>
-          </div>
+          )}
 
           {/* ACTIVE BELUM ABSEN BANNER IF FILTER IS ON */}
           {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" && (
@@ -2700,118 +2652,220 @@ export default function PresensiPanel({
             </div>
           )}
 
-          {/* MAIN REKAP DATA CARD */}
-          <div className="bg-white dark:bg-[#111c44] rounded-2xl border border-slate-100 dark:border-slate-800 p-5 shadow-sm space-y-4 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                  <span>Data Presensi {rekapTimeframe === "harian" ? "Harian" : rekapTimeframe === "mingguan" ? "Mingguan" : "Bulanan"}</span>
-                  <span className="text-xs font-extrabold px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-full">
-                    {displayRekapStudents.length} Santri
-                  </span>
-                </h3>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  <span>Diurutkan: {rekapSortBy === "ranking" ? "Kehadiran Tertinggi ke Terendah" : rekapSortBy === "terendah" ? "Kehadiran Terendah ke Tertinggi" : "Nama A - Z"}</span>
-                </p>
+          {/* MAIN REKAP DATA CARD - SEPERTI PADA GAMBAR 2 */}
+          <div className="bg-white dark:bg-[#111c44] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden animate-fade-in">
+            {/* Top Toolbar (Search, Filter Button, Refresh Button, Unduh Rekap) */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Data Presensi Sholat
+                </span>
+                <span className="text-[11px] font-extrabold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full">
+                  {totalRekapItems} Santri
+                </span>
               </div>
-              <span className="text-xs text-slate-500 font-medium">
-                {rekapTimeframe === "harian" ? formatIndoDate(selectedDate) : rekapTimeframe === "mingguan" ? `${formatIndoDate(getWeekRange(selectedDate).monday.toISOString().slice(0, 10))} - ${formatIndoDate(getWeekRange(selectedDate).sunday.toISOString().slice(0, 10))}` : formatIndoMonth(selectedDate)}
-              </span>
+
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                {/* Search input with icon on left like Image 2 */}
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full text-xs font-medium pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Filter Icon button with count like Image 2 */}
+                <button
+                  type="button"
+                  onClick={() => setIsRekapFilterVisible(!isRekapFilterVisible)}
+                  className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                    isRekapFilterVisible
+                      ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-indigo-600 dark:text-indigo-400"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  }`}
+                  title="Buka / Tutup Filter"
+                >
+                  <Filter className="w-3.5 h-3.5 text-slate-500" />
+                  <span>{activeFiltersCount}</span>
+                </button>
+
+                {/* Refresh button like Image 2 */}
+                <button
+                  type="button"
+                  onClick={handleRefreshAttendance}
+                  className="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-300 transition-colors cursor-pointer shrink-0"
+                  title="Muat Ulang Data"
+                >
+                  <RotateCw className={`w-4 h-4 ${isRefreshingAttendance ? "animate-spin text-indigo-600" : ""}`} />
+                </button>
+
+                {/* Unduh Rekap button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloadOptions({
+                      ...downloadOptions,
+                      timeframe: rekapTimeframe,
+                      tanggal: selectedDate,
+                      kamar: roomFilter,
+                      filterStatus: isSesiSelected ? rekapBelumAbsenFilter : "semua"
+                    });
+                    setIsDownloadModalOpen(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                  title="Unduh Rekap"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Unduh Rekap</span>
+                </button>
+              </div>
             </div>
 
-            {/* Scrollable list of Rekap */}
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[550px] overflow-y-auto pr-1">
-              {displayRekapStudents.length > 0 ? (
-                displayRekapStudents.map((student: any, index: number) => {
-                  const isFemale = student.jenis_kelamin === "P";
-                  const pPeriodStats = student.pPeriodStats;
-                  const totalAbsen = pPeriodStats.hadir + pPeriodStats.terlambat + pPeriodStats.alpa + pPeriodStats.sakit + pPeriodStats.pulang;
-                  const persenHadir = totalAbsen > 0 ? Math.round(((pPeriodStats.hadir + pPeriodStats.terlambat) / totalAbsen) * 100) : 0;
-                  
-                  // Specific session attendance status if session is selected
-                  const sessionInfo = isSesiSelected ? getStudentSessionStatus(student.id, selectedDate) : null;
-
-                  return (
-                    <div key={student.id} className="py-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs font-semibold hover:bg-slate-50/70 dark:hover:bg-slate-800/30 px-2 rounded-xl transition-colors">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-[11px] font-black text-slate-400 w-6 text-center shrink-0">
-                          #{index + 1}
-                        </span>
-                        <div 
-                          onClick={() => openStudentPrayerDetail(student)}
-                          className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden relative shrink-0 shadow-xs cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all"
-                          title="Klik untuk melihat rincian 5 waktu sholat berjamaah"
+            {/* Table (Columns: Nama, Hadir, Telat, Izin, Alfa) */}
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 text-xs font-bold text-slate-700 dark:text-slate-200">
+                    <th className="py-3.5 px-4 sm:px-6">Nama</th>
+                    <th className="py-3.5 px-4 text-center w-24 sm:w-32">Hadir</th>
+                    <th className="py-3.5 px-4 text-center w-24 sm:w-32">Telat</th>
+                    <th className="py-3.5 px-4 text-center w-24 sm:w-32">Izin</th>
+                    <th className="py-3.5 px-4 text-center w-24 sm:w-32 sm:pr-6">Alfa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs font-semibold">
+                  {paginatedRekapStudents.length > 0 ? (
+                    paginatedRekapStudents.map((student: any) => {
+                      const pPeriodStats = student.pPeriodStats;
+                      return (
+                        <tr
+                          key={student.id}
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                         >
-                          {student.foto ? <img src={student.foto} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-lg select-none">{isFemale ? "🧕" : "👳"}</div>}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
+                          <td className="py-3.5 px-4 sm:px-6">
                             <button
                               type="button"
                               onClick={() => openStudentPrayerDetail(student)}
-                              className="font-extrabold text-slate-800 dark:text-white text-sm leading-snug truncate hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline text-left cursor-pointer transition-colors flex items-center gap-1.5 group/btn"
-                              title="Klik untuk melihat status 5 waktu sholat berjamaah"
+                              className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline cursor-pointer text-left transition-colors"
+                              title="Klik untuk melihat rincian sholat"
                             >
-                              <span>{student.nama_lengkap}</span>
-                              <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-900 flex items-center gap-1 opacity-80 group-hover/btn:opacity-100 transition-opacity">
-                                <Eye className="w-3 h-3" />
-                                <span>Rincian Sholat</span>
-                              </span>
+                              {student.nama_lengkap}
                             </button>
-                            {sessionInfo && (
-                              sessionInfo.hasRecorded ? (
-                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-green-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                  ✓ Sudah Absen ({sessionInfo.status})
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-900 animate-pulse">
-                                  Belum Absen
-                                </span>
-                              )
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">KAMAR: <strong className="text-slate-600 dark:text-slate-350">{student.kamar || "Belum Set"}</strong></span>
-                            <span className="text-[10px] text-slate-300 dark:text-slate-600">•</span>
-                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">Kehadiran: {persenHadir}%</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 select-none self-end xl:self-auto">
-                        <div className="flex flex-col items-center px-3 py-1 bg-emerald-50 dark:bg-green-950/20 border border-emerald-200/60 dark:border-green-900/40 rounded-xl shadow-3xs" title="Hadir Tepat Waktu">
-                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Hadir</span>
-                          <strong className="text-emerald-800 dark:text-emerald-400 font-black text-xs">{pPeriodStats.hadir}</strong>
-                        </div>
-                        <div className="flex flex-col items-center px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl shadow-3xs" title="Terlambat">
-                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Telat</span>
-                          <strong className="text-amber-800 dark:text-amber-400 font-black text-xs">{pPeriodStats.terlambat}</strong>
-                        </div>
-                        <div className="flex flex-col items-center px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 rounded-xl shadow-3xs" title="Izin / Sakit">
-                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Izin/Skt</span>
-                          <strong className="text-sky-800 dark:text-sky-400 font-black text-xs">{pPeriodStats.sakit + pPeriodStats.pulang}</strong>
-                        </div>
-                        <div className="flex flex-col items-center px-3 py-1 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 rounded-xl shadow-3xs" title="Alfa / Tanpa Keterangan">
-                          <span className="text-slate-500 dark:text-slate-400 text-[9px] font-extrabold uppercase mb-0.5">Alfa</span>
-                          <strong className="text-rose-800 dark:text-rose-400 font-black text-xs">{pPeriodStats.alpa}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="py-12 text-center text-slate-400 bg-slate-50 dark:bg-slate-900 border dark:border-slate-800 rounded-2xl text-xs font-bold leading-normal">
-                  {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" ? (
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-emerald-600">Alhamdulillah! Semua santri sudah melakukan absensi pada sesi ini.</p>
-                      <p className="text-xs text-slate-400">Tidak ada santri yang berstatus belum absen.</p>
-                    </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200">
+                            {pPeriodStats.hadir}
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200">
+                            {pPeriodStats.terlambat}
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200">
+                            {pPeriodStats.sakit + pPeriodStats.pulang}
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200 sm:pr-6">
+                            {pPeriodStats.alpa}
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
-                    "Tidak ada data presensi yang cocok dengan filter yang dipilih."
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-400 text-xs font-semibold">
+                        {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" ? (
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-emerald-600">Alhamdulillah! Semua santri sudah melakukan absensi pada sesi ini.</p>
+                            <p className="text-xs text-slate-400">Tidak ada santri yang berstatus belum absen.</p>
+                          </div>
+                        ) : (
+                          "Tidak ada data presensi yang cocok dengan filter yang dipilih."
+                        )}
+                      </td>
+                    </tr>
                   )}
-                </div>
-              )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bottom Pagination Bar (seperti pada Gambar 2) */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400 font-medium">
+              <div>
+                Menampilkan <strong className="font-bold text-slate-800 dark:text-white">{totalRekapItems === 0 ? 0 : rekapStartIndex + 1}</strong> sampai <strong className="font-bold text-slate-800 dark:text-white">{rekapEndIndex}</strong> dari <strong className="font-bold text-slate-800 dark:text-white">{totalRekapItems}</strong> hasil
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentRekapPage <= 1}
+                  onClick={() => setRekapPage((p) => Math.max(1, p - 1))}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                  title="Sebelumnya"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {Array.from({ length: totalRekapPages }, (_, idx) => idx + 1)
+                  .filter((p) => p === 1 || p === totalRekapPages || Math.abs(p - currentRekapPage) <= 1)
+                  .reduce<(number | string)[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && typeof arr[idx - 1] === "number" && (p as number) - (arr[idx - 1] as number) > 1) {
+                      acc.push("...");
+                    }
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) => {
+                    if (p === "...") {
+                      return (
+                        <span key={`ellipsis-${idx}`} className="w-8 h-8 flex items-center justify-center text-slate-400">
+                          ...
+                        </span>
+                      );
+                    }
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setRekapPage(p as number)}
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-colors cursor-pointer ${
+                          currentRekapPage === p
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+
+                <button
+                  type="button"
+                  disabled={currentRekapPage >= totalRekapPages}
+                  onClick={() => setRekapPage((p) => Math.min(totalRekapPages, p + 1))}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                  title="Selanjutnya"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span>per halaman</span>
+                <select
+                  value={rekapPerPage}
+                  onChange={(e) => {
+                    setRekapPerPage(Number(e.target.value));
+                    setRekapPage(1);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -3810,9 +3864,7 @@ export default function PresensiPanel({
                                     <h5 className="text-sm font-extrabold text-slate-800 dark:text-white">
                                       {prayer.name}
                                     </h5>
-                                    <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500">
-                                      ({prayer.time})
-                                    </span>
+                                    
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
                                     {isHadir && (

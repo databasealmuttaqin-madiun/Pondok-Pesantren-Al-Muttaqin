@@ -208,38 +208,44 @@ export default function RegistrationForm({
     const touchList: string[] = [];
 
     if (currentStep === 1) {
-      const fields: (keyof SantriData)[] = ["kategori", "nik"];
+      // Step 1: Personal Data
+      const fields: (keyof SantriData)[] = ["kategori", "jenis_kelamin", "nama_lengkap", "nama_panggilan", "nik", "tempat_lahir", "tanggal_lahir"];
+      if (formData.kategori === "SMP" || formData.kategori === "SMA") {
+        fields.push("nisn");
+      }
+
       fields.forEach((f) => {
         const err = validateField(f, (formData[f] || "") as string, formData.kategori);
         if (err) stepErrors[f] = err;
         touchList.push(f);
       });
     } else if (currentStep === 2) {
-      const fields: (keyof SantriData)[] = ["jenis_kelamin", "nama_lengkap", "nama_panggilan", "tempat_lahir", "tanggal_lahir"];
-      if (formData.kategori === "SMP" || formData.kategori === "SMA") fields.push("nisn");
-      fields.forEach((f) => {
-        const err = validateField(f, (formData[f] || "") as string, formData.kategori);
-        if (err) stepErrors[f] = err;
-        touchList.push(f);
-      });
-    } else if (currentStep === 3) {
-      const fields: (keyof SantriData)[] = ["nama_ayah", "nama_ibu", "kelompok_sambung", "desa_sambung", "daerah"];
-      fields.forEach((f) => {
-        const err = validateField(f, (formData[f] || "") as string, formData.kategori);
-        if (err) stepErrors[f] = err;
-        touchList.push(f);
-      });
-    } else if (currentStep === 4) {
+      // Step 2: Address Data
+      // Auto-pad rt and rw under local vars for validation, and sync state asynchronously
       const padTarget = (val: string) => (val && /^\d+$/.test(val)) ? val.padStart(3, "0") : val;
       const paddedRt = padTarget(formData.rt || "");
       const paddedRw = padTarget(formData.rw || "");
+
       if (paddedRt !== formData.rt || paddedRw !== formData.rw) {
-        setFormData((prev) => ({ ...prev, rt: paddedRt, rw: paddedRw }));
+        setFormData((prev) => ({
+          ...prev,
+          rt: paddedRt,
+          rw: paddedRw,
+        }));
       }
+
       const fields: (keyof SantriData)[] = ["alamat", "rt", "rw", "desa_kelurahan", "kecamatan", "kabupaten_kota", "provinsi"];
       fields.forEach((f) => {
         const val = f === "rt" ? paddedRt : f === "rw" ? paddedRw : (formData[f] || "") as string;
         const err = validateField(f, val, formData.kategori);
+        if (err) stepErrors[f] = err;
+        touchList.push(f);
+      });
+    } else if (currentStep === 3) {
+      // Step 3: Parents & Connection Address details
+      const fields: (keyof SantriData)[] = ["nama_ayah", "nama_ibu", "kelompok_sambung", "desa_sambung", "daerah"];
+      fields.forEach((f) => {
+        const err = validateField(f, (formData[f] || "") as string, formData.kategori);
         if (err) stepErrors[f] = err;
         touchList.push(f);
       });
@@ -270,7 +276,7 @@ export default function RegistrationForm({
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const finalFormData = { ...formData };
+    let finalFormData = { ...formData };
     
     // Auto-generate a sequential 10-digit identity number as NPSN for Reguler category
     if (finalFormData.kategori === "Reguler" && !finalFormData.npsn) {
@@ -279,11 +285,12 @@ export default function RegistrationForm({
       const regulerStudents = students.filter(
         (s) => s.kategori === "Reguler" && s.npsn && /^\d{10}$/.test(s.npsn)
       );
+
       if (regulerStudents.length > 0) {
         const numericNpsns = regulerStudents
           .map((s) => parseInt(s.npsn || "0", 10))
           .filter((num) => !isNaN(num));
-          
+        
         if (numericNpsns.length > 0) {
           const maxNpsn = Math.max(...numericNpsns);
           nextNpsn = maxNpsn + 1;
@@ -297,95 +304,100 @@ export default function RegistrationForm({
       finalFormData.nisn = "";
     }
 
-    if (!validateStep(1)) { setStep(1); return; }
-    if (!validateStep(2)) { setStep(2); return; }
-    if (!validateStep(3)) { setStep(3); return; }
-    if (!validateStep(4)) { setStep(4); return; }
+    if (!validateStep(3)) {
+      setStep(3); // Go back to validate parental/connection data
+      return;
+    }
     
+    const isStep1Val = validateStep(1);
+    const isStep2Val = validateStep(2);
+    
+    if (!isStep1Val) {
+      setStep(1);
+      return;
+    }
+    if (!isStep2Val) {
+      setStep(2);
+      return;
+    }
+
     await onSubmit(finalFormData);
   };
 
   const steps = [
-    { num: 1, name: "Cek Identitas" },
-    { num: 2, name: "Data Pribadi" },
-    { num: 3, name: "Keluarga" },
-    { num: 4, name: "Alamat" },
+    { num: 1, name: "Data Diri", icon: User },
+    { num: 2, name: "Alamat Rumah", icon: MapPin },
+    { num: 3, name: "Orang Tua & Sambung", icon: Users },
+    { num: 4, name: "Konfirmasi", icon: CheckCircle2 },
   ];
 
   return (
-    <div id="registration_form_container" className="space-y-6">
-      <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight" id="form-heading">
-        {initialData ? `Perbarui Profil: ${initialData.nama_lengkap}` : "Pendaftaran"}
-      </h2>
-      
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Header section with branding and status */}
-        <div className="px-6 pt-6 pb-2">
-          {/* Progress Tracker (Chevron Style) */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-          <ul className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-200">
-            {steps.map((s, index) => {
-              const isActive = step === s.num;
-              const isCompleted = step > s.num;
-              
-              return (
-                <li key={s.num} className="relative flex-1">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      if (s.num < step) {
-                        setStep(s.num);
-                      } else if (s.num > step) {
-                        let valid = true;
-                        for (let check = step; check < s.num; check++) {
-                          if (!validateStep(check)) {
-                            valid = false;
-                            break;
-                          }
-                        }
-                        if (valid) setStep(s.num);
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" id="registration_form_container">
+      {/* Header section with branding and status */}
+      <div className="bg-[#91d1fa] px-5 py-4 text-[#041e49] relative">
+        <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
+          <Sparkles size={100} />
+        </div>
+        <span className="bg-[#041e49]/10 border border-[#041e49]/20 text-[#041e49] text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+          {initialData ? "Edit Data Siswa" : "Formulir Digital Siswa"}
+        </span>
+        <h2 className="text-base md:text-lg font-bold mt-1 uppercase tracking-tight" id="form-heading">
+          {initialData ? `Perbarui Profil: ${initialData.nama_lengkap}` : "Pendaftaran & Input Data Siswa Baru"}
+        </h2>
+        <p className="text-[#041e49]/80 text-[11px] mt-0.5 leading-tight">
+          Harap isi informasi di bawah ini dengan lengkap dan benar sesuai KTP, KK, atau akta kelahiran yang sah.
+        </p>
+ 
+        {/* Progress Tracker */}
+        <div className="grid grid-cols-4 gap-2 mt-4 relative z-10">
+          {steps.map((s) => {
+            const Icon = s.icon;
+            const isActive = step === s.num;
+            const isCompleted = step > s.num;
+            return (
+              <button
+                key={s.num}
+                type="button"
+                onClick={() => {
+                  // Only allow jumping back or to reachable steps
+                  if (s.num < step) {
+                    setStep(s.num);
+                  } else if (s.num > step) {
+                    // check steps before it
+                    let valid = true;
+                    for (let check = step; check < s.num; check++) {
+                      if (!validateStep(check)) {
+                        valid = false;
+                        break;
                       }
-                    }}
-                    className="flex w-full items-center px-4 py-4 sm:px-6 hover:bg-slate-50 transition-colors focus:outline-none"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-                        isActive 
-                          ? "border-blue-600 text-blue-600" 
-                          : isCompleted
-                          ? "border-slate-300 text-slate-700 bg-slate-50"
-                          : "border-slate-300 text-slate-400"
-                      }`}>
-                        <span className="text-sm font-medium">0{s.num}</span>
-                      </div>
-                      <span className={`text-sm font-medium ${
-                        isActive ? "text-blue-600" : isCompleted ? "text-slate-700" : "text-slate-500"
-                      }`}>
-                        {s.name}
-                      </span>
-                    </div>
-                  </button>
-                  
-                  {/* Arrow separator for md screens and up */}
-                  {index !== steps.length - 1 ? (
-                    <div className="hidden md:block absolute right-0 top-0 h-full w-5" aria-hidden="true">
-                      <svg className="h-full w-full text-slate-200" viewBox="0 0 22 80" fill="none" preserveAspectRatio="none">
-                        <path d="M0 -2L20 40L0 82" vectorEffect="non-scaling-stroke" stroke="currentcolor" strokeLinejoin="round" strokeWidth="1" />
-                      </svg>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+                    }
+                    if (valid) setStep(s.num);
+                  }
+                }}
+                className={`flex flex-col items-center justify-center p-1.5 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-white/40 border border-[#041e49]/20 text-[#041e49] font-bold shadow-sm"
+                    : isCompleted
+                    ? "text-[#041e49]/80 hover:text-[#041e49]"
+                    : "text-[#041e49]/50 hover:text-[#041e49]/70"
+                }`}
+                id={`step-indicator-${s.num}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] ${isActive ? "bg-[#041e49] text-white font-bold" : isCompleted ? "bg-[#041e49]/40 text-[#041e49]" : "bg-[#041e49]/15 text-[#041e49]/50"}`}>
+                    {isCompleted ? <CheckCircle2 className="w-3 h-3" /> : s.num}
+                  </span>
+                  <span className="hidden md:inline text-[10px] font-medium">{s.name}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
-      
-      <form onSubmit={handleFormSubmit}>
-        <div className="p-5 md:p-8">
-          <AnimatePresence mode="wait">
-          
-          {/* STEP 1: CEK IDENTITAS */}
+ 
+      <form onSubmit={handleFormSubmit} className="p-4 md:p-5" id="santri-registration-form">
+        <AnimatePresence mode="wait">
+          {/* STEP 1: PERSONAL DETAILS */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -395,79 +407,8 @@ export default function RegistrationForm({
               transition={{ duration: 0.2 }}
               className="space-y-6"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1.5 relative">
-                  <label className="text-sm font-medium text-slate-700">
-                    Jenis Identitas<span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none text-slate-800 font-medium">
-                      <option value="NIK">NIK</option>
-                      <option value="NISN">NISN</option>
-                      <option value="NPSN">NPSN</option>
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-700">
-                    Nomor Identitas<span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nik}
-                    onChange={(e) => setFormData(prev => ({ ...prev, nik: e.target.value.replace(/[^0-9]/g, "").slice(0, 16) }))}
-                    placeholder="Nomor Identitas"
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-800 font-medium"
-                  />
-                  {formData.nik && formData.nik.length !== 16 && (
-                    <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> NIK harus 16 digit.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1.5 relative">
-                  <label className="text-sm font-medium text-slate-700">
-                    Daftar Sebagai<span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={formData.kategori}
-                      onChange={(e) => setFormData(prev => ({ ...prev, kategori: e.target.value as any }))}
-                      className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 appearance-none text-slate-800 font-medium"
-                    >
-                      <option value="" disabled>Pilih salah satu opsi</option>
-                      <option value="SMP">Santri SMP</option>
-                      <option value="SMA">Santri SMA</option>
-                      <option value="Reguler">Santri Reguler (Mahasiswa/Umum)</option>
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-{/* STEP 2: DATA PRIBADI */}
-          {step === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-6"
-            >
               <h3 className="text-xs font-bold text-sky-600 uppercase border-b border-sky-100 pb-2 mb-3 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-sky-500 rounded-full"></span> Data Pribadi
+                <span className="w-1.5 h-1.5 bg-sky-500 rounded-full"></span> Data Identitas Diri
               </h3>
 
               {/* Photo Upload Section */}
@@ -745,6 +686,190 @@ export default function RegistrationForm({
             </motion.div>
           )}
 
+          {/* STEP 2: ADDRESS */}
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-4"
+            >
+              <h3 className="text-xs font-bold text-sky-600 uppercase border-b border-sky-100 pb-2 mb-3 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-sky-500 rounded-full"></span> Data Alamat Lengkap Asal
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Alamat (Jalan / Dusun) */}
+                <div className="md:col-span-3 space-y-1">
+                  <label htmlFor="alamat" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Alamat Lengkap (Jalan / Dusun)
+                  </label>
+                  <input
+                    type="text"
+                    id="alamat"
+                    name="alamat"
+                    value={formData.alamat}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="Jl. Sunan Ampel No. 45, RT 003 / RW 002"
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                      errors.alamat && touchStatus.alamat
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-slate-200 focus:border-sky-500"
+                    }`}
+                  />
+                  {errors.alamat && touchStatus.alamat && (
+                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.alamat}</p>
+                  )}
+                </div>
+
+                {/* RT */}
+                <div className="space-y-1">
+                  <label htmlFor="rt" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
+                    <span>RT</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="rt"
+                    name="rt"
+                    maxLength={3}
+                    value={formData.rt}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="003"
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded text-center font-mono transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                      errors.rt && touchStatus.rt
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-slate-200 focus:border-sky-500"
+                    }`}
+                  />
+                  {errors.rt && touchStatus.rt && (
+                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.rt}</p>
+                  )}
+                </div>
+
+                {/* RW */}
+                <div className="space-y-1">
+                  <label htmlFor="rw" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
+                    <span>RW</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="rw"
+                    name="rw"
+                    maxLength={3}
+                    value={formData.rw}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="001"
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded text-center font-mono transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                      errors.rw && touchStatus.rw
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-slate-200 focus:border-sky-500"
+                    }`}
+                  />
+                  {errors.rw && touchStatus.rw && (
+                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.rw}</p>
+                  )}
+                </div>
+
+                {/* Desa / Kelurahan */}
+                <div className="space-y-1">
+                  <label htmlFor="desa_kelurahan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Desa / Kelurahan
+                  </label>
+                  <input
+                    type="text"
+                    id="desa_kelurahan"
+                    name="desa_kelurahan"
+                    value={formData.desa_kelurahan}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="Gampeng"
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                      errors.desa_kelurahan && touchStatus.desa_kelurahan
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-slate-200 focus:border-sky-500"
+                    }`}
+                  />
+                  {errors.desa_kelurahan && touchStatus.desa_kelurahan && (
+                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.desa_kelurahan}</p>
+                  )}
+                </div>
+
+                {/* Kecamatan */}
+                <div className="space-y-1">
+                  <label htmlFor="kecamatan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Kecamatan
+                  </label>
+                  <input
+                    type="text"
+                    id="kecamatan"
+                    name="kecamatan"
+                    value={formData.kecamatan}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="Gampengrejo"
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                      errors.kecamatan && touchStatus.kecamatan
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-slate-200 focus:border-sky-500"
+                    }`}
+                  />
+                  {errors.kecamatan && touchStatus.kecamatan && (
+                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.kecamatan}</p>
+                  )}
+                </div>
+
+                {/* Kabupaten / Kota */}
+                <div className="space-y-1">
+                  <label htmlFor="kabupaten_kota" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Kabupaten / Kota
+                  </label>
+                  <input
+                    type="text"
+                    id="kabupaten_kota"
+                    name="kabupaten_kota"
+                    value={formData.kabupaten_kota}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="Kediri"
+                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                      errors.kabupaten_kota && touchStatus.kabupaten_kota
+                        ? "border-red-300 focus:border-red-500"
+                        : "border-slate-200 focus:border-sky-500"
+                    }`}
+                  />
+                  {errors.kabupaten_kota && touchStatus.kabupaten_kota && (
+                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.kabupaten_kota}</p>
+                  )}
+                </div>
+
+                {/* Provinsi */}
+                <div className="space-y-1">
+                  <label htmlFor="provinsi" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Provinsi
+                  </label>
+                  <select
+                    id="provinsi"
+                    name="provinsi"
+                    value={formData.provinsi}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    className="w-full p-2 text-xs bg-slate-50 border rounded border-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
+                  >
+                    {REGIONS.provinsi.map((prov) => (
+                      <option key={prov} value={prov}>
+                        {prov}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* STEP 3: PARENTS & CONNECTION ADDRESS */}
           {step === 3 && (
             <motion.div
@@ -1006,191 +1131,154 @@ export default function RegistrationForm({
             </motion.div>
           )}
 
-          {/* STEP 4: ADDRESS */}
+          {/* STEP 4: REVIEW & CONFIRM */}
           {step === 4 && (
             <motion.div
               key="step4"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-4"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
             >
-              <h3 className="text-xs font-bold text-sky-600 uppercase border-b border-sky-100 pb-2 mb-3 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-sky-500 rounded-full"></span> Data Alamat Lengkap Asal
-              </h3>
+              <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
+                <div className="p-2 bg-sky-50 rounded-lg text-sky-700">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 text-lg">Konfirmasi Data Siswa</h3>
+                  <p className="text-gray-500 text-xs">Periksa kembali data sebelum disimpan ke database</p>
+                </div>
+              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {/* Alamat (Jalan / Dusun) */}
-                <div className="md:col-span-3 space-y-1">
-                  <label htmlFor="alamat" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Alamat Lengkap (Jalan / Dusun)
-                  </label>
-                  <input
-                    type="text"
-                    id="alamat"
-                    name="alamat"
-                    value={formData.alamat}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="Jl. Sunan Ampel No. 45, RT 003 / RW 002"
-                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                      errors.alamat && touchStatus.alamat
-                        ? "border-red-300 focus:border-red-500"
-                        : "border-slate-200 focus:border-sky-500"
-                    }`}
-                  />
-                  {errors.alamat && touchStatus.alamat && (
-                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.alamat}</p>
-                  )}
+              {/* Review summary cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[450px] overflow-y-auto pr-2 scrollbar-thin">
+                {/* 1. Data Diri */}
+                <div className="bg-sky-50/40 rounded-xl p-4 border border-sky-500/10">
+                  <h4 className="text-sm font-bold text-sky-900 flex items-center gap-1.5 mb-3 border-b border-sky-200/30 pb-2">
+                    <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+                    I. IDENTITAS DIRI
+                  </h4>
+                  <dl className="grid grid-cols-3 gap-y-2 gap-x-2 text-sm text-gray-700">
+                    <dt className="text-gray-400 font-medium">Kategori</dt>
+                    <dd className="col-span-2 font-semibold text-sky-800 bg-sky-100/50 px-2 py-0.5 rounded w-fit text-xs">{formData.kategori}</dd>
+
+                    <dt className="text-gray-400 font-medium">Gender</dt>
+                    <dd className="col-span-2 font-bold text-gray-800">
+                      {formData.jenis_kelamin === "P" ? "🚺 Perempuan (P)" : "🚹 Laki-laki (L)"}
+                    </dd>
+
+                    <dt className="text-gray-400 font-medium">Nama</dt>
+                    <dd className="col-span-2 font-semibold text-gray-900">{formData.nama_lengkap}</dd>
+
+                    <dt className="text-gray-400 font-medium">Panggilan</dt>
+                    <dd className="col-span-2">{formData.nama_panggilan}</dd>
+
+                    <dt className="text-gray-400 font-medium">NIK</dt>
+                    <dd className="col-span-2 font-mono font-medium tracking-wider">{formData.nik}</dd>
+
+                    {formData.kategori !== "Reguler" ? (
+                      <>
+                        <dt className="text-gray-400 font-medium">NISN</dt>
+                        <dd className="col-span-2 font-mono font-medium">{formData.nisn || "-"}</dd>
+                      </>
+                    ) : (
+                      <>
+                        <dt className="text-gray-400 font-medium">NPSN</dt>
+                        <dd className="col-span-2 font-mono font-semibold text-sky-700">{formData.npsn || "(Otomatis Digenerate setelah simpan)"}</dd>
+                      </>
+                    )}
+
+                    <dt className="text-gray-400 font-medium font-sans">Lahir</dt>
+                    <dd className="col-span-2">{formData.tempat_lahir}, {formData.tanggal_lahir}</dd>
+                  </dl>
                 </div>
 
-                {/* RT */}
-                <div className="space-y-1">
-                  <label htmlFor="rt" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                    <span>RT</span>
-                  </label>
-                  <input
-                    type="text"
-                    id="rt"
-                    name="rt"
-                    maxLength={3}
-                    value={formData.rt}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="003"
-                    className={`w-full p-2 text-xs bg-slate-50 border rounded text-center font-mono transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                      errors.rt && touchStatus.rt
-                        ? "border-red-300 focus:border-red-500"
-                        : "border-slate-200 focus:border-sky-500"
-                    }`}
-                  />
-                  {errors.rt && touchStatus.rt && (
-                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.rt}</p>
-                  )}
+                {/* 2. Alamat */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <h4 className="text-sm font-bold text-gray-800 flex items-center gap-1.5 mb-3 border-b border-gray-200/50 pb-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    II. ALAMAT ASAL
+                  </h4>
+                  <dl className="grid grid-cols-3 gap-y-2 gap-x-2 text-sm text-gray-700">
+                    <dt className="text-gray-400 font-medium">Alamat</dt>
+                    <dd className="col-span-2 italic text-gray-800">"{formData.alamat}"</dd>
+
+                    <dt className="text-gray-400 font-medium font-mono">RT / RW</dt>
+                    <dd className="col-span-2 font-mono font-medium">{formData.rt} / {formData.rw}</dd>
+
+                    <dt className="text-gray-400 font-medium">Desa</dt>
+                    <dd className="col-span-2">{formData.desa_kelurahan}</dd>
+
+                    <dt className="text-gray-400 font-medium">Kecamatan</dt>
+                    <dd className="col-span-2">{formData.kecamatan}</dd>
+
+                    <dt className="text-gray-400 font-medium">Kota/Kab</dt>
+                    <dd className="col-span-2">{formData.kabupaten_kota}</dd>
+
+                    <dt className="text-gray-400 font-medium">Provinsi</dt>
+                    <dd className="col-span-2">{formData.provinsi}</dd>
+                  </dl>
                 </div>
 
-                {/* RW */}
-                <div className="space-y-1">
-                  <label htmlFor="rw" className="text-[11px] font-semibold text-slate-500 flex justify-between uppercase tracking-wider">
-                    <span>RW</span>
-                  </label>
-                  <input
-                    type="text"
-                    id="rw"
-                    name="rw"
-                    maxLength={3}
-                    value={formData.rw}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="001"
-                    className={`w-full p-2 text-xs bg-slate-50 border rounded text-center font-mono transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                      errors.rw && touchStatus.rw
-                        ? "border-red-300 focus:border-red-500"
-                        : "border-slate-200 focus:border-sky-500"
-                    }`}
-                  />
-                  {errors.rw && touchStatus.rw && (
-                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.rw}</p>
-                  )}
+                {/* 3. Wali / Orang Tua */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <h4 className="text-sm font-bold text-gray-800 flex items-center gap-1.5 mb-3 border-b border-gray-200/50 pb-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    III. ORANG TUA
+                  </h4>
+                   <dl className="grid grid-cols-3 gap-y-2 gap-x-2 text-sm text-gray-700">
+                    <dt className="text-gray-400 font-medium">Ayah</dt>
+                    <dd className="col-span-2 font-medium text-gray-900">{formData.nama_ayah}</dd>
+
+                    <dt className="text-gray-400 font-medium">Ibu</dt>
+                    <dd className="col-span-2 font-medium text-gray-900">{formData.nama_ibu}</dd>
+
+                    <dt className="text-gray-400 font-medium font-mono text-xs">WhatsApp</dt>
+                    <dd className="col-span-2 font-medium text-emerald-700 font-mono text-xs">{formData.no_hp_ortu || "-"}</dd>
+                  </dl>
                 </div>
 
-                {/* Desa / Kelurahan */}
-                <div className="space-y-1">
-                  <label htmlFor="desa_kelurahan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Desa / Kelurahan
-                  </label>
-                  <input
-                    type="text"
-                    id="desa_kelurahan"
-                    name="desa_kelurahan"
-                    value={formData.desa_kelurahan}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="Gampeng"
-                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                      errors.desa_kelurahan && touchStatus.desa_kelurahan
-                        ? "border-red-300 focus:border-red-500"
-                        : "border-slate-200 focus:border-sky-500"
-                    }`}
-                  />
-                  {errors.desa_kelurahan && touchStatus.desa_kelurahan && (
-                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.desa_kelurahan}</p>
-                  )}
-                </div>
+                {/* 4. Alamat Sambung */}
+                <div className="bg-sky-50/40 rounded-xl p-4 border border-sky-500/10">
+                  <h4 className="text-sm font-bold text-sky-900 flex items-center gap-1.5 mb-3 border-b border-sky-200/30 pb-2">
+                    <span className="w-2 h-2 rounded-full bg-sky-600"></span>
+                    IV. ALAMAT SAMBUNG
+                  </h4>
+                  <dl className="grid grid-cols-3 gap-y-2 gap-x-2 text-sm text-gray-700">
+                    <dt className="text-gray-400 font-medium">Kelompok</dt>
+                    <dd className="col-span-2 font-medium text-sky-900">{formData.kelompok_sambung}</dd>
 
-                {/* Kecamatan */}
-                <div className="space-y-1">
-                  <label htmlFor="kecamatan" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Kecamatan
-                  </label>
-                  <input
-                    type="text"
-                    id="kecamatan"
-                    name="kecamatan"
-                    value={formData.kecamatan}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="Gampengrejo"
-                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                      errors.kecamatan && touchStatus.kecamatan
-                        ? "border-red-300 focus:border-red-500"
-                        : "border-slate-200 focus:border-sky-500"
-                    }`}
-                  />
-                  {errors.kecamatan && touchStatus.kecamatan && (
-                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.kecamatan}</p>
-                  )}
-                </div>
+                    <dt className="text-gray-400 font-medium">Desa</dt>
+                    <dd className="col-span-2">{formData.desa_sambung}</dd>
 
-                {/* Kabupaten / Kota */}
-                <div className="space-y-1">
-                  <label htmlFor="kabupaten_kota" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Kabupaten / Kota
-                  </label>
-                  <input
-                    type="text"
-                    id="kabupaten_kota"
-                    name="kabupaten_kota"
-                    value={formData.kabupaten_kota}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="Kediri"
-                    className={`w-full p-2 text-xs bg-slate-50 border rounded transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
-                      errors.kabupaten_kota && touchStatus.kabupaten_kota
-                        ? "border-red-300 focus:border-red-500"
-                        : "border-slate-200 focus:border-sky-500"
-                    }`}
-                  />
-                  {errors.kabupaten_kota && touchStatus.kabupaten_kota && (
-                    <p className="text-[10px] text-red-500 font-medium">⚠️ {errors.kabupaten_kota}</p>
-                  )}
-                </div>
+                    <dt className="text-gray-400 font-medium">Daerah</dt>
+                    <dd className="col-span-2 font-bold text-sky-850 bg-sky-100/50 px-2 py-0.5 rounded w-fit text-xs">{formData.daerah}</dd>
 
-                {/* Provinsi */}
-                <div className="space-y-1">
-                  <label htmlFor="provinsi" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    Provinsi
-                  </label>
-                  <select
-                    id="provinsi"
-                    name="provinsi"
-                    value={formData.provinsi}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    className="w-full p-2 text-xs bg-slate-50 border rounded border-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
-                  >
-                    {REGIONS.provinsi.map((prov) => (
-                      <option key={prov} value={prov}>
-                        {prov}
-                      </option>
-                    ))}
-                  </select>
+                    <dt className="text-slate-400 font-bold text-[10px] uppercase tracking-wider col-span-3 border-t border-slate-150 pt-2 mt-1">Penempatan Asrama & Kelas</dt>
+                    
+                    <dt className="text-gray-400 font-medium">Kamar</dt>
+                    <dd className="col-span-2 font-semibold text-slate-800">{formData.kamar || "Belum Ditentukan"}</dd>
+
+                    <dt className="text-gray-400 font-medium">Ngaji</dt>
+                    <dd className="col-span-2 font-semibold text-slate-800">{formData.kelas_pengajian || "Belum Ditentukan"}</dd>
+
+                    <dt className="text-gray-400 font-medium">Sekolah</dt>
+                    <dd className="col-span-2 font-semibold text-slate-800">{formData.kelas_sekolah || "Belum Ditentukan"}</dd>
+
+                    <dt className="text-gray-400 font-medium">Kartu NFC ID</dt>
+                    <dd className="col-span-2 font-mono text-xs text-blue-700 font-black">{formData.nfc_id || "(Belum Ditentukan / Kosong)"}</dd>
+                  </dl>
                 </div>
+              </div>
+
+              {/* Informative notice */}
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-250/20 text-xs text-amber-900/80 leading-relaxed">
+                📢 <strong>Pernyataan Kebenaran Data:</strong> Dengan menekan tombol Simpan, data di atas akan direkam dalam basis data digital Pondok Pesantren dan akan digunakan untuk kebutuhan administratif pelaporan siswa secara resmi.
               </div>
             </motion.div>
           )}
-
-          </AnimatePresence>
+        </AnimatePresence>
 
         {/* Action Buttons */}
         <div className="flex justify-between items-center mt-8 pt-4 border-t border-gray-100" id="form-actions-row">
@@ -1252,9 +1340,7 @@ export default function RegistrationForm({
             )}
           </div>
         </div>
-        </div>
       </form>
     </div>
-  </div>
   );
 }

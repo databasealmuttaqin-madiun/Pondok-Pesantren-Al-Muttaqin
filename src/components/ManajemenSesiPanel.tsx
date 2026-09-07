@@ -20,7 +20,7 @@ export default function ManajemenSesiPanel() {
   const [namaSesi, setNamaSesi] = useState("");
   const [jamMulai, setJamMulai] = useState("08:00");
   const [jamSelesai, setJamSelesai] = useState("09:00");
-  const [jenisPresensi, setJenisPresensi] = useState("ngaji"); // default value
+  const [jenisPresensi, setJenisPresensi] = useState("sholat"); // default value
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,13 +33,19 @@ export default function ManajemenSesiPanel() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        const loadedSessions = data.map((d: any) => ({
-          id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
-          label: d.sesi,
-          time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
-          icon: d.ikon || "⏰",
-          presensi: d.presensi || "ngaji"
-        }));
+        const loadedSessions = data
+          .filter((d: any) => {
+            const sLower = (d.sesi || "").toLowerCase();
+            const pLower = (d.presensi || "").toLowerCase();
+            return pLower !== "makan" && pLower !== "ngaji" && !sLower.includes("makan") && !sLower.includes("ngaji");
+          })
+          .map((d: any) => ({
+            id: d.id ? d.id.toString() : d.sesi.replace(/\s/g, "_"),
+            label: d.sesi,
+            time: `${String(d["jam mulai"]).replace(":", ".")} - ${String(d["jam selesai"]).replace(":", ".")}`,
+            icon: d.ikon || "⏰",
+            presensi: d.presensi || "sholat"
+          }));
         setSessions(loadedSessions);
         localStorage.setItem("santri_absensi_sessions", JSON.stringify(loadedSessions));
       } else {
@@ -52,7 +58,16 @@ export default function ManajemenSesiPanel() {
       // Fallback
       const saved = localStorage.getItem("santri_absensi_sessions");
       if (saved) {
-        try { setSessions(JSON.parse(saved)); } catch(e) {}
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setSessions(parsed.filter((s: any) => {
+              const pLower = (s.presensi || "").toLowerCase();
+              const lLower = (s.label || "").toLowerCase();
+              return pLower !== "makan" && pLower !== "ngaji" && !lLower.includes("makan") && !lLower.includes("ngaji");
+            }));
+          }
+        } catch(e) {}
       }
     } finally {
       setIsLoading(false);
@@ -300,9 +315,7 @@ export default function ManajemenSesiPanel() {
                     onChange={(e) => setJenisPresensi(e.target.value)}
                     className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:bg-white dark:focus:border-[#3e46ca] text-slate-800 dark:text-white transition-all shadow-inner cursor-pointer"
                   >
-                    <option value="makan">Makan</option>
                     <option value="sholat">Sholat</option>
-                    <option value="ngaji">Ngaji</option>
                     <option value="doa malam">Doa Malam</option>
                     <option value="sekolah">Sekolah</option>
                   </select>
@@ -362,10 +375,7 @@ export default function ManajemenSesiPanel() {
                     { sesi: "Asar", "jam mulai": "14:50", "jam selesai": "15:30", ikon: "🌤️", presensi: "sholat" },
                     { sesi: "Maghrib", "jam mulai": "17:20", "jam selesai": "18:00", ikon: "🌇", presensi: "sholat" },
                     { sesi: "Isya", "jam mulai": "18:40", "jam selesai": "19:30", ikon: "🌌", presensi: "sholat" },
-                    { sesi: "Doa Malam", "jam mulai": "03:30", "jam selesai": "04:15", ikon: "🌌", presensi: "doa malam" },
-                    { sesi: "Makan Pagi", "jam mulai": "06:00", "jam selesai": "07:15", ikon: "🍳", presensi: "makan" },
-                    { sesi: "Makan Siang", "jam mulai": "11:00", "jam selesai": "12:00", ikon: "🍛", presensi: "makan" },
-                    { sesi: "Makan Sore", "jam mulai": "16:30", "jam selesai": "17:15", ikon: "🍲", presensi: "makan" }
+                    { sesi: "Doa Malam", "jam mulai": "03:30", "jam selesai": "04:15", ikon: "🌌", presensi: "doa malam" }
                   ];
                   await supabase.from("sesi_absensi").insert(defaultPayloads);
                   await fetchSessions();
