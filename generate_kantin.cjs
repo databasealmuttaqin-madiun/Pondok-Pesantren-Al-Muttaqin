@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+const fs = require('fs');
+
+const code = `import React, { useState, useEffect, useRef } from "react";
 import {
   Store,
   Wallet,
@@ -14,7 +16,6 @@ import {
   Check,
   RefreshCw,
   FileSpreadsheet,
-  ChevronRight,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
@@ -58,24 +59,6 @@ export default function KantinPanel({
       return DEFAULT_KANTIN_LIST;
     }
   });
-
-  const fetchMasterKantin = async () => {
-    try {
-      const { data } = await supabase.from("master_kantin").select("nama").order("nama", { ascending: true });
-      if (data && data.length > 0) {
-        const names = data.map((d: any) => d.nama);
-        setKantinList(names);
-        localStorage.setItem("master_kantin_list", JSON.stringify(names));
-        
-        // Auto-select the first item if no item is currently selected and not restricted
-        if (!assignedKantin && names.length > 0 && !names.includes(selectedKantinInput)) {
-          setSelectedKantinInput(names[0]);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to fetch master kantin", e);
-    }
-  };
 
   const assignedKantin = currentUser?.tugas_kantin && currentUser.tugas_kantin !== "Semua" ? currentUser.tugas_kantin : null;
 
@@ -153,7 +136,6 @@ export default function KantinPanel({
   };
 
   useEffect(() => {
-    fetchMasterKantin();
     fetchTransaksiFromCloud();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -169,8 +151,8 @@ export default function KantinPanel({
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const uangMasukNum = parseInt(uangMasukStr.replace(/\D/g, "") || "0", 10);
-    const uangKeluarNum = parseInt(uangKeluarStr.replace(/\D/g, "") || "0", 10);
+    const uangMasukNum = parseInt(uangMasukStr.replace(/\\D/g, "") || "0", 10);
+    const uangKeluarNum = parseInt(uangKeluarStr.replace(/\\D/g, "") || "0", 10);
     
     if (uangMasukNum === 0 && uangKeluarNum === 0) {
       alert("Harap masukkan nominal uang masuk atau keluar!");
@@ -262,27 +244,48 @@ export default function KantinPanel({
   return (
     <div className="space-y-6">
       {/* HEADER & TABS */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
         <div>
-          <div className="flex items-center gap-2 text-[13px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">
-            <span>Manajemen Kantin</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-blue-600 dark:text-blue-400">
-              {viewMode === "input" ? "Input Rekap" : "Tabel Riwayat"}
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Store className="w-5 h-5 text-blue-600 dark:text-blue-500" />
             Rekap Kas Kantin
           </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Catat rekapitulasi harian uang masuk dan keluar kantin.
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center shrink-0">
+            <button
+              onClick={() => onSwitchMode("input")}
+              className={\`px-4 py-2 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 \${
+                viewMode === "input"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }\`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Input Rekap</span>
+            </button>
+            <button
+              onClick={() => onSwitchMode("rekap")}
+              className={\`px-4 py-2 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 \${
+                viewMode === "rekap"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }\`}
+            >
+              <Receipt className="w-4 h-4" />
+              <span>Tabel Riwayat</span>
+            </button>
+          </div>
           <button
             onClick={fetchTransaksiFromCloud}
             disabled={isLoading}
-            className="p-2.5 rounded-xl bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 border border-slate-200 dark:border-slate-700/50 shadow-xs"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 hover:bg-slate-200"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={\`w-4 h-4 \${isLoading ? "animate-spin" : ""}\`} />
           </button>
         </div>
       </div>
@@ -304,11 +307,11 @@ export default function KantinPanel({
                       type="button"
                       disabled={!!assignedKantin && assignedKantin !== kName}
                       onClick={() => setSelectedKantinInput(kName)}
-                      className={`px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all text-left flex items-center justify-between ${
+                      className={\`px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all text-left flex items-center justify-between \${
                         selectedKantinInput === kName
                           ? "bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-300 shadow-2xs"
                           : "bg-slate-50 border-slate-200 dark:border-slate-700/60 text-slate-700"
-                      }`}
+                      }\`}
                     >
                       <span className="truncate">{kName}</span>
                       {selectedKantinInput === kName && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 ml-1" />}
@@ -338,7 +341,7 @@ export default function KantinPanel({
                       placeholder="0"
                       value={uangMasukStr}
                       onChange={(e) => {
-                        const raw = e.target.value.replace(/\D/g, "");
+                        const raw = e.target.value.replace(/\\D/g, "");
                         setUangMasukStr(raw ? new Intl.NumberFormat("id-ID").format(Number(raw)) : "");
                       }}
                       className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs font-bold focus:ring-1 focus:ring-emerald-500"
@@ -355,7 +358,7 @@ export default function KantinPanel({
                       placeholder="0"
                       value={uangKeluarStr}
                       onChange={(e) => {
-                        const raw = e.target.value.replace(/\D/g, "");
+                        const raw = e.target.value.replace(/\\D/g, "");
                         setUangKeluarStr(raw ? new Intl.NumberFormat("id-ID").format(Number(raw)) : "");
                       }}
                       className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-rose-50/50 border border-rose-200 text-xs font-bold focus:ring-1 focus:ring-rose-500"
@@ -473,10 +476,10 @@ export default function KantinPanel({
                       {item.kantin}
                     </td>
                     <td className="py-3 px-4 text-xs font-bold text-emerald-600 text-right whitespace-nowrap">
-                      {item.uang_masuk > 0 ? `+${formatRupiah(item.uang_masuk)}` : "-"}
+                      {item.uang_masuk > 0 ? \`+\${formatRupiah(item.uang_masuk)}\` : "-"}
                     </td>
                     <td className="py-3 px-4 text-xs font-bold text-rose-600 text-right whitespace-nowrap">
-                      {item.uang_keluar > 0 ? `-${formatRupiah(item.uang_keluar)}` : "-"}
+                      {item.uang_keluar > 0 ? \`-\${formatRupiah(item.uang_keluar)}\` : "-"}
                     </td>
                     <td className="py-3 px-4 text-xs font-bold text-blue-600 text-right whitespace-nowrap">
                       {formatRupiah(item.jumlah_kas || 0)}
@@ -511,3 +514,5 @@ export default function KantinPanel({
     </div>
   );
 }
+`;
+fs.writeFileSync('src/components/KantinPanel.tsx', code);

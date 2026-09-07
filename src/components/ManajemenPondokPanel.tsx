@@ -3,6 +3,7 @@ import { Clock, Home, Sliders, Layers } from "lucide-react";
 import { SantriData } from "../supabaseClient";
 import ManajemenSesiPanel from "./ManajemenSesiPanel";
 import ManagementPanel from "./ManagementPanel";
+import MasterKantinPanel from "./MasterKantinPanel";
 
 interface ManajemenPondokPanelProps {
   students: SantriData[];
@@ -27,7 +28,7 @@ export default function ManajemenPondokPanel({
   metadataMap,
   onAssignMetadata
 }: ManajemenPondokPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"sesi" | "plotting" | "coming_soon">("sesi");
+  const [activeSubTab, setActiveSubTab] = useState<"sesi" | "plotting" | "kantin" | "coming_soon">("sesi");
 
   return (
     <div className="space-y-6" id="manajemen_pondok_module">
@@ -45,7 +46,7 @@ export default function ManajemenPondokPanel({
       </div>
 
       {/* Sub tabs */}
-      <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 dark:bg-slate-950 p-1 border border-slate-200 dark:border-slate-850 rounded-2xl shadow-inner max-w-xl">
+      <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 dark:bg-slate-950 p-1 border border-slate-200 dark:border-slate-850 rounded-2xl shadow-inner max-w-4xl">
         <button
           onClick={() => setActiveSubTab("sesi")}
           className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
@@ -67,6 +68,16 @@ export default function ManajemenPondokPanel({
           <Sliders className="w-4 h-4" /> Plotting Kamar & Ngaji
         </button>
         <button
+          onClick={() => setActiveSubTab("kantin")}
+          className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
+            activeSubTab === "kantin"
+              ? "bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+          }`}
+        >
+          <Home className="w-4 h-4" /> Master Kantin
+        </button>
+        <button
           onClick={() => setActiveSubTab("coming_soon")}
           className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
             activeSubTab === "coming_soon"
@@ -85,7 +96,6 @@ export default function ManajemenPondokPanel({
           <ManajemenSesiPanel />
         </div>
       )}
-
       {activeSubTab === "plotting" && (
         <div className="w-full">
           <ManagementPanel
@@ -99,6 +109,11 @@ export default function ManajemenPondokPanel({
             metadataMap={metadataMap}
             onAssignMetadata={onAssignMetadata}
           />
+        </div>
+      )}
+      {activeSubTab === "kantin" && (
+        <div className="w-full">
+          <MasterKantinPanel />
         </div>
       )}
     </div>
