@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Store,
   Wallet,
@@ -15,6 +15,8 @@ import {
   RefreshCw,
   FileSpreadsheet,
   ChevronRight,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
@@ -41,7 +43,7 @@ interface KantinPanelProps {
   isDarkMode?: boolean;
 }
 
-const DEFAULT_KANTIN_LIST = ["Kantin Utama", "Kantin Putra", "Kantin Putri"];
+const DEFAULT_KANTIN_LIST = ["kantin pondok", "kantin rusun"];
 
 export default function KantinPanel({
   viewMode,
@@ -53,39 +55,117 @@ export default function KantinPanel({
   const [kantinList, setKantinList] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("master_kantin_list");
-      return saved ? JSON.parse(saved) : DEFAULT_KANTIN_LIST;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return DEFAULT_KANTIN_LIST;
     } catch {
       return DEFAULT_KANTIN_LIST;
     }
   });
 
+  const allowedKantins: string[] = useMemo(() => {
+    const isSuperOrAdmin = !currentUser || currentUser.role === 'super admin' || currentUser.role === 'admin' || currentUser.role === 'superadmin';
+    if (isSuperOrAdmin) {
+      return kantinList;
+    }
+
+    const assigned: string[] = [];
+    const rawTugas = currentUser.tugas_tambahan;
+    const tugasList: string[] = Array.isArray(rawTugas) ? rawTugas : (rawTugas ? [String(rawTugas)] : []);
+
+    // 1. Match from tugas_tambahan
+    tugasList.forEach((t) => {
+      const tLower = String(t).toLowerCase().trim();
+      const match = kantinList.find(k => k.toLowerCase().trim() === tLower);
+      if (match && !assigned.includes(match)) {
+        assigned.push(match);
+      } else if (tLower.includes("kantin") && !assigned.includes(t)) {
+        assigned.push(t);
+      }
+    });
+
+    // 2. Match from tugas_kantin
+    if (assigned.length === 0 && currentUser.tugas_kantin && currentUser.tugas_kantin !== "Semua") {
+      const match = kantinList.find(k => k.toLowerCase().trim() === currentUser.tugas_kantin.toLowerCase().trim());
+      assigned.push(match || currentUser.tugas_kantin);
+    }
+
+    // 3. Match from username or role (e.g. kantin.pondok -> kantin pondok)
+    if (assigned.length === 0) {
+      const uStr = `${currentUser.username || ""} ${currentUser.name || ""} ${currentUser.role || ""}`.toLowerCase();
+      if (uStr.includes("pondok")) {
+        const match = kantinList.find(k => k.toLowerCase().includes("pondok"));
+        assigned.push(match || "kantin pondok");
+      } else if (uStr.includes("rusun")) {
+        const match = kantinList.find(k => k.toLowerCase().includes("rusun"));
+        assigned.push(match || "kantin rusun");
+      }
+    }
+
+    return assigned.length > 0 ? assigned : kantinList;
+  }, [currentUser, kantinList]);
+
+  const isRestricted = allowedKantins.length < kantinList.length && allowedKantins.length > 0;
+
+  const [selectedKantinInput, setSelectedKantinInput] = useState<string>(() => {
+    return allowedKantins.length > 0 ? allowedKantins[0] : (kantinList[0] || "kantin pondok");
+  });
+
+  const [filterKantinRekap, setFilterKantinRekap] = useState<string>(() => {
+    return allowedKantins.length === 1 ? allowedKantins[0] : "semua";
+  });
+
+  useEffect(() => {
+    if (isRestricted) {
+      if (!allowedKantins.includes(selectedKantinInput) && allowedKantins.length > 0) {
+         setSelectedKantinInput(allowedKantins[0]);
+      }
+      if (filterKantinRekap !== "semua" && !allowedKantins.includes(filterKantinRekap)) {
+         setFilterKantinRekap(allowedKantins.length === 1 ? allowedKantins[0] : "semua");
+      }
+    }
+  }, [isRestricted, allowedKantins, selectedKantinInput, filterKantinRekap]);
+
   const fetchMasterKantin = async () => {
     try {
-      const { data } = await supabase.from("master_kantin").select("nama").order("nama", { ascending: true });
-      if (data && data.length > 0) {
-        const names = data.map((d: any) => d.nama);
+      const names: string[] = [...DEFAULT_KANTIN_LIST];
+      
+      // 1. Fetch from tugas_tambahan
+      const { data: tugasData } = await supabase
+        .from("tugas_tambahan")
+        .select("nama, jenis_tugas_tambahan");
+      if (tugasData) {
+        tugasData
+          .filter((t: any) => String(t.jenis_tugas_tambahan || "").toLowerCase() === "kantin" || String(t.nama || "").toLowerCase().includes("kantin"))
+          .forEach((t: any) => {
+            if (t.nama && !names.some(n => n.toLowerCase() === t.nama.toLowerCase())) {
+              names.push(t.nama);
+            }
+          });
+      }
+
+      // 2. Fetch distinct from pembukuan_kantin
+      const { data: pbData } = await supabase
+        .from("pembukuan_kantin")
+        .select("kantin");
+      if (pbData) {
+        pbData.forEach((p: any) => {
+          if (p.kantin && !names.some(n => n.toLowerCase() === p.kantin.toLowerCase())) {
+            names.push(p.kantin);
+          }
+        });
+      }
+
+      if (names.length > 0) {
         setKantinList(names);
         localStorage.setItem("master_kantin_list", JSON.stringify(names));
-        
-        // Auto-select the first item if no item is currently selected and not restricted
-        if (!assignedKantin && names.length > 0 && !names.includes(selectedKantinInput)) {
-          setSelectedKantinInput(names[0]);
-        }
       }
     } catch (e) {
       console.error("Failed to fetch master kantin", e);
     }
   };
-
-  const assignedKantin = currentUser?.tugas_kantin && currentUser.tugas_kantin !== "Semua" ? currentUser.tugas_kantin : null;
-
-  const [selectedKantinInput, setSelectedKantinInput] = useState<string>(() => {
-    return assignedKantin || kantinList[0] || "Kantin Utama";
-  });
-
-  const [filterKantinRekap, setFilterKantinRekap] = useState<string>(() => {
-    return assignedKantin || "semua";
-  });
 
   const [transaksiList, setTransaksiList] = useState<TransaksiKantin[]>(() => {
     try {
@@ -251,13 +331,232 @@ export default function KantinPanel({
   };
 
   const filteredList = transaksiList.filter(item => {
-    if (filterKantinRekap !== "semua" && item.kantin !== filterKantinRekap) return false;
+    if (isRestricted && !allowedKantins.map(k => k.toLowerCase().trim()).includes(String(item.kantin || "").toLowerCase().trim())) {
+      return false;
+    }
+    if (filterKantinRekap !== "semua" && String(item.kantin || "").toLowerCase().trim() !== filterKantinRekap.toLowerCase().trim()) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       if (!item.tanggal.includes(q) && !item.keterangan.toLowerCase().includes(q)) return false;
     }
     return true;
   });
+
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  const summaryTotals = useMemo(() => {
+    let masuk = 0;
+    let keluar = 0;
+    filteredList.forEach((item) => {
+      masuk += Number(item.uang_masuk) || 0;
+      keluar += Number(item.uang_keluar) || 0;
+    });
+    const saldoAkhir = filteredList.length > 0 && filteredList[0].jumlah_kas !== undefined
+      ? Number(filteredList[0].jumlah_kas)
+      : (masuk - keluar);
+    return { masuk, keluar, saldoAkhir, count: filteredList.length };
+  }, [filteredList]);
+
+  const handleExportPDF = async () => {
+    if (filteredList.length === 0) {
+      triggerNotification?.("Tidak ada data transaksi yang dapat dicetak.", "warning");
+      return;
+    }
+
+    try {
+      setIsExportingPDF(true);
+      const { jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const kantinTitle = filterKantinRekap === "semua" 
+        ? "SEMUA KANTIN" 
+        : filterKantinRekap.toUpperCase();
+
+      const { masuk: totalUangMasuk, keluar: totalUangKeluar, saldoAkhir } = summaryTotals;
+
+      // Header Judul Laporan
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(30, 41, 59); // Slate-800
+      doc.text("LAPORAN REKAPITULASI PEMBUKUAN KAS KANTIN", 105, 16, { align: "center" });
+
+      doc.setFontSize(11);
+      doc.setTextColor(71, 85, 105); // Slate-600
+      doc.text(`Unit: ${kantinTitle}`, 105, 22, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139); // Slate-500
+      const printDateStr = new Date().toLocaleString("id-ID", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      doc.text(`Waktu Cetak: ${printDateStr} WIB`, 14, 30);
+      doc.text(`Petugas: ${currentUser?.name || currentUser?.username || "Petugas Kantin"}`, 196, 30, { align: "right" });
+
+      // Garis pemisah header
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.4);
+      doc.line(14, 33, 196, 33);
+
+      // Kartu Ringkasan Keuangan
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(14, 36, 182, 17, 2, 2, "F");
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(14, 36, 182, 17, 2, 2, "S");
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 116, 139);
+      doc.text("TOTAL UANG MASUK", 20, 42);
+      doc.text("TOTAL UANG KELUAR", 82, 42);
+      doc.text("SALDO KAS SAAT INI", 144, 42);
+
+      doc.setFontSize(9.5);
+      doc.setTextColor(16, 185, 129); // Emerald-600
+      doc.text(formatRupiah(totalUangMasuk), 20, 49);
+
+      doc.setTextColor(225, 29, 72); // Rose-600
+      doc.text(formatRupiah(totalUangKeluar), 82, 49);
+
+      doc.setTextColor(37, 99, 235); // Blue-600
+      doc.text(formatRupiah(saldoAkhir), 144, 49);
+
+      // Table data
+      const tableHead = [
+        ["No", "Tanggal", "Kantin", "Uang Masuk", "Uang Keluar", "Saldo Kas", "Keterangan", "Petugas"]
+      ];
+
+      const tableBody = filteredList.map((item, index) => [
+        index + 1,
+        item.tanggal || "-",
+        item.kantin || "-",
+        item.uang_masuk > 0 ? formatRupiah(item.uang_masuk) : "-",
+        item.uang_keluar > 0 ? formatRupiah(item.uang_keluar) : "-",
+        formatRupiah(item.jumlah_kas || 0),
+        item.keterangan || "-",
+        item.petugas || "-"
+      ]);
+
+      // Row footer total
+      const tableFoot: any[] = [
+        [
+          { content: "TOTAL", colSpan: 3, styles: { halign: "center", fontStyle: "bold" } },
+          { content: formatRupiah(totalUangMasuk), styles: { halign: "right", fontStyle: "bold", textColor: [16, 185, 129] } },
+          { content: formatRupiah(totalUangKeluar), styles: { halign: "right", fontStyle: "bold", textColor: [225, 29, 72] } },
+          { content: formatRupiah(saldoAkhir), styles: { halign: "right", fontStyle: "bold", textColor: [37, 99, 235] } },
+          { content: `${filteredList.length} Transaksi`, colSpan: 2, styles: { halign: "center", fontStyle: "italic", textColor: [100, 116, 139] } }
+        ]
+      ];
+
+      (autoTable as any)(doc, {
+        startY: 57,
+        head: tableHead,
+        body: tableBody,
+        foot: tableFoot,
+        theme: "grid",
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 2.2,
+          valign: "middle",
+          textColor: [51, 65, 85]
+        },
+        headStyles: {
+          fillColor: [30, 41, 59], // Slate-800
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8,
+          halign: "center"
+        },
+        footStyles: {
+          fillColor: [241, 245, 249],
+          textColor: [30, 41, 59],
+          fontStyle: "bold",
+          fontSize: 8
+        },
+        columnStyles: {
+          0: { halign: "center", cellWidth: 9 },
+          1: { halign: "center", cellWidth: 20 },
+          2: { halign: "left", cellWidth: 26 },
+          3: { halign: "right", cellWidth: 25, textColor: [16, 185, 129] },
+          4: { halign: "right", cellWidth: 25, textColor: [225, 29, 72] },
+          5: { halign: "right", cellWidth: 25, textColor: [37, 99, 235], fontStyle: "bold" },
+          6: { halign: "left" },
+          7: { halign: "left", cellWidth: 22 }
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        margin: { left: 14, right: 14, bottom: 20 },
+        didDrawPage: (data: any) => {
+          const pageCount = (doc as any).internal.getNumberOfPages();
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(
+            `Halaman ${data.pageNumber} dari ${pageCount}`,
+            105,
+            doc.internal.pageSize.height - 8,
+            { align: "center" }
+          );
+        }
+      });
+
+      // Signature area
+      const finalY = (doc as any).lastAutoTable?.finalY || 160;
+      const pageHeight = doc.internal.pageSize.height;
+      let signY = finalY + 10;
+
+      if (signY + 35 > pageHeight - 15) {
+        doc.addPage();
+        signY = 20;
+      }
+
+      const todayStr = new Date().toLocaleDateString("id-ID", {
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+
+      // Signature right column
+      doc.text(`Tasikmalaya, ${todayStr}`, 145, signY);
+      doc.text("Petugas Kasir Kantin,", 145, signY + 4.5);
+      doc.line(145, signY + 22, 185, signY + 22);
+      doc.setFont("helvetica", "bold");
+      doc.text(currentUser?.name || currentUser?.username || "Petugas Kantin", 145, signY + 26);
+
+      // Signature left column
+      doc.setFont("helvetica", "normal");
+      doc.text("Mengetahui,", 25, signY + 4.5);
+      doc.text("Pengurus / Penanggung Jawab,", 25, signY + 9);
+      doc.line(25, signY + 22, 75, signY + 22);
+      doc.setFont("helvetica", "bold");
+      doc.text("( .................................... )", 25, signY + 26);
+
+      const cleanKantinName = filterKantinRekap.replace(/\s+/g, "_").toLowerCase();
+      const filename = `Rekap_Kas_Kantin_${cleanKantinName}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(filename);
+
+      triggerNotification?.("Dokumen PDF rekap kas kantin berhasil diunduh.", "success");
+    } catch (err) {
+      console.error("Gagal cetak PDF kantin:", err);
+      triggerNotification?.("Gagal mencetak dokumen PDF. Silakan coba kembali.", "error");
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -298,11 +597,10 @@ export default function KantinPanel({
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pilih Kantin</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {kantinList.map((kName) => (
+                  {allowedKantins.map((kName) => (
                     <button
                       key={kName}
                       type="button"
-                      disabled={!!assignedKantin && assignedKantin !== kName}
                       onClick={() => setSelectedKantinInput(kName)}
                       className={`px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all text-left flex items-center justify-between ${
                         selectedKantinInput === kName
@@ -422,11 +720,11 @@ export default function KantinPanel({
               <select
                 value={filterKantinRekap}
                 onChange={(e) => setFilterKantinRekap(e.target.value)}
-                disabled={!!assignedKantin && assignedKantin !== "semua"}
+                disabled={isRestricted && allowedKantins.length === 1}
                 className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 focus:outline-none"
               >
-                <option value="semua">Semua Kantin</option>
-                {kantinList.map((kName) => (
+                {(!isRestricted || allowedKantins.length > 1) && <option value="semua">Semua Kantin</option>}
+                {allowedKantins.map((kName) => (
                   <option key={kName} value={kName}>{kName}</option>
                 ))}
               </select>
@@ -443,11 +741,43 @@ export default function KantinPanel({
             </div>
             
             <button
-              onClick={() => window.print()}
-              className="px-4 py-2 text-xs font-semibold bg-slate-800 text-white rounded-xl shadow-xs flex items-center gap-2 hover:bg-slate-700"
+              onClick={handleExportPDF}
+              disabled={isExportingPDF}
+              className="px-4 py-2 text-xs font-semibold bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-xs flex items-center gap-2 hover:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50 transition-all cursor-pointer"
+              title="Unduh dokumen PDF Rekap Kas Kantin"
             >
-              <Printer className="w-3.5 h-3.5" /> Cetak PDF
+              {isExportingPDF ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Memproses PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak / Unduh PDF</span>
+                </>
+              )}
             </button>
+          </div>
+
+          {/* Ringkasan Cepat */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-4 py-3 bg-slate-50/70 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800 text-xs">
+            <div className="flex flex-col">
+              <span className="text-[11px] text-slate-500 font-medium">Total Masuk</span>
+              <span className="font-bold text-emerald-600">{formatRupiah(summaryTotals.masuk)}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[11px] text-slate-500 font-medium">Total Keluar</span>
+              <span className="font-bold text-rose-600">{formatRupiah(summaryTotals.keluar)}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[11px] text-slate-500 font-medium">Saldo Kas</span>
+              <span className="font-bold text-blue-600">{formatRupiah(summaryTotals.saldoAkhir)}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[11px] text-slate-500 font-medium">Jumlah Data</span>
+              <span className="font-bold text-slate-700 dark:text-slate-300">{summaryTotals.count} Catatan</span>
+            </div>
           </div>
 
           <div className="overflow-x-auto print:overflow-visible">
@@ -488,7 +818,7 @@ export default function KantinPanel({
                     <td className="py-3 px-4 text-center print:hidden">
                       <button
                         onClick={() => handleDelete(item.id)}
-                        className="p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
                         title="Hapus"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -504,6 +834,25 @@ export default function KantinPanel({
                   </tr>
                 )}
               </tbody>
+              {filteredList.length > 0 && (
+                <tfoot className="bg-slate-50/80 dark:bg-slate-800/80 font-bold border-t border-slate-200 dark:border-slate-700 text-xs">
+                  <tr>
+                    <td colSpan={2} className="py-3 px-4 text-slate-700 dark:text-slate-300">
+                      Total ({filteredList.length} Transaksi)
+                    </td>
+                    <td className="py-3 px-4 text-right text-emerald-600 whitespace-nowrap">
+                      {formatRupiah(summaryTotals.masuk)}
+                    </td>
+                    <td className="py-3 px-4 text-right text-rose-600 whitespace-nowrap">
+                      {formatRupiah(summaryTotals.keluar)}
+                    </td>
+                    <td className="py-3 px-4 text-right text-blue-600 whitespace-nowrap">
+                      {formatRupiah(summaryTotals.saldoAkhir)}
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>

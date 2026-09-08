@@ -45,9 +45,30 @@ export default function App() {
     tugas_kelas_sekolah?: string;
     tugas_kelas_pengajian?: string;
     tugas_kantin?: string;
+    tugas_tambahan?: string[];
   } | null>(() => {
     const saved = localStorage.getItem("admin_user");
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        const rLower = String(u.role || "").toLowerCase();
+        const unLower = String(u.username || "").toLowerCase();
+        if (rLower === "pondok") {
+          u.role = (unLower.includes("kantin") || (u.tugas_tambahan && u.tugas_tambahan.some((t: string) => String(t).toLowerCase().includes("kantin")))) ? "kantin" : "guru pondok";
+        } else if (rLower.includes("kantin") || unLower.includes("kantin")) {
+          u.role = "kantin";
+        }
+        if ((!u.tugas_tambahan || u.tugas_tambahan.length === 0) && unLower.includes("pondok")) {
+          u.tugas_tambahan = ["kantin pondok"];
+        } else if ((!u.tugas_tambahan || u.tugas_tambahan.length === 0) && unLower.includes("rusun")) {
+          u.tugas_tambahan = ["kantin rusun"];
+        }
+        return u;
+      } catch {
+        return null;
+      }
+    }
+    return null;
   });
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem("admin_theme") === "dark";
@@ -63,7 +84,23 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
+    const saved = localStorage.getItem("admin_user");
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        const r = String(u.role || "").toLowerCase();
+        const un = String(u.username || "").toLowerCase();
+        const hasK = r.includes("kantin") || un.includes("kantin") || 
+          (u.tugas_tambahan && u.tugas_tambahan.some((t: string) => String(t).toLowerCase().includes("kantin")));
+        if (hasK && r !== "admin" && r !== "super admin" && r !== "superadmin") {
+          return "kantin_input";
+        }
+        if (r === "siswa") return "absensi";
+      } catch {}
+    }
+    return "dashboard";
+  });
   const [isRekapExpanded, setIsRekapExpanded] = useState(true);
   const [isNfcExpanded, setIsNfcExpanded] = useState(true);
   const [isDataWargaExpanded, setIsDataWargaExpanded] = useState(true);
@@ -1149,7 +1186,16 @@ export default function App() {
     setActiveTab("list");
   };
 
-  const userRole = currentUser?.role || "admin";
+  const userRole = (() => {
+    let r = String(currentUser?.role || "admin").toLowerCase().trim();
+    const un = String(currentUser?.username || "").toLowerCase().trim();
+    const tt = (currentUser?.tugas_tambahan as string[]) || [];
+    const isPureKantin = r.includes("kantin") || un.includes("kantin") || (tt.length > 0 && tt.every((t: string) => String(t).toLowerCase().includes("kantin")));
+    if (isPureKantin && r !== "super admin" && r !== "admin" && r !== "superadmin") return "kantin";
+    if (r === "pondok") return "guru pondok";
+    if (r === "smp" || r === "sma") return "guru SMP";
+    return currentUser?.role || "admin";
+  })();
   const userGenderAccess = currentUser?.gender || "Semua";
 
   const displayedStudents = useMemo(() => {
@@ -1217,8 +1263,8 @@ export default function App() {
     { id: "pelanggaran_rekap", group: "PELANGGARAN", isSubmenu: true, subLabel: "Daftar Pelanggaran", label: "Daftar Pelanggaran", shortLabel: "Rekap Pelanggaran", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     
     // PEMBUKUAN KANTIN GROUP WITH SUBMENUS
-    { id: "kantin_input", group: "KANTIN", isSubmenu: true, subLabel: "Input Kas", label: "Input Kas Kantin", shortLabel: "Input Kas", icon: Receipt, roles: ["super admin", "admin", "kantin"] },
-    { id: "kantin_rekap", group: "KANTIN", isSubmenu: true, subLabel: "Rekap Pembukuan", label: "Rekap Pembukuan", shortLabel: "Rekap Kas", icon: Store, roles: ["super admin", "admin", "kantin"] },
+    { id: "kantin_input", group: "KANTIN", isSubmenu: true, subLabel: "Input Kas", label: "Input Kas Kantin", shortLabel: "Input Kas", icon: Receipt, roles: ["super admin", "admin", "kantin", "guru pondok", "pondok"] },
+    { id: "kantin_rekap", group: "KANTIN", isSubmenu: true, subLabel: "Rekap Pembukuan", label: "Rekap Pembukuan", shortLabel: "Rekap Kas", icon: Store, roles: ["super admin", "admin", "kantin", "guru pondok", "pondok"] },
 
     // PLOTTING / MANAJEMEN AKADEMIK
     { id: "manajemen_pondok", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Building2, roles: ["super admin", "admin"] },
@@ -1226,30 +1272,51 @@ export default function App() {
     { id: "pengguna", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
   ];
   
-  const accessibleTabs = allTabs.filter(t => t.roles.includes(userRole));
+  const hasKantinAccess = 
+    Boolean(currentUser?.tugas_tambahan?.some((t: string) => String(t).toLowerCase().includes("kantin"))) || 
+    Boolean(currentUser?.tugas_kantin && currentUser.tugas_kantin !== "") ||
+    userRole === "kantin" ||
+    String(currentUser?.username || "").toLowerCase().includes("kantin") ||
+    userRole === "admin" || 
+    userRole === "super admin" || 
+    userRole === "superadmin";
+
+  const accessibleTabs = allTabs.filter(t => {
+    if (t.group === "KANTIN") return hasKantinAccess;
+    if (userRole === "kantin") return false;
+    return t.roles.includes(userRole);
+  });
 
   useEffect(() => {
     if (currentUser) {
-      if (!allTabs.find(t => t.id === activeTab)?.roles.includes(userRole)) {
+      if (userRole === "kantin" && (activeTab === "dashboard" || !accessibleTabs.find(t => t.id === activeTab))) {
+        setActiveTab("kantin_input");
+      } else if (!accessibleTabs.find(t => t.id === activeTab)) {
         if (userRole === "siswa") {
           setActiveTab("absensi");
-        } else if (userRole === "kantin") {
+        } else if (hasKantinAccess && userRole !== "super admin" && userRole !== "admin" && userRole !== "superadmin") {
+          // Default to kantin if they only have kantin access and are not admin
           setActiveTab("kantin_input");
         } else {
           setActiveTab("dashboard");
         }
       }
     }
-  }, [currentUser, activeTab, userRole]);
+  }, [currentUser, activeTab, userRole, hasKantinAccess, accessibleTabs]);
 
   if (!currentUser) {
     return (
       <LoginForm 
         onSuccess={(user) => {
           setCurrentUser(user);
+          const r = String(user.role || "").toLowerCase();
+          const un = String(user.username || "").toLowerCase();
+          const tt = (user as any).tugas_tambahan || [];
+          const isKantin = r.includes("kantin") || un.includes("kantin") || (tt.length > 0 && tt.every((t: any) => String(t).toLowerCase().includes("kantin")));
+
           if (user.role === "siswa") {
             setActiveTab("absensi");
-          } else if (user.role === "kantin") {
+          } else if (isKantin && r !== "admin" && r !== "super admin" && r !== "superadmin") {
             setActiveTab("kantin_input");
           } else {
             setActiveTab("dashboard");
@@ -2292,7 +2359,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === "dashboard" && userRole === "guru pondok" && (
+            {activeTab === "dashboard" && (userRole === "guru pondok" || userRole === "pondok") && (
               <DashboardGuruPondok
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -2337,6 +2404,18 @@ export default function App() {
                   triggerNotification("Berhasil keluar dari sesi admin", "warning");
                 }}
               />
+            )}
+
+            {activeTab === "dashboard" && userRole === "kantin" && (
+              <div className="w-full p-4 md:p-6">
+                <KantinPanel
+                  viewMode="input"
+                  onSwitchMode={(mode) => setActiveTab(mode === "input" ? "kantin_input" : "kantin_rekap")}
+                  currentUser={currentUser}
+                  triggerNotification={triggerNotification}
+                  isDarkMode={isDarkMode}
+                />
+              </div>
             )}
 
             {activeTab === "form" && (
