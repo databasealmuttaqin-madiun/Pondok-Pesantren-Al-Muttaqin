@@ -34,11 +34,31 @@ export default function RegistrationForm({
     if (initialData) {
       return {
         ...initialData,
+        nama_lengkap: initialData.nama_lengkap || "",
+        nama_panggilan: initialData.nama_panggilan || "",
+        nik: initialData.nik || "",
+        nisn: initialData.nisn || "",
+        npsn: initialData.npsn || "",
+        tempat_lahir: initialData.tempat_lahir || "",
+        tanggal_lahir: initialData.tanggal_lahir || "",
+        alamat: initialData.alamat || "",
+        rt: initialData.rt || "",
+        rw: initialData.rw || "",
+        desa_kelurahan: initialData.desa_kelurahan || "",
+        kecamatan: initialData.kecamatan || "",
+        kabupaten_kota: initialData.kabupaten_kota || "",
+        provinsi: initialData.provinsi || "Jawa Timur",
+        nama_ayah: initialData.nama_ayah || "",
+        nama_ibu: initialData.nama_ibu || "",
+        kelompok_sambung: initialData.kelompok_sambung || "",
+        desa_sambung: initialData.desa_sambung || "",
+        daerah: initialData.daerah || "",
         kamar: initialData.kamar || "",
         kelas_pengajian: initialData.kelas_pengajian || "",
         kelas_sekolah: initialData.kelas_sekolah || "",
         jenis_kelamin: initialData.jenis_kelamin || "L",
         no_hp_ortu: initialData.no_hp_ortu || "",
+        nfc_id: initialData.nfc_id || "",
       };
     }
     return {

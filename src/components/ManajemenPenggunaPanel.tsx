@@ -8,6 +8,8 @@ interface PenggunaData {
   username: string;
   nama: string;
   role: string;
+  status_akun?: string;
+  tugas_tambahan?: string[];
   gender?: string;
   bagian?: string;
   jabatan?: string;
@@ -38,6 +40,19 @@ export default function ManajemenPenggunaPanel() {
   const [isSekolah, setIsSekolah] = useState(true);
   const [selectedJabatans, setSelectedJabatans] = useState<string[]>(["guru pondok"]);
   
+  // Approval State
+  const [approvalUser, setApprovalUser] = useState<PenggunaData | null>(null);
+  const [approvalMainRoles, setApprovalMainRoles] = useState<string[]>([]);
+  const [approvalSubRoles, setApprovalSubRoles] = useState<Record<string, string[]>>({});
+  const [tugasTambahanDb, setTugasTambahanDb] = useState<{id: number, nama: string, jenis_tugas_tambahan: string}[]>([]);
+  
+  const TUGAS_TAMBAHAN_OPTIONS: Record<string, string[]> = {
+    pondok: ["guru", "kantin", "HP SB", "pamong"],
+    "guru pondok": ["guru", "kantin", "HP SB", "pamong"],
+    SMA: ["kepala sekolah", "wakil kepala sekolah", "kesiswaan", "wali kelas", "guru mata pelajaran", "perpustakaan"],
+    SMP: ["kepala sekolah", "wakil kepala sekolah", "kesiswaan", "wali kelas", "guru mata pelajaran", "perpustakaan"]
+  };
+
   // Custom multi-select component states
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,10 +78,11 @@ export default function ManajemenPenggunaPanel() {
   });
 
   const roles = [
-    { id: "guru pondok", label: "Guru Pondok" },
-    { id: "guru SMP", label: "Guru SMP" },
-    { id: "kantin", label: "Petugas Kantin" },
-    { id: "siswa", label: "Siswa / Santri" }
+    { id: "super admin", label: "Super Admin" },
+    { id: "admin", label: "Admin" },
+    { id: "pondok", label: "Pondok" },
+    { id: "SMA", label: "SMA" },
+    { id: "SMP", label: "SMP" }
   ];
 
   // Load plotting options on mount
@@ -92,6 +108,15 @@ export default function ManajemenPenggunaPanel() {
         }
       } catch (err) {
         console.warn("Failed to load options from DB:", err);
+      }
+
+      try {
+        const { data: tugasData, error: tugasError } = await supabase.from("tugas_tambahan").select("*");
+        if (!tugasError && tugasData) {
+          setTugasTambahanDb(tugasData);
+        }
+      } catch (err) {
+        console.warn("Failed to load tugas_tambahan:", err);
       }
     };
     loadOptions();
@@ -187,10 +212,10 @@ export default function ManajemenPenggunaPanel() {
   const openForm = (user?: PenggunaData) => {
     if (user) {
       setEditingId(user.id);
-      setUsername(user.username);
+      setUsername(user.username || "");
       setPassword(""); // Don't fetch password, require new one if editing
-      setNama(user.nama);
-      setRole(user.role);
+      setNama(user.nama || "");
+      setRole(user.role || "guru pondok");
       setGender(user.gender || "Semua");
       
       const bag = user.bagian || "pondok,sekolah";
@@ -280,7 +305,7 @@ export default function ManajemenPenggunaPanel() {
         tugas_kelas_sekolah: (selectedJabatans.includes("wali_kelas") || selectedJabatans.includes("guru_mapel")) ? tugasKelasSekolah : "",
         tugas_kelas_pengajian: selectedJabatans.includes("guru pondok") ? tugasKelasPengajian : "",
         tugas_mapel: selectedJabatans.includes("guru_mapel") ? tugasMapel : "",
-        tugas_kantin: role === "kantin" ? tugasKantin : ""
+        tugas_kantin: selectedJabatans.includes("kantin") ? tugasKantin : ""
       };
 
       if (password.trim()) {
@@ -364,6 +389,46 @@ export default function ManajemenPenggunaPanel() {
     }
   };
 
+  const handleApprove = async () => {
+    if (!approvalUser) return;
+    
+    setIsLoading(true);
+    let finalTugasTambahan: string[] = [];
+    
+    if (approvalUser.role === 'pondok' || approvalUser.role === 'guru pondok') {
+      if (approvalMainRoles.includes("guru")) finalTugasTambahan.push("guru");
+      if (approvalMainRoles.includes("kantin")) finalTugasTambahan.push(...(approvalSubRoles['kantin'] || []));
+      if (approvalMainRoles.includes("pamong")) finalTugasTambahan.push(...(approvalSubRoles['pamong'] || []));
+      if (approvalMainRoles.includes("HP SB")) finalTugasTambahan.push(...(approvalSubRoles['HP SB'] || []));
+    } else {
+      finalTugasTambahan = [...approvalMainRoles];
+    }
+    
+    // Deduplicate array
+    finalTugasTambahan = Array.from(new Set(finalTugasTambahan));
+
+    try {
+      const { error } = await supabase
+        .from('pengguna')
+        .update({
+          status_akun: 'approved',
+          tugas_tambahan: finalTugasTambahan
+        })
+        .eq('id', approvalUser.id);
+        
+      if (error) throw error;
+      
+      alert("Akun berhasil disetujui!");
+      setApprovalUser(null);
+      await fetchUsers();
+    } catch (error: any) {
+      console.error("Gagal melakukan approval:", error);
+      alert("Terjadi kesalahan sistem: " + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const mapJabatanIdToLabel = (id: string) => {
     if (id === "guru pondok") return "Guru Pondok";
     if (id === "guru_mapel") return "Guru Mata Pelajaran";
@@ -371,6 +436,7 @@ export default function ManajemenPenggunaPanel() {
     if (id === "wali_kelas") return "Wali Kelas Sekolah";
     if (id === "kepala_sekolah") return "Kepala Sekolah";
     if (id === "wakil_kepala_sekolah") return "Wakil Kepala Sekolah";
+    if (id === "kantin") return "Petugas Kantin";
     return id;
   };
 
@@ -398,9 +464,10 @@ export default function ManajemenPenggunaPanel() {
       </div>
 
       {isFormOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-850 flex items-center justify-between bg-slate-50 dark:bg-[#0a0c16]">
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/40 backdrop-blur-sm animate-in zoom-in-95 duration-200">
+          <div className="min-h-screen px-4 py-12 flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 relative">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-850 flex items-center justify-between bg-slate-50 dark:bg-[#0a0c16] rounded-t-3xl">
               <h3 className="font-black text-slate-800 dark:text-slate-100 text-lg flex items-center gap-2">
                 <User className="w-5 h-5 text-indigo-500" />
                 {editingId ? "Edit Pengguna" : "Tambah Pengguna Baru"}
@@ -410,7 +477,7 @@ export default function ManajemenPenggunaPanel() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Username (ID Custom)</label>
                 <input
@@ -496,7 +563,8 @@ export default function ManajemenPenggunaPanel() {
                           { id: "wali_kamar", label: "Wali Kamar" },
                           { id: "wali_kelas", label: "Wali Kelas Sekolah" },
                           { id: "kepala_sekolah", label: "Kepala Sekolah" },
-                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" }
+                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" },
+                          { id: "kantin", label: "Petugas Kantin" }
                         ];
                         const item = itemsList.find(j => j.id === jid);
                         const label = item ? item.label : jid;
@@ -569,7 +637,8 @@ export default function ManajemenPenggunaPanel() {
                           { id: "wali_kamar", label: "Wali Kamar" },
                           { id: "wali_kelas", label: "Wali Kelas Sekolah" },
                           { id: "kepala_sekolah", label: "Kepala Sekolah" },
-                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" }
+                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" },
+                          { id: "kantin", label: "Petugas Kantin" }
                         ];
                         const filtered = itemsList.filter(item => {
                           const isNotSelected = !selectedJabatans.includes(item.id);
@@ -700,7 +769,7 @@ export default function ManajemenPenggunaPanel() {
                 </select>
               </div>
 
-              {role === "kantin" && (
+              {selectedJabatans.includes("kantin") && (
                 <div className="space-y-2 p-3.5 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 animate-in fade-in duration-200">
                   <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 block">Konfigurasi Penugasan Kantin</span>
                   <div className="space-y-1">
@@ -748,6 +817,7 @@ export default function ManajemenPenggunaPanel() {
             </form>
           </div>
         </div>
+        </div>
       )}
 
       {/* List */}
@@ -780,11 +850,27 @@ export default function ManajemenPenggunaPanel() {
                       <User className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                     </div>
                     <div>
-                      <div className="font-extrabold text-sm text-slate-800 dark:text-slate-100">{user.nama}</div>
+                      <div className="font-extrabold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        {user.nama}
+                        {user.status_akun === 'pending' && (
+                          <span className="bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold">Pending</span>
+                        )}
+                        {user.status_akun === 'approved' && (
+                          <span className="bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold">Approved</span>
+                        )}
+                        {user.status_akun === 'rejected' && (
+                          <span className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold">Rejected</span>
+                        )}
+                      </div>
                       <div className="text-[10px] font-bold text-slate-500">@{user.username}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {user.status_akun === 'pending' && (
+                      <button onClick={() => { setApprovalUser(user); setApprovalMainRoles([]); setApprovalSubRoles({}); }} className="p-1.5 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white rounded-lg transition-colors" title="Approve Akun">
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button onClick={() => openForm(user)} className="p-1.5 bg-slate-200 hover:bg-sky-500 dark:bg-slate-800 dark:hover:bg-sky-600 text-slate-600 hover:text-white dark:text-slate-300 rounded-lg transition-colors">
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
@@ -823,6 +909,15 @@ export default function ManajemenPenggunaPanel() {
                     </div>
                   )}
 
+                  {user.tugas_tambahan && user.tugas_tambahan.length > 0 && (
+                    <div className="flex justify-between items-start text-[11px] gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[9px] shrink-0 mt-0.5">Tugas Tambahan:</span>
+                      <span className="font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-md text-right max-w-[180px] break-all">
+                        {user.tugas_tambahan.join(", ")}
+                      </span>
+                    </div>
+                  )}
+
                   {user.tugas_kamar && (
                     <div className="flex justify-between items-center text-[11px]">
                       <span className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[9px]">Tugas Kamar:</span>
@@ -850,7 +945,7 @@ export default function ManajemenPenggunaPanel() {
                   {user.tugas_kantin && (
                     <div className="flex justify-between items-center text-[11px]">
                       <span className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider text-[9px]">Tugas Kantin:</span>
-                      <span className="font-black text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/20 px-2 py-0.5 rounded-md">
+                      <span className="font-black text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/20 px-2 py-0.5 rounded-md">
                         {user.tugas_kantin}
                       </span>
                     </div>
@@ -878,6 +973,97 @@ export default function ManajemenPenggunaPanel() {
           </div>
         )}
       </div>
+
+      {/* Approval Modal */}
+      {approvalUser && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="min-h-screen px-4 py-12 flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 relative">
+              <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-extrabold text-slate-800 dark:text-white">Approve Akun: {approvalUser.nama}</h3>
+              <button onClick={() => setApprovalUser(null)} className="p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="space-y-3">
+                
+                {approvalUser.role === 'pondok' || approvalUser.role === 'guru pondok' ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tugas Pokok (Bisa lebih dari satu)</label>
+                      <MultiSelectTagInput 
+                        options={TUGAS_TAMBAHAN_OPTIONS[approvalUser.role] || TUGAS_TAMBAHAN_OPTIONS['pondok']}
+                        selectedValues={approvalMainRoles}
+                        onChange={(vals) => setApprovalMainRoles(vals)}
+                        placeholder="Pilih tugas pokok..."
+                      />
+                    </div>
+
+                    {approvalMainRoles.includes("kantin") && (
+                      <div className="space-y-1.5 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/50 animate-in fade-in duration-200">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Pilih Kantin</label>
+                        <MultiSelectTagInput 
+                          options={tugasTambahanDb.filter(t => t.jenis_tugas_tambahan?.toLowerCase() === 'kantin').map(t => t.nama)}
+                          selectedValues={approvalSubRoles['kantin'] || []}
+                          onChange={(vals) => setApprovalSubRoles(prev => ({ ...prev, kantin: vals }))}
+                          placeholder="Pilih kantin..."
+                        />
+                      </div>
+                    )}
+
+                    {approvalMainRoles.includes("pamong") && (
+                      <div className="space-y-1.5 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-900/50 animate-in fade-in duration-200">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Pilih Pamong</label>
+                        <MultiSelectTagInput 
+                          options={tugasTambahanDb.filter(t => t.jenis_tugas_tambahan?.toLowerCase() === 'pamong').map(t => t.nama)}
+                          selectedValues={approvalSubRoles['pamong'] || []}
+                          onChange={(vals) => setApprovalSubRoles(prev => ({ ...prev, pamong: vals }))}
+                          placeholder="Pilih pamong..."
+                        />
+                      </div>
+                    )}
+
+                    {approvalMainRoles.includes("HP SB") && (
+                      <div className="space-y-1.5 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/50 animate-in fade-in duration-200">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Pilih HP SB</label>
+                        <MultiSelectTagInput 
+                          options={tugasTambahanDb.filter(t => t.jenis_tugas_tambahan?.toLowerCase() === 'hp sb').map(t => t.nama)}
+                          selectedValues={approvalSubRoles['HP SB'] || []}
+                          onChange={(vals) => setApprovalSubRoles(prev => ({ ...prev, 'HP SB': vals }))}
+                          placeholder="Pilih HP SB..."
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tugas Tambahan ({approvalUser.role})</label>
+                    <MultiSelectTagInput 
+                      options={TUGAS_TAMBAHAN_OPTIONS[approvalUser.role] || TUGAS_TAMBAHAN_OPTIONS['SMA']}
+                      selectedValues={approvalMainRoles}
+                      onChange={(vals) => setApprovalMainRoles(vals)}
+                      placeholder={`Pilih tugas untuk ${approvalUser.role}...`}
+                    />
+                  </div>
+                )}
+                
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+              <button onClick={() => setApprovalUser(null)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl">Batal</button>
+              <button 
+                onClick={handleApprove} 
+                disabled={isLoading}
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                <Check className="w-4 h-4" /> Approve Akun
+              </button>
+            </div>
+          </div>
+        </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -45,6 +45,17 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
         );
 
         if (user) {
+          if (user.status_akun === "pending") {
+            setErrorMsg("Akses Ditolak: Akun Anda masih dalam status PENDING dan menunggu persetujuan Super Admin.");
+            setIsLoading(false);
+            return;
+          }
+          if (user.status_akun === "rejected") {
+            setErrorMsg("Akses Ditolak: Pendaftaran akun Anda telah ditolak.");
+            setIsLoading(false);
+            return;
+          }
+
           // Merge with local fallback details in case columns aren't present in remote Supabase table yet
           const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
           const extra = localDetails[cleanUsername] || localDetails[user.username] || {};
@@ -95,6 +106,18 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
     const matchedKey = Object.keys(localDetails).find(k => k.trim().toLowerCase() === cleanUsername);
     if (matchedKey) {
       const extra = localDetails[matchedKey];
+      
+      if (extra.status === "pending" || extra.status_akun === "pending") {
+         setErrorMsg("Akses Ditolak: Akun Anda masih dalam status PENDING dan menunggu persetujuan Super Admin.");
+         setIsLoading(false);
+         return;
+      }
+      if (extra.status === "rejected" || extra.status_akun === "rejected") {
+         setErrorMsg("Akses Ditolak: Pendaftaran akun Anda telah ditolak.");
+         setIsLoading(false);
+         return;
+      }
+
       if (
         String(extra.password || "").trim().toLowerCase() === cleanPassword ||
         String(extra.password || "").trim() === password.trim()

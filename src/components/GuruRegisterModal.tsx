@@ -14,7 +14,7 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<"guru pondok" | "guru SMP" | "siswa">("guru SMP");
+  const [selectedRole, setSelectedRole] = useState<"pondok" | "SMA" | "SMP">("pondok");
   
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -24,7 +24,7 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
     if (isOpen) {
       setUsername("");
       setPassword("");
-      setSelectedRole("guru SMP");
+      setSelectedRole("pondok");
       setErrorMsg("");
       setSuccessMsg("");
       setShowPassword(false);
@@ -63,14 +63,16 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
         username: cleanUsername,
         password: password,
         role: selectedRole,
+        status_akun: "pending",
+        tugas_tambahan: []
       };
 
-      // 1. Save local backup to ensure instant login capability in case of network issues
+      // 1. Save local backup to ensure instant login capability in case of network issues (but set status_akun to pending)
       const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
       localDetails[cleanUsername] = {
         ...dbPengguna,
-        status: selectedRole === "guru SMP" ? "sekolah" : selectedRole === "guru pondok" ? "pondok" : "siswa",
-        bagian: selectedRole === "guru SMP" ? "sekolah" : selectedRole === "guru pondok" ? "pondok" : "siswa"
+        status: "pending",
+        bagian: selectedRole
       };
       localStorage.setItem("user_additional_details", JSON.stringify(localDetails));
 
@@ -89,24 +91,13 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
         return;
       }
 
-      setSuccessMsg("Pendaftaran Akun Berhasil!");
+      setSuccessMsg("Pendaftaran Berhasil! Menunggu Approval Admin.");
       setIsLoading(false);
 
-      const dbUserVal = {
-        username: cleanUsername,
-        role: selectedRole,
-        name: cleanUsername,
-        gender: "Semua",
-        bagian: selectedRole === "guru SMP" ? "sekolah" : selectedRole === "guru pondok" ? "pondok" : "siswa"
-      };
-
-      // Auto login after success
+      // Close modal after success without auto-login (because it is pending)
       setTimeout(() => {
-        if (onSuccessLogin) {
-          onSuccessLogin(dbUserVal);
-        }
         onClose();
-      }, 1400);
+      }, 2500);
 
     } catch (err: any) {
       setIsLoading(false);
@@ -255,9 +246,9 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
                             : "bg-slate-50 border-slate-200 focus:border-blue-500 text-slate-800"
                         }`}
                       >
-                        <option value="guru SMP">Guru SMP</option>
-                        <option value="guru pondok">Guru Pondok</option>
-                        <option value="siswa">Siswa / Siswi</option>
+                        <option value="pondok">Pondok</option>
+                        <option value="SMA">SMA</option>
+                        <option value="SMP">SMP</option>
                       </select>
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
