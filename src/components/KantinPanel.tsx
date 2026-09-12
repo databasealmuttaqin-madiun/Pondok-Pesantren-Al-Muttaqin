@@ -365,8 +365,11 @@ export default function KantinPanel({
 
     try {
       setIsExportingPDF(true);
-      const { jsPDF } = await import("jspdf");
-      const { default: autoTable } = await import("jspdf-autotable");
+      const jsPdfModule = await import("jspdf");
+      const jsPDF = jsPdfModule.jsPDF || (jsPdfModule as any).default || jsPdfModule;
+      
+      const autoTableModule: any = await import("jspdf-autotable");
+      const autoTable = autoTableModule.default || autoTableModule.autoTable || autoTableModule;
 
       const doc = new jsPDF({
         orientation: "portrait",
@@ -401,7 +404,7 @@ export default function KantinPanel({
         minute: "2-digit"
       });
       doc.text(`Waktu Cetak: ${printDateStr} WIB`, 14, 30);
-      doc.text(`Petugas: ${currentUser?.name || currentUser?.username || "Petugas Kantin"}`, 196, 30, { align: "right" });
+      doc.text(`Petugas: ${currentUser?.name || currentUser?.username || "Petugas Kasir"}`, 196, 30, { align: "right" });
 
       // Garis pemisah header
       doc.setDrawColor(203, 213, 225);
@@ -458,7 +461,7 @@ export default function KantinPanel({
         ]
       ];
 
-      (autoTable as any)(doc, {
+      const tableOptions = {
         startY: 57,
         head: tableHead,
         body: tableBody,
@@ -508,7 +511,15 @@ export default function KantinPanel({
             { align: "center" }
           );
         }
-      });
+      };
+
+      if (typeof (doc as any).autoTable === "function") {
+        (doc as any).autoTable(tableOptions);
+      } else if (typeof autoTable === "function") {
+        autoTable(doc, tableOptions);
+      } else {
+        throw new Error("Pustaka autoTable tidak dapat dijalankan.");
+      }
 
       // Signature area
       const finalY = (doc as any).lastAutoTable?.finalY || 160;
@@ -535,7 +546,7 @@ export default function KantinPanel({
       doc.text("Petugas Kasir Kantin,", 145, signY + 4.5);
       doc.line(145, signY + 22, 185, signY + 22);
       doc.setFont("helvetica", "bold");
-      doc.text(currentUser?.name || currentUser?.username || "Petugas Kantin", 145, signY + 26);
+      doc.text(currentUser?.name || currentUser?.username || "Petugas Kasir", 145, signY + 26);
 
       // Signature left column
       doc.setFont("helvetica", "normal");
@@ -545,17 +556,44 @@ export default function KantinPanel({
       doc.setFont("helvetica", "bold");
       doc.text("( .................................... )", 25, signY + 26);
 
-      const cleanKantinName = filterKantinRekap.replace(/\s+/g, "_").toLowerCase();
+      const cleanKantinName = (filterKantinRekap || "semua").replace(/\s+/g, "_").toLowerCase();
       const filename = `Rekap_Kas_Kantin_${cleanKantinName}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      doc.save(filename);
+
+      // Gunakan trigger download blob langsung untuk reliabilitas tinggi di iframe
+      try {
+        const blob = doc.output("blob");
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          } catch {}
+        }, 3000);
+      } catch (blobErr) {
+        console.warn("Direct blob download fallback to doc.save:", blobErr);
+        doc.save(filename);
+      }
 
       triggerNotification?.("Dokumen PDF rekap kas kantin berhasil diunduh.", "success");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Gagal cetak PDF kantin:", err);
-      triggerNotification?.("Gagal mencetak dokumen PDF. Silakan coba kembali.", "error");
+      triggerNotification?.(
+        err?.message || "Gagal mencetak dokumen PDF. Silakan gunakan tombol Cetak Browser sebagai alternatif.",
+        "error"
+      );
     } finally {
       setIsExportingPDF(false);
     }
+  };
+
+  const handleBrowserPrint = () => {
+    window.print();
   };
 
   return (
@@ -740,24 +778,38 @@ export default function KantinPanel({
               </div>
             </div>
             
-            <button
-              onClick={handleExportPDF}
-              disabled={isExportingPDF}
-              className="px-4 py-2 text-xs font-semibold bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-xs flex items-center gap-2 hover:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50 transition-all cursor-pointer"
-              title="Unduh dokumen PDF Rekap Kas Kantin"
-            >
-              {isExportingPDF ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Memproses PDF...</span>
-                </>
-              ) : (
-                <>
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Cetak / Unduh PDF</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportPDF}
+                disabled={isExportingPDF || filteredList.length === 0}
+                className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 disabled:opacity-40 transition-all cursor-pointer"
+                title="Unduh dokumen PDF Resmi Rekap Kas Kantin"
+                id="btn-download-pdf-kantin"
+              >
+                {isExportingPDF ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Membuat PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Unduh PDF</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleBrowserPrint}
+                disabled={filteredList.length === 0}
+                className="px-3.5 py-2 text-xs font-semibold bg-slate-800 dark:bg-slate-700 text-white rounded-xl shadow-xs flex items-center gap-1.5 hover:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-40 transition-all cursor-pointer"
+                title="Cetak langsung menggunakan printer / dialog cetak browser"
+                id="btn-print-browser-kantin"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Cetak Print</span>
+              </button>
+            </div>
           </div>
 
           {/* Ringkasan Cepat */}

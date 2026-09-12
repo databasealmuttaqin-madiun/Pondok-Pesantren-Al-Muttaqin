@@ -53,6 +53,7 @@ export default function RegistrationForm({
         kelompok_sambung: initialData.kelompok_sambung || "",
         desa_sambung: initialData.desa_sambung || "",
         daerah: initialData.daerah || "",
+        status: initialData.status || "Aktif",
         kamar: initialData.kamar || "",
         kelas_pengajian: initialData.kelas_pengajian || "",
         kelas_sekolah: initialData.kelas_sekolah || "",
@@ -82,6 +83,7 @@ export default function RegistrationForm({
       kelompok_sambung: "",
       desa_sambung: "",
       daerah: "",
+      status: "Aktif",
       kamar: "",
       kelas_pengajian: "",
       kelas_sekolah: "",
@@ -957,6 +959,25 @@ export default function RegistrationForm({
                           {room}
                         </option>
                       ))}
+                    </select>
+                  </div>
+
+                  {/* Status Selection */}
+                  <div className="space-y-1">
+                    <label htmlFor="status" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                      Status Siswa
+                    </label>
+                    <select
+                      id="status"
+                      name="status"
+                      value={formData.status || "Aktif"}
+                      onChange={handleChange}
+                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
+                    >
+                      <option value="Aktif">Aktif</option>
+                      <option value="Sakit">Sakit</option>
+                      <option value="Pulang">Pulang</option>
+                      <option value="Haid">Haid</option>
                     </select>
                   </div>
 
