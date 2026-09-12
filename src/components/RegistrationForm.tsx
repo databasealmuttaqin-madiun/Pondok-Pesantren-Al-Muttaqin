@@ -962,25 +962,6 @@ export default function RegistrationForm({
                     </select>
                   </div>
 
-                  {/* Status Selection */}
-                  <div className="space-y-1">
-                    <label htmlFor="status" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      Status Siswa
-                    </label>
-                    <select
-                      id="status"
-                      name="status"
-                      value={formData.status || "Aktif"}
-                      onChange={handleChange}
-                      className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
-                    >
-                      <option value="Aktif">Aktif</option>
-                      <option value="Sakit">Sakit</option>
-                      <option value="Pulang">Pulang</option>
-                      <option value="Haid">Haid</option>
-                    </select>
-                  </div>
-
                   {/* Kelas Pengajian */}
                   <div className="space-y-1">
                     <label htmlFor="kelas_pengajian" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">

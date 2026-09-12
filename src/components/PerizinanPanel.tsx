@@ -956,6 +956,26 @@ export default function PerizinanPanel({
 
       if (error) throw error;
       
+      // If the item was active ("Sedang..."), revert status back to Aktif
+      if (item.status && item.status.toLowerCase().startsWith("sedang")) {
+        try {
+          await supabase
+            .from("status_siswa")
+            .upsert({
+              nama: item.nama_siswa,
+              status: "Aktif",
+              created_at: new Date().toISOString()
+            }, { onConflict: "nama" });
+            
+          const savedStatusMap = JSON.parse(localStorage.getItem("santri_status_map") || "{}");
+          savedStatusMap[item.nama_siswa] = "Aktif";
+          if (item.siswa_id) savedStatusMap[item.siswa_id] = "Aktif";
+          localStorage.setItem("santri_status_map", JSON.stringify(savedStatusMap));
+        } catch (e) {
+          console.warn("Could not sync status_siswa revert on delete:", e);
+        }
+      }
+      
       const currentCache = JSON.parse(localStorage.getItem("local_perizinan_records") || "[]");
       const updatedCache = currentCache.filter((it: PerizinanItem) => it.id !== item.id);
       localStorage.setItem("local_perizinan_records", JSON.stringify(updatedCache));
