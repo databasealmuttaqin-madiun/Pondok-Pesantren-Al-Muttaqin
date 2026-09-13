@@ -1,0 +1,77 @@
+-- VIEW untuk menggabungkan semua riwayat perizinan (Sambang, Sakit, Haid) yang sudah selesai
+CREATE OR REPLACE VIEW riwayat_perizinan_view AS
+SELECT 
+    id,
+    siswa_id,
+    nama_siswa,
+    jenis_kelamin,
+    kamar,
+    'sambang' AS kategori_izin,
+    keperluan,
+    tujuan,
+    NULL AS diagnosa_keluhan,
+    NULL AS lokasi_rawat,
+    penjemput,
+    no_hp_penjemput,
+    tanggal_mulai,
+    jam_mulai,
+    tanggal_kembali,
+    status,
+    petugas,
+    catatan,
+    created_at,
+    updated_at
+FROM izin_sambang
+WHERE status = 'Sudah Kembali'
+
+UNION ALL
+
+SELECT 
+    id,
+    siswa_id,
+    nama_siswa,
+    jenis_kelamin,
+    kamar,
+    'sakit' AS kategori_izin,
+    NULL AS keperluan,
+    NULL AS tujuan,
+    diagnosa_keluhan,
+    lokasi_rawat,
+    NULL AS penjemput,
+    NULL AS no_hp_penjemput,
+    tanggal_mulai,
+    jam_mulai,
+    tanggal_kembali,
+    status,
+    petugas,
+    catatan,
+    created_at,
+    updated_at
+FROM izin_sakit
+WHERE status = 'Sudah Sembuh'
+
+UNION ALL
+
+SELECT 
+    id,
+    siswa_id,
+    nama_siswa,
+    jenis_kelamin,
+    kamar,
+    'haid' AS kategori_izin,
+    NULL AS keperluan,
+    NULL AS tujuan,
+    NULL AS diagnosa_keluhan,
+    NULL AS lokasi_rawat,
+    NULL AS penjemput,
+    NULL AS no_hp_penjemput,
+    tanggal_mulai,
+    jam_mulai,
+    tanggal_kembali,
+    status,
+    petugas,
+    catatan,
+    created_at,
+    updated_at
+FROM izin_haid
+WHERE status = 'Sudah Suci';

@@ -10,6 +10,7 @@ import LoginForm from "./components/LoginForm";
 import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
 import PerizinanPanel from "./components/PerizinanPanel";
+import PerizinanRiwayat from "./components/PerizinanRiwayat";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
@@ -84,7 +85,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -1271,6 +1272,7 @@ export default function App() {
     { id: "perizinan_sakit", group: "PERIZINAN", isSubmenu: true, subLabel: "Sakit", label: "Izin Sakit", shortLabel: "Sakit", icon: HeartPulse, roles: ["super admin", "admin", "guru pondok"] },
     { id: "perizinan_sambang", group: "PERIZINAN", isSubmenu: true, subLabel: "Sambang", label: "Izin Sambang", shortLabel: "Sambang", icon: Footprints, roles: ["super admin", "admin", "guru pondok"] },
     { id: "perizinan_haid", group: "PERIZINAN", isSubmenu: true, subLabel: "Haid", label: "Izin Haid", shortLabel: "Haid", icon: Droplets, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "perizinan_riwayat", group: "PERIZINAN", isSubmenu: true, subLabel: "Riwayat", label: "Riwayat Perizinan", shortLabel: "Riwayat", icon: Clock, roles: ["super admin", "admin", "guru pondok"] },
 
     // REKAP PRESENSI GROUP WITH SUBMENUS
     { id: "rekap_sholat", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Sholat", label: "Rekap Sholat", shortLabel: "Sholat", icon: Moon, roles: ["super admin", "admin", "guru pondok"] },
@@ -1529,7 +1531,7 @@ export default function App() {
           className={`${sidebarCollapsed ? "w-[72px]" : "w-64"} bg-[#f8fafc] dark:bg-[#0b0f19] border-r border-slate-200/80 dark:border-slate-800/80 hidden md:flex md:flex-col p-0 shrink-0 transition-all duration-300 shadow-xs text-slate-800 dark:text-slate-100 z-20 select-none overflow-x-hidden no-scrollbar`} 
           id="desktop-sidebar"
         >
-          {/* Top Header section with Logo Pondok, Generus Title & Toggle */}
+          {/* Top Header section with Logo Pondok, Al Muttaqin Title & Toggle */}
           <div className="shrink-0 p-3 border-b border-slate-200/70 dark:border-slate-800/70 overflow-x-hidden">
             {sidebarCollapsed ? (
               <div className="flex flex-col items-center justify-center gap-2">
@@ -1566,7 +1568,7 @@ export default function App() {
                   </div>
                   <div className="min-w-0">
                     <h1 className="text-base font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-none truncate">
-                      Generus
+                      Al Muttaqin
                     </h1>
                   </div>
                 </div>
@@ -1660,7 +1662,7 @@ export default function App() {
                     <button
                       onClick={() => setIsPerizinanExpanded(!isPerizinanExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["perizinan", "perizinan_sakit", "perizinan_sambang", "perizinan_haid"].includes(activeTab)
+                        ["perizinan", "perizinan_sakit", "perizinan_sambang", "perizinan_haid", "perizinan_riwayat"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
@@ -2613,7 +2615,7 @@ export default function App() {
               </div>
             )}
 
-            {["perizinan", "perizinan_sakit", "perizinan_sambang", "perizinan_haid"].includes(activeTab) && (
+            {["perizinan", "perizinan_sakit", "perizinan_sambang", "perizinan_haid", "perizinan_riwayat"].includes(activeTab) && activeTab !== "perizinan_riwayat" && (
               <div className="w-full">
                 <PerizinanPanel
                   students={userGenderAccess !== "Semua" ? displayedStudents.filter(s => s.jenis_kelamin === userGenderAccess) : displayedStudents}
@@ -2629,6 +2631,11 @@ export default function App() {
                   }}
                   currentUserName={currentUser?.name || currentUser?.username || "Petugas"}
                 />
+              </div>
+            )}
+            {activeTab === "perizinan_riwayat" && (
+              <div className="w-full">
+                <PerizinanRiwayat />
               </div>
             )}
 
@@ -2766,7 +2773,7 @@ export default function App() {
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-slate-100">Generus</span>
+                <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-slate-100">Al Muttaqin</span>
               </div>
               <button 
                 onClick={() => setMobileMenuOpen(false)}
