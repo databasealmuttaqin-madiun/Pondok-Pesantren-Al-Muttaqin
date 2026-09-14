@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { 
   Save, AlertCircle, Plus, Edit, Trash2, Calendar, BookOpen, 
-  Users, CheckCircle, Clock, XCircle, Info, ClipboardEdit, Target
+  Users, CheckCircle, Clock, XCircle, Info, ClipboardEdit, Target,
+  User as UserIcon
 } from "lucide-react";
 import { SantriData } from "../supabaseClient";
 
@@ -23,12 +24,18 @@ export default function JurnalPengajianPanel({
 }: Props) {
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [selectedMateri, setSelectedMateri] = useState<number | "">("");
+  const [selectedKelompok, setSelectedKelompok] = useState<string>("");
+  const [selectedSesi, setSelectedSesi] = useState<string>("");
+  const [sesiList, setSesiList] = useState<any[]>([]);
   
   const [materiList, setMateriList] = useState<any[]>([]);
+  const [ustazList, setUstazList] = useState<any[]>([]);
   const [targetInfo, setTargetInfo] = useState<any>(null);
   const [santriList, setSantriList] = useState<SantriData[]>([]);
   
+  // Realisasi
+  const [selectedMateri, setSelectedMateri] = useState<number | "">("");
+  const [selectedUstaz, setSelectedUstaz] = useState<string>("");
   const [realisasiMulai, setRealisasiMulai] = useState<number | "">("");
   const [realisasiSelesai, setRealisasiSelesai] = useState<number | "">("");
   const [catatan, setCatatan] = useState<string>("");
@@ -37,18 +44,49 @@ export default function JurnalPengajianPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [existingJurnal, setExistingJurnal] = useState<any>(null);
+  const [dbMissing, setDbMissing] = useState(false);
 
   useEffect(() => {
-    const fetchMateri = async () => {
-      const { data } = await supabase.from("materi_pengajian").select("*").order("urutan", { ascending: true });
-      if (data) setMateriList(data);
+    const fetchData = async () => {
+      
+      // Fetch Sesi
+      const { data: sesiData, error: sesiError } = await supabase.from("sesi_mengaji").select("*").order("urutan", { ascending: true });
+      if (sesiError && (sesiError.code === 'PGRST205' || sesiError.message.includes('table'))) {
+        setDbMissing(true);
+      }
+      if (sesiData) {
+        setSesiList(sesiData);
+        if (sesiData.length > 0) setSelectedSesi(sesiData[0].id.toString());
+      }
+
+      // Fetch Materi
+      const { data: materiData } = await supabase.from("materi_pengajian").select("*").order("urutan", { ascending: true });
+      if (materiData) setMateriList(materiData);
+
+      // Fetch Ustaz (Pengguna with role/tugas_tambahan containing 'guru' or 'pengasuh')
+      const { data: penggunaData } = await supabase.from("pengguna").select("id, nama, role, tugas_tambahan");
+      if (penggunaData) {
+        const filteredUstaz = penggunaData.filter(u => {
+          const r = String(u.role || "").toLowerCase();
+          const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
+          return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
+        });
+        setUstazList(filteredUstaz);
+      }
     };
-    fetchMateri();
+    fetchData();
   }, []);
-
-  // Load target & santri when class or date changes
+  
+  // Set default selectedUstaz when ustazList or currentUser changes
   useEffect(() => {
-    if (selectedClass && selectedDate && selectedMateri) {
+    if (currentUser?.id && !selectedUstaz) {
+      setSelectedUstaz(currentUser.id.toString());
+    }
+  }, [currentUser, ustazList]);
+
+  // Load target & santri when class, date, or kelompok changes
+  useEffect(() => {
+    if (selectedClass && selectedDate && selectedKelompok && selectedSesi) {
       loadData();
     } else {
       setTargetInfo(null);
@@ -56,22 +94,42 @@ export default function JurnalPengajianPanel({
       setAbsensiMap({});
       setExistingJurnal(null);
     }
-  }, [selectedClass, selectedDate, selectedMateri]);
+  }, [selectedClass, selectedDate, selectedKelompok, selectedSesi]);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // 2. Check if Jurnal already exists
-      const { data: jurnalData, error: jurnalError } = await supabase
-        .from("jurnal_pengajian")
-        .select("*")
+      // 1. Get Target for this date & class & kelompok
+      const { data: targetData, error: targetError } = await supabase
+        .from("target_pengajian")
+        .select("*, materi_pengajian!inner(nama_materi, kelompok)")
         .eq("kelas_pengajian", selectedClass)
         .eq("tanggal", selectedDate)
-        .eq("materi_id", selectedMateri)
+        .eq("materi_pengajian.kelompok", selectedKelompok)
+        .maybeSingle();
+        
+      setTargetInfo(targetData || null);
+      
+      // If target exists, try to pre-select materi if it's not selected yet
+      if (targetData && !selectedMateri) {
+        setSelectedMateri(targetData.materi_id);
+      }
+
+      
+      // 2. Check if Jurnal already exists for this kelompok AND sesi
+      const { data: jurnalData, error: jurnalError } = await supabase
+        .from("jurnal_pengajian")
+        .select("*, materi_pengajian!inner(kelompok)")
+        .eq("kelas_pengajian", selectedClass)
+        .eq("tanggal", selectedDate)
+        .eq("sesi_id", selectedSesi)
+        .eq("materi_pengajian.kelompok", selectedKelompok)
         .maybeSingle();
 
       if (jurnalData) {
         setExistingJurnal(jurnalData);
+        setSelectedMateri(jurnalData.materi_id || "");
+        setSelectedUstaz(jurnalData.ustaz_id ? jurnalData.ustaz_id.toString() : (currentUser?.id?.toString() || ""));
         setRealisasiMulai(jurnalData.realisasi_halaman_mulai);
         setRealisasiSelesai(jurnalData.realisasi_halaman_selesai);
         setCatatan(jurnalData.catatan_kendala || "");
@@ -91,38 +149,38 @@ export default function JurnalPengajianPanel({
         }
       } else {
         setExistingJurnal(null);
-        setRealisasiMulai("");
         setRealisasiSelesai("");
         setCatatan("");
         
-        // Set default absensi 'hadir' for all students
+        // AUTO-FILL MULAI HALAMAN
+        // Get the latest jurnal for this class and kelompok (prioritizing earlier today, or previous dates)
+        const { data: prevJurnal } = await supabase
+          .from("jurnal_pengajian")
+          .select("realisasi_halaman_selesai, materi_pengajian!inner(kelompok)")
+          .eq("kelas_pengajian", selectedClass)
+          .eq("materi_pengajian.kelompok", selectedKelompok)
+          .lte("tanggal", selectedDate)
+          .order("tanggal", { ascending: false })
+          .order("sesi_id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+          
+        if (prevJurnal && prevJurnal.realisasi_halaman_selesai) {
+          setRealisasiMulai(prevJurnal.realisasi_halaman_selesai);
+        } else {
+          setRealisasiMulai("");
+        }
       }
 
-      // 3. Get Target for this date
-      const { data: targetData, error: targetError } = await supabase
-        .from("target_pengajian")
-        .select("*, materi_pengajian(nama_materi, kelompok)")
-        .eq("kelas_pengajian", selectedClass)
-        .eq("tanggal", selectedDate)
-        .eq("materi_id", selectedMateri)
-        .maybeSingle();
-        
-      setTargetInfo(targetData || null);
 
       // 4. Get Santri for this class
-      // In this system, plotting might be in another table, or we use santri_data cache and filter by kelas_pengajian
       const cached = localStorage.getItem("santri_data");
       let allSantri: SantriData[] = cached ? JSON.parse(cached) : [];
-      
-      // Filter logic: In previous features, we used 'kelas_pengajian' property or similar.
-      // If we don't have it directly, maybe they are plotted somewhere else. 
-      // Assuming santri objects have `kelas_pengajian` if it's set in this app version.
-      // Let's filter if it exists.
       const classSantri = allSantri.filter(s => (s as any).kelas_pengajian === selectedClass);
       
       setSantriList(classSantri);
       
-      // If no existing jurnal, init absensi
+      // If no existing jurnal, init absensi to 'hadir'
       if (!jurnalData) {
         const initAbs = {};
         classSantri.forEach(s => {
@@ -147,8 +205,12 @@ export default function JurnalPengajianPanel({
   };
 
   const handleSave = async () => {
-    if (!selectedClass || !selectedDate || !selectedMateri) {
-      onTriggerNotification("Pilih kelas, tanggal, dan materi terlebih dahulu", "warning");
+    if (!selectedClass || !selectedDate || !selectedKelompok || !selectedSesi) {
+      onTriggerNotification("Pilih kelas, kelompok, dan tanggal terlebih dahulu", "warning");
+      return;
+    }
+    if (!selectedMateri) {
+      onTriggerNotification("Detail Materi harus dipilih", "warning");
       return;
     }
     if (realisasiMulai === "" || realisasiSelesai === "") {
@@ -164,7 +226,8 @@ export default function JurnalPengajianPanel({
         target_id: targetInfo ? targetInfo.id : null,
         materi_id: selectedMateri,
         kelas_pengajian: selectedClass,
-        ustaz_id: currentUser?.id, // Assuming currentUser has id
+        sesi_id: selectedSesi || null,
+        ustaz_id: selectedUstaz || null,
         tanggal: selectedDate,
         realisasi_halaman_mulai: realisasiMulai,
         realisasi_halaman_selesai: realisasiSelesai,
@@ -196,12 +259,12 @@ export default function JurnalPengajianPanel({
       }
 
       // Save absensi
-      // First, delete existing to recreate (simplest way to sync)
       await supabase.from("absensi_pengajian").delete().eq("jurnal_id", jurnalId);
       
       const absensiPayloads = Object.keys(absensiMap).map(sId => ({
         jurnal_id: jurnalId,
         santri_id: sId,
+        sesi_id: selectedSesi || null,
         status: absensiMap[sId].status,
         keterangan: absensiMap[sId].keterangan
       }));
@@ -222,6 +285,8 @@ export default function JurnalPengajianPanel({
     setIsSaving(false);
   };
 
+  const filteredMateri = materiList.filter(m => m.kelompok === selectedKelompok);
+
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="mb-6">
@@ -234,7 +299,33 @@ export default function JurnalPengajianPanel({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      {dbMissing && (
+        <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-xl border border-red-200 dark:border-red-800 mb-6">
+          <h3 className="text-lg font-bold text-red-800 dark:text-red-300 mb-2">Tabel Sesi Belum Dibuat di Database</h3>
+          <p className="text-sm text-red-700 dark:text-red-400 mb-4">
+            Fitur Jurnal Pengajian tidak dapat dimuat karena tabel <strong>sesi_mengaji</strong> belum ditambahkan ke Supabase.
+            Silakan buka menu <strong>Manajemen Pondok &gt; Sesi Mengaji</strong> untuk menyalin kode SQL pembuatan tabelnya.
+          </p>
+        </div>
+      )}
+
+      {/* FILTER BAR ATAS */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Sesi Mengaji
+          </label>
+          <select
+            value={selectedSesi}
+            onChange={(e) => setSelectedSesi(e.target.value)}
+            className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            {sesiList.map(s => (
+              <option key={s.id} value={s.id}>{s.nama_sesi}</option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             Kelas Pengajian
@@ -252,19 +343,19 @@ export default function JurnalPengajianPanel({
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-            Materi
+            Kelompok Materi
           </label>
           <select
-            value={selectedMateri}
-            onChange={(e) => setSelectedMateri(e.target.value === "" ? "" : Number(e.target.value))}
+            value={selectedKelompok}
+            onChange={(e) => {
+              setSelectedKelompok(e.target.value);
+              setSelectedMateri(""); // Reset detail materi on kelompok change
+            }}
             className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
           >
-            <option value="">-- Pilih Materi --</option>
-            {materiList.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.nama_materi} ({m.kelompok === 'alquran' ? "Al-Qur'an" : "Himpunan"})
-              </option>
-            ))}
+            <option value="">-- Pilih Kelompok --</option>
+            <option value="alquran">Al-Qur'an</option>
+            <option value="himpunan">Al-Hadist (Himpunan)</option>
           </select>
         </div>
         <div>
@@ -286,10 +377,12 @@ export default function JurnalPengajianPanel({
         </div>
       )}
 
-      {selectedClass && selectedDate && selectedMateri && !isLoading && (
+      {selectedClass && selectedDate && selectedKelompok && selectedSesi && !isLoading && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Form Jurnal */}
           <div className="lg:col-span-1 space-y-4">
+            
+            {/* Target Hari Ini Card */}
             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50">
               <h3 className="font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-2 mb-3">
                 <Target className="w-5 h-5" /> Target Hari Ini
@@ -301,14 +394,53 @@ export default function JurnalPengajianPanel({
                   <p><strong>Target Hal:</strong> {targetInfo.target_halaman_mulai} s/d {targetInfo.target_halaman_selesai}</p>
                 </div>
               ) : (
-                <p className="text-sm text-slate-500 dark:text-slate-400 italic">Belum ada target di-set untuk hari ini.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 italic">Belum ada target di-set untuk hari ini pada kelompok {selectedKelompok === 'alquran' ? "Al-Qur'an" : "Himpunan"}.</p>
               )}
             </div>
 
+            {/* Realisasi Mengajar Card */}
             <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-              <h3 className="font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2">Realisasi Mengajar</h3>
+              <h3 className="font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-slate-500" /> Realisasi Mengajar
+              </h3>
               
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
+                {/* Detail Materi */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Detail Materi {selectedKelompok === 'alquran' ? "(Juz)" : "(Kitab)"}
+                  </label>
+                  <select
+                    value={selectedMateri}
+                    onChange={(e) => setSelectedMateri(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full rounded-md border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:border-blue-500 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih {selectedKelompok === 'alquran' ? "Juz" : "Kitab"} --</option>
+                    {filteredMateri.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.nama_materi}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Guru Pengajar */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Guru Pengajar</label>
+                  <select
+                    value={selectedUstaz}
+                    onChange={(e) => setSelectedUstaz(e.target.value)}
+                    className="w-full rounded-md border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:border-blue-500 focus:ring-blue-500"
+                  >
+                    <option value="">-- Pilih Ustaz --</option>
+                    {ustazList.map(u => (
+                      <option key={u.id} value={u.id}>{u.nama}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Mulai Hal.</label>
                   <input
@@ -348,16 +480,16 @@ export default function JurnalPengajianPanel({
                   existingJurnal.status_capaian === 'terlampaui' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800' :
                   'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800'
                 }`}>
-                  Status: {existingJurnal.status_capaian.replace('_', ' ').toUpperCase()}
+                  Status Capaian: {existingJurnal.status_capaian.replace('_', ' ').toUpperCase()}
                 </div>
               )}
 
               <button
                 onClick={handleSave}
-                disabled={isSaving || realisasiMulai === "" || realisasiSelesai === ""}
+                disabled={isSaving || realisasiMulai === "" || realisasiSelesai === "" || !selectedMateri}
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
-                {isSaving ? <span className="animate-pulse">Menyimpan...</span> : <><Save className="w-4 h-4" /> Simpan Jurnal & Absensi</>}
+                {isSaving ? <span className="animate-pulse">Menyimpan...</span> : <><Save className="w-4 h-4" /> Simpan Jurnal</>}
               </button>
             </div>
           </div>

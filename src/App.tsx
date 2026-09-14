@@ -14,6 +14,7 @@ import PerizinanRiwayat from "./components/PerizinanRiwayat";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
+import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ManajemenPondokPanel from "./components/ManajemenPondokPanel";
 import ManajemenSekolahPanel from "./components/ManajemenSekolahPanel";
 import ManajemenMateriPanel from "./components/ManajemenMateriPanel";
@@ -1306,6 +1307,7 @@ export default function App() {
 
     // PLOTTING / MANAJEMEN AKADEMIK
     { id: "manajemen_pondok", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Building2, roles: ["super admin", "admin"] },
+    { id: "manajemen_sesi", group: "PLOTTING", isSubmenu: true, subLabel: "Sesi Mengaji", label: "Manajemen Sesi Mengaji", shortLabel: "Sesi", icon: Clock, roles: ["super admin", "admin"] },
     { id: "manajemen_sekolah", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["super admin", "admin", "guru SMP"] },
     { id: "pengguna", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
 
@@ -2201,7 +2203,7 @@ export default function App() {
             )}
 
             {/* 4. PLOTTING / MANAJEMEN GROUP (ACCORDION) */}
-            {accessibleTabs.some(t => t.group === "PLOTTING") && (!sidebarSearchQuery || "plotting manajemen pondok sekolah akun pengguna".includes(sidebarSearchQuery.toLowerCase())) && (
+            {accessibleTabs.some(t => t.group === "PLOTTING") && (!sidebarSearchQuery || "plotting manajemen pondok sekolah akun pengguna sesi".includes(sidebarSearchQuery.toLowerCase())) && (
               <div 
                 className="w-full pt-1.5 relative group/flyout"
                 onMouseEnter={() => setHoveredFlyout("manajemen")}
@@ -2878,6 +2880,11 @@ export default function App() {
             )}
 
 
+            {activeTab === "manajemen_sesi" && (
+              <div className="w-full">
+                <ManajemenSesiPanel />
+              </div>
+            )}
             {activeTab === "pengguna" && (
               <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
                 <ManajemenPenggunaPanel />

@@ -31,14 +31,34 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
 
       const { data, error } = await supabase
         .from("jurnal_pengajian")
-        .select("*, materi_pengajian(nama_materi, kelompok)")
+        .select("*, materi_pengajian(nama_materi, kelompok), sesi_mengaji(nama_sesi)")
         .eq("kelas_pengajian", selectedClass)
         .gte("tanggal", startDate)
         .lte("tanggal", endDate)
         .order("tanggal", { ascending: true });
 
       if (error) throw error;
-      setJurnals(data || []);
+      
+      const loadedJurnals = data || [];
+      
+      // Manually fetch and attach pengguna names since relation might not be strictly defined in Postgres
+      if (loadedJurnals.length > 0) {
+        const ustazIds = Array.from(new Set(loadedJurnals.map(j => j.ustaz_id).filter(id => id)));
+        if (ustazIds.length > 0) {
+           const { data: usersData } = await supabase.from("pengguna").select("id, nama").in("id", ustazIds);
+           if (usersData) {
+             const userMap = {};
+             usersData.forEach(u => userMap[u.id] = u.nama);
+             loadedJurnals.forEach(j => {
+               if (j.ustaz_id && userMap[j.ustaz_id]) {
+                 j.pengguna = { nama: userMap[j.ustaz_id] };
+               }
+             });
+           }
+        }
+      }
+
+      setJurnals(loadedJurnals);
     } catch (e: any) {
       console.error(e);
       onTriggerNotification(`Gagal memuat rekap jurnal: ${e.message}`, "error");
@@ -110,7 +130,9 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200 text-xs font-semibold uppercase">
                 <tr>
                   <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Tanggal</th>
+                  <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Sesi</th>
                   <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Materi</th>
+                  <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Guru/Ustaz</th>
                   <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Hal Mulai</th>
                   <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Hal Selesai</th>
                   <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800">Status</th>
@@ -120,7 +142,7 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {jurnals.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                       Tidak ada data jurnal untuk periode ini.
                     </td>
                   </tr>
@@ -128,9 +150,15 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
                   jurnals.map((jurnal) => (
                     <tr key={jurnal.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <td className="px-4 py-3 whitespace-nowrap">{jurnal.tanggal}</td>
+                      <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
+                        {jurnal.sesi_mengaji?.nama_sesi || "-"}
+                      </td>
                       <td className="px-4 py-3">
                         {jurnal.materi_pengajian?.nama_materi || "-"} 
                         {jurnal.materi_pengajian?.kelompok ? ` (${jurnal.materi_pengajian.kelompok === 'alquran' ? "Al-Qur'an" : "Himpunan"})` : ""}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
+                        {jurnal.pengguna?.nama || "-"}
                       </td>
                       <td className="px-4 py-3 text-center">{jurnal.realisasi_halaman_mulai}</td>
                       <td className="px-4 py-3 text-center">{jurnal.realisasi_halaman_selesai}</td>

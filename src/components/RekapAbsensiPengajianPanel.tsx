@@ -44,7 +44,7 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
 
       const { data: jurnalData, error: jurnalError } = await supabase
         .from("jurnal_pengajian")
-        .select("id, tanggal")
+        .select("id, tanggal, sesi_id, sesi_mengaji(nama_sesi)")
         .eq("kelas_pengajian", selectedClass)
         .gte("tanggal", startDate)
         .lte("tanggal", endDate)
@@ -54,15 +54,34 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
       
       const loadedJurnals = jurnalData || [];
       
-      // We might have multiple jurnals per date (e.g. Alquran and Himpunan). Let's group by date or just show dates.
-      // For simplicity, let's just get unique dates.
-      const uniqueDates = Array.from(new Set(loadedJurnals.map(j => j.tanggal))).sort();
+      // Group by tanggal AND sesi_id
+      const uniqueSessions: any[] = [];
+      const sessionMap = new Map();
       
-      const jurnalsByDate: any[] = uniqueDates.map(date => ({
-        tanggal: date,
-        jurnal_ids: loadedJurnals.filter(j => j.tanggal === date).map(j => j.id)
-      }));
-      setJurnals(jurnalsByDate);
+      loadedJurnals.forEach(j => {
+        const key = `${j.tanggal}_${j.sesi_id || 'none'}`;
+        if (!sessionMap.has(key)) {
+          sessionMap.set(key, {
+            key,
+            tanggal: j.tanggal,
+            sesi_id: j.sesi_id,
+            nama_sesi: j.sesi_mengaji?.nama_sesi || "-",
+            jurnal_ids: []
+          });
+          uniqueSessions.push(sessionMap.get(key));
+        }
+        sessionMap.get(key).jurnal_ids.push(j.id);
+      });
+
+      // Sort by date then session
+      uniqueSessions.sort((a, b) => {
+        if (a.tanggal === b.tanggal) {
+          return (a.sesi_id || 0) - (b.sesi_id || 0);
+        }
+        return a.tanggal.localeCompare(b.tanggal);
+      });
+
+      setJurnals(uniqueSessions);
 
       // 3. Get Absensi for those jurnals
       const allJurnalIds = loadedJurnals.map(j => j.id);
@@ -82,10 +101,11 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
           
           const jurnal = loadedJurnals.find(j => j.id === abs.jurnal_id);
           if (jurnal) {
-            // If already set for this date, only override if new status is worse (alpa > sakit > izin > terlambat > hadir)
+            const key = `${jurnal.tanggal}_${jurnal.sesi_id || 'none'}`;
+            // If already set for this date/sesi, only override if new status is worse (alpa > sakit > izin > terlambat > hadir)
             // But for simplicity, let's just take whatever if it's not set.
-            if (!newAbsMap[abs.santri_id][jurnal.tanggal] || abs.status !== 'hadir') {
-                newAbsMap[abs.santri_id][jurnal.tanggal] = abs.status;
+            if (!newAbsMap[abs.santri_id][key] || abs.status !== 'hadir') {
+                newAbsMap[abs.santri_id][key] = abs.status;
             }
           }
         });
@@ -181,18 +201,39 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
             <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
               <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200 text-xs font-semibold uppercase">
                 <tr>
-                  <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 w-12">No</th>
-                  <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 sticky left-12 bg-slate-50 dark:bg-slate-800 z-10 min-w-[200px]">Nama Santri</th>
-                  {jurnals.map((j) => {
-                    const dateObj = new Date(j.tanggal);
-                    return (
-                      <th key={j.tanggal} className="px-2 py-3 border-b border-slate-200 dark:border-slate-800 text-center min-w-[40px]" title={j.tanggal}>
-                        {dateObj.getDate()}
-                      </th>
-                    );
-                  })}
-                  <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-blue-50 dark:bg-blue-900/20">H</th>
-                  <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-red-50 dark:bg-red-900/20">A</th>
+                  <th rowSpan={2} className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 w-12 align-middle">No</th>
+                  <th rowSpan={2} className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 sticky left-12 bg-slate-50 dark:bg-slate-800 z-10 min-w-[200px] align-middle">Nama Santri</th>
+                  {(() => {
+                    const grouped: {tanggal: string, count: number}[] = [];
+                    jurnals.forEach(j => {
+                      const existing = grouped.find(g => g.tanggal === j.tanggal);
+                      if (existing) {
+                        existing.count++;
+                      } else {
+                        grouped.push({ tanggal: j.tanggal, count: 1 });
+                      }
+                    });
+                    
+                    return grouped.map(g => {
+                      const dateObj = new Date(g.tanggal);
+                      return (
+                        <th key={g.tanggal} colSpan={g.count} className="px-2 py-2 border-b border-slate-200 dark:border-slate-800 text-center min-w-[50px] border-l first:border-l-0">
+                          <span title={g.tanggal} className="font-semibold">{dateObj.getDate()}</span>
+                        </th>
+                      );
+                    });
+                  })()}
+                  <th rowSpan={2} className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-blue-50 dark:bg-blue-900/20 align-middle">H</th>
+                  <th rowSpan={2} className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-red-50 dark:bg-red-900/20 align-middle">A</th>
+                </tr>
+                <tr>
+                  {jurnals.map((j) => (
+                    <th key={j.key} className="px-1 py-1.5 border-b border-slate-200 dark:border-slate-800 text-center border-l first:border-l-0">
+                      <span className="text-[10px] font-normal px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 whitespace-nowrap overflow-hidden max-w-[60px] text-ellipsis inline-block" title={j.nama_sesi}>
+                        {j.nama_sesi}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -221,12 +262,12 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
                         </td>
                         
                         {jurnals.map((j) => {
-                          const status = santri.id && absensiMap[santri.id] ? absensiMap[santri.id][j.tanggal] : null;
+                          const status = santri.id && absensiMap[santri.id] ? absensiMap[santri.id][j.key] : null;
                           if (status === 'hadir') hadirCount++;
                           if (status === 'alpa') alpaCount++;
                           
                           return (
-                            <td key={j.tanggal} className="px-1 py-3 text-center border-r border-slate-50 dark:border-slate-800/50">
+                            <td key={j.key} className="px-1 py-3 text-center border-r border-slate-50 dark:border-slate-800/50">
                               <div className={`w-6 h-6 mx-auto rounded flex items-center justify-center text-[10px] font-bold ${status ? getStatusColor(status) : 'text-slate-300'}`}>
                                 {getStatusInitial(status || '')}
                               </div>
