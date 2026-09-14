@@ -1,0 +1,13 @@
+-- Hapus policy lama
+DROP POLICY IF EXISTS "Enable read access for authenticated users" ON public.materi_pengajian;
+DROP POLICY IF EXISTS "Enable ALL access for admins" ON public.materi_pengajian;
+DROP POLICY IF EXISTS "Enable all access for anon" ON public.materi_pengajian;
+DROP POLICY IF EXISTS "Enable all access for everyone" ON public.materi_pengajian;
+
+-- Buat policy baru yang memberikan akses penuh ke SEMUA user (termasuk anon/public)
+-- PENTING: Karena aplikasi ini menggunakan custom role system di frontend
+CREATE POLICY "Enable all access for everyone" 
+ON public.materi_pengajian 
+FOR ALL 
+USING (true)
+WITH CHECK (true);
