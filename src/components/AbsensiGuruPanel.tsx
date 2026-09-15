@@ -735,8 +735,12 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
       if (guruData && guruData.length > 0) {
         guruData.forEach((g: any) => {
-          const key = (g.username || "").toLowerCase() || `guru_${g.id}`;
-          combinedMap.set(key, g);
+          const key = (g.username || "").toLowerCase() || (g.pengguna_id ? `uid_${g.pengguna_id}` : `guru_${g.id}`);
+          combinedMap.set(key, {
+            ...g,
+            jenis_kelamin: g.jenis_kelamin || "L",
+            nomor_seluler: g.nomor_hp || g.nomor_seluler || g.no_hp || ""
+          });
         });
       } else {
         // Fallback to guru_sekolah if guru table empty
@@ -760,21 +764,34 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       if (penggunaData && penggunaData.length > 0) {
         penggunaData.forEach((u: any) => {
           const isTeacher =
+            u.peran_utama === "guru_pondok" ||
+            u.peran_utama === "guru_sekolah" ||
             u.role === "guru pondok" ||
             u.role === "guru SMP" ||
             (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
 
           if (isTeacher && u.username) {
             const key = u.username.toLowerCase();
-            if (!combinedMap.has(key)) {
+            const existing = combinedMap.get(key) || (u.id ? combinedMap.get(`uid_${u.id}`) : undefined);
+            if (existing) {
+              combinedMap.set(key, {
+                ...existing,
+                username: u.username,
+                nama_lengkap: existing.nama_lengkap || u.nama_lengkap || u.nama || u.username,
+                jenis_kelamin: existing.jenis_kelamin || u.gender || "L",
+                role: u.peran_utama || u.role || existing.role || "guru SMP",
+                bagian: u.bagian || existing.bagian || "sekolah",
+                jabatan: u.jabatan || existing.jabatan || "Guru Pengajar"
+              });
+            } else {
               combinedMap.set(key, {
                 id: u.id,
                 username: u.username,
-                nama_lengkap: u.nama || u.username,
+                nama_lengkap: u.nama_lengkap || u.nama || u.username,
                 jenis_kelamin: u.gender || "L",
                 mata_pelajaran: u.tugas_mapel || "",
                 nomor_seluler: u.no_hp || "",
-                role: u.role || "guru SMP",
+                role: u.peran_utama || u.role || "guru SMP",
                 bagian: u.bagian || "sekolah",
                 jabatan: u.jabatan || "Guru Pengajar"
               });

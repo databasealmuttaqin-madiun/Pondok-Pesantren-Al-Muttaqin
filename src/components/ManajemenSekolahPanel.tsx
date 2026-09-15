@@ -127,13 +127,14 @@ export default function ManajemenSekolahPanel({
       let teacherMap = new Map<string, { username: string; nama: string }>();
 
       // 1. Fetch from 'guru' table
-      const { data: dbGuru } = await supabase.from("guru").select("username, nama_lengkap, nama");
+      const { data: dbGuru } = await supabase.from("guru").select("*");
       if (dbGuru && dbGuru.length > 0) {
         dbGuru.forEach((g: any) => {
-          if (g.username) {
-            teacherMap.set(g.username.toLowerCase(), {
-              username: g.username,
-              nama: g.nama_lengkap || g.nama || g.username
+          const uname = g.username || (g.pengguna_id ? `uid_${g.pengguna_id}` : "");
+          if (uname) {
+            teacherMap.set(uname.toLowerCase(), {
+              username: g.username || uname,
+              nama: g.nama_lengkap || g.nama || uname
             });
           }
         });
@@ -142,21 +143,29 @@ export default function ManajemenSekolahPanel({
       // 2. Fetch from 'pengguna' table
       const { data: dbPengguna } = await supabase
         .from("pengguna")
-        .select("username, nama, role, jabatan");
+        .select("*");
 
       if (dbPengguna && dbPengguna.length > 0) {
         dbPengguna.forEach((u: any) => {
           const isTeacher =
+            u.peran_utama === "guru_sekolah" ||
+            u.peran_utama === "guru_pondok" ||
             u.role === "guru SMP" ||
             u.role === "guru pondok" ||
             (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
 
           if (isTeacher && u.username) {
             const key = u.username.toLowerCase();
-            if (!teacherMap.has(key)) {
+            const existing = teacherMap.get(key) || (u.id ? teacherMap.get(`uid_${u.id}`) : undefined);
+            if (existing) {
               teacherMap.set(key, {
                 username: u.username,
-                nama: u.nama || u.username
+                nama: existing.nama || u.nama_lengkap || u.nama || u.username
+              });
+            } else {
+              teacherMap.set(key, {
+                username: u.username,
+                nama: u.nama_lengkap || u.nama || u.username
               });
             }
           }

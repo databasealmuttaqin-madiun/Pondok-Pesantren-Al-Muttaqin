@@ -313,26 +313,27 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           console.warn("Notice when fetching 'pengguna' table:", errPengguna);
         }
 
-        // Create a map by lowercased username to merge attributes from both tables
+        // Create a map by lowercased username or id to merge attributes from both tables
         const mapByUsername = new Map<string, WargaPerson>();
 
         // First process 'guru' table entries
         dbGuruList.forEach((g: any) => {
-          const uname = (g.username || "").trim();
-          const key = uname.toLowerCase() || `guru_${g.id}`;
+          const linkedUser = g.pengguna_id ? dbPenggunaList.find(p => p.id === g.pengguna_id) : null;
+          const uname = (g.username || linkedUser?.username || "").trim();
+          const key = uname.toLowerCase() || (g.pengguna_id ? `uid_${g.pengguna_id}` : `guru_${g.id}`);
           mapByUsername.set(key, {
             id: String(g.id || uname || Math.random()),
-            nama: g.nama_lengkap || g.nama || uname || "Guru",
+            nama: g.nama_lengkap || g.nama || linkedUser?.nama_lengkap || linkedUser?.nama || uname || "Guru",
             username: uname,
-            role: g.role || "guru SMP",
-            gender: (g.jenis_kelamin === "P" || g.gender === "P" ? "P" : "L") as "L" | "P",
-            bagian: g.bagian || "sekolah",
-            jabatan: g.jabatan || "Guru Pengajar",
-            tugas_kamar: g.tugas_kamar || g.alamat_pribadi || "",
-            tugas_kelas_sekolah: g.tugas_kelas_sekolah || "",
-            tugas_kelas_pengajian: g.tugas_kelas_pengajian || "",
-            tugas_mapel: g.mata_pelajaran || g.tugas_mapel || "",
-            no_hp: g.nomor_seluler || g.no_hp || "",
+            role: g.role || (linkedUser?.peran_utama === "guru_pondok" ? "guru pondok" : "guru SMP"),
+            gender: (g.jenis_kelamin === "P" || g.gender === "P" || linkedUser?.gender === "P" ? "P" : "L") as "L" | "P",
+            bagian: g.bagian || linkedUser?.bagian || (linkedUser?.peran_utama === "guru_pondok" ? "pondok" : "sekolah"),
+            jabatan: g.jabatan || linkedUser?.jabatan || (linkedUser?.peran_utama === "guru_pondok" ? "Guru Pondok" : "Guru Pengajar"),
+            tugas_kamar: g.tugas_kamar || linkedUser?.tugas_kamar || g.alamat_pribadi || "",
+            tugas_kelas_sekolah: g.tugas_kelas_sekolah || linkedUser?.tugas_kelas_sekolah || "",
+            tugas_kelas_pengajian: g.tugas_kelas_pengajian || linkedUser?.tugas_kelas_pengajian || "",
+            tugas_mapel: g.mata_pelajaran || g.tugas_mapel || linkedUser?.tugas_mapel || "",
+            no_hp: g.nomor_hp || g.nomor_seluler || g.no_hp || linkedUser?.no_hp || "",
             nik: g.nik || "",
             tempat_lahir: g.tempat_lahir || "",
             tanggal_lahir: g.tanggal_lahir || "",
@@ -344,6 +345,8 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
         // Next process 'pengguna' table entries (teacher roles or jabatan containing guru/ustadz)
         dbPenggunaList.forEach((u: any) => {
           const isTeacherRole =
+            u.peran_utama === "guru_pondok" ||
+            u.peran_utama === "guru_sekolah" ||
             u.role === "guru pondok" ||
             u.role === "guru SMP" ||
             (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
@@ -351,15 +354,15 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           if (isTeacherRole) {
             const uname = (u.username || "").trim();
             const key = uname.toLowerCase() || `pengguna_${u.id}`;
-            const existing = mapByUsername.get(key);
+            const existing = mapByUsername.get(key) || (u.id ? mapByUsername.get(`uid_${u.id}`) : undefined);
 
             if (existing) {
               // Merge pengguna fields into existing guru item if missing
               mapByUsername.set(key, {
                 ...existing,
-                nama: existing.nama || u.nama || uname,
-                role: u.role || existing.role || "guru SMP",
-                bagian: u.bagian || existing.bagian || "sekolah",
+                nama: existing.nama || u.nama_lengkap || u.nama || uname,
+                role: u.role || (u.peran_utama === "guru_pondok" ? "guru pondok" : "guru SMP") || existing.role,
+                bagian: u.bagian || (u.peran_utama === "guru_pondok" ? "pondok" : "sekolah") || existing.bagian,
                 jabatan: u.jabatan || existing.jabatan || "Guru Pengajar",
                 tugas_kamar: existing.tugas_kamar || u.tugas_kamar || "",
                 tugas_kelas_sekolah: existing.tugas_kelas_sekolah || u.tugas_kelas_sekolah || "",
@@ -371,11 +374,11 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
               // Add new teacher from pengguna table
               mapByUsername.set(key, {
                 id: String(u.id || uname),
-                nama: u.nama || uname,
+                nama: u.nama_lengkap || u.nama || uname,
                 username: uname,
-                role: u.role || "guru SMP",
+                role: u.role || (u.peran_utama === "guru_pondok" ? "guru pondok" : "guru SMP"),
                 gender: (u.gender === "P" ? "P" : "L") as "L" | "P",
-                bagian: u.bagian || (u.role === "guru SMP" ? "sekolah" : "pondok"),
+                bagian: u.bagian || (u.peran_utama === "guru_pondok" ? "pondok" : "sekolah"),
                 jabatan: u.jabatan || "Guru Pengajar",
                 tugas_kamar: u.tugas_kamar || "",
                 tugas_kelas_sekolah: u.tugas_kelas_sekolah || "",
@@ -392,6 +395,19 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
       } else {
         // viewType === "pengurus"
         const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
+        let dbPengurusList: any[] = [];
+        try {
+          const { data: dbPengurus, error: pengurusErr } = await supabase
+            .from("pengurus")
+            .select("*")
+            .order("created_at", { ascending: false });
+          if (!pengurusErr && dbPengurus) {
+            dbPengurusList = dbPengurus;
+          }
+        } catch (errPengurus) {
+          console.warn("Notice when fetching 'pengurus' table:", errPengurus);
+        }
+
         let allDbUsers: any[] = [];
         try {
           const { data, error } = await supabase.from("pengguna").select("*");
@@ -402,52 +418,96 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           console.warn("Notice fetching pengguna table:", errDb);
         }
 
-        // Merge localDetails for users registered locally
-        Object.keys(localDetails).forEach((uname) => {
-          const localUser = localDetails[uname];
-          if (!allDbUsers.some((p) => (p.username || "").toLowerCase() === uname.toLowerCase())) {
-            allDbUsers.push({
-              username: uname,
-              nama: localUser.nama_lengkap || localUser.nama || uname,
-              nama_lengkap: localUser.nama_lengkap || localUser.nama || uname,
-              role: localUser.role || (localUser.status === "pengurus" ? "pengurus" : localUser.status === "sekolah" ? "guru SMP" : "guru pondok"),
-              gender: localUser.gender || "L",
-              status: localUser.status || "pengurus",
-              bagian: localUser.bagian || localUser.status || "pondok",
-              jabatan: localUser.jabatan || "Pengurus",
-              tugas_kamar: localUser.tugas_kamar || "",
-              no_hp: localUser.no_hp || localUser.nomor_seluler || ""
-            });
+        const mapPengurus = new Map<string, WargaPerson>();
+
+        // 1. First add from 'pengurus' table
+        dbPengurusList.forEach((p: any) => {
+          const linkedUser = p.pengguna_id ? allDbUsers.find(u => u.id === p.pengguna_id) : null;
+          const uname = (linkedUser?.username || p.username || "").trim();
+          const key = uname.toLowerCase() || (p.pengguna_id ? `uid_${p.pengguna_id}` : `pengurus_${p.id}`);
+          mapPengurus.set(key, {
+            id: String(p.id || uname || Math.random()),
+            nama: p.nama_lengkap || p.nama || linkedUser?.nama_lengkap || linkedUser?.nama || uname || "Pengurus",
+            username: uname,
+            role: "pengurus",
+            gender: (p.jenis_kelamin === "P" || p.gender === "P" || linkedUser?.gender === "P" ? "P" : "L") as "L" | "P",
+            bagian: p.bagian || linkedUser?.bagian || "pondok",
+            jabatan: p.jabatan || linkedUser?.jabatan || "Pengurus Pondok",
+            tugas_kamar: p.tugas_kamar || linkedUser?.tugas_kamar || "",
+            tugas_kelas_sekolah: linkedUser?.tugas_kelas_sekolah || "",
+            tugas_kelas_pengajian: linkedUser?.tugas_kelas_pengajian || "",
+            tugas_mapel: linkedUser?.tugas_mapel || "",
+            no_hp: p.nomor_hp || p.nomor_seluler || p.no_hp || linkedUser?.no_hp || ""
+          });
+        });
+
+        // 2. Add from pengguna table with pengurus/admin role
+        allDbUsers.forEach((u: any) => {
+          const r = (u.role || "").toLowerCase();
+          const pu = (u.peran_utama || "").toLowerCase();
+          const isPengurus = pu === "pengurus" || pu === "admin" || pu === "super_admin" || r === "pengurus" || r === "admin" || r === "super admin";
+          if (isPengurus) {
+            const uname = (u.username || "").trim();
+            const key = uname.toLowerCase() || `pengguna_${u.id}`;
+            const existing = mapPengurus.get(key) || (u.id ? mapPengurus.get(`uid_${u.id}`) : undefined);
+            const extra = localDetails[uname.toLowerCase()] || {};
+
+            if (existing) {
+              mapPengurus.set(key, {
+                ...existing,
+                username: uname,
+                nama: existing.nama || u.nama_lengkap || u.nama || extra.nama_lengkap || extra.nama || uname,
+                gender: (u.gender === "P" || extra.gender === "P" ? "P" : "L") as "L" | "P",
+                bagian: u.bagian || extra.bagian || existing.bagian || "pondok",
+                jabatan: u.jabatan || extra.jabatan || existing.jabatan || "Pengurus Pondok",
+                tugas_kamar: u.tugas_kamar || extra.tugas_kamar || existing.tugas_kamar || "",
+                no_hp: u.no_hp || extra.no_hp || existing.no_hp || ""
+              });
+            } else {
+              mapPengurus.set(key, {
+                id: String(u.id || uname),
+                nama: u.nama_lengkap || u.nama || extra.nama_lengkap || extra.nama || uname,
+                username: uname,
+                role: "pengurus",
+                gender: (u.gender === "P" || extra.gender === "P" ? "P" : "L") as "L" | "P",
+                bagian: u.bagian || extra.bagian || "pondok",
+                jabatan: u.jabatan || extra.jabatan || "Pengurus Pondok",
+                tugas_kamar: u.tugas_kamar || extra.tugas_kamar || "",
+                tugas_kelas_sekolah: u.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
+                tugas_kelas_pengajian: u.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",
+                tugas_mapel: u.tugas_mapel || extra.tugas_mapel || "",
+                no_hp: u.no_hp || extra.no_hp || ""
+              });
+            }
           }
         });
 
-        const filteredFromDb: WargaPerson[] = allDbUsers
-          .filter((u: any) => {
-            const r = (u.role || "").toLowerCase();
-            const s = (u.status || "").toLowerCase();
-            // Strictly exclude teacher roles
-            if (r === "guru SMP" || r === "guru pondok" || s === "sekolah") return false;
-            return r === "pengurus" || r === "admin" || s === "pengurus";
-          })
-          .map((u: any) => {
-            const extra = localDetails[(u.username || "").toLowerCase()] || {};
-            return {
-              id: String(u.id || u.username),
-              nama: u.nama_lengkap || u.nama || extra.nama_lengkap || extra.nama || u.username,
-              username: u.username,
-              role: u.role || extra.role || "pengurus",
-              gender: (u.gender === "P" || u.jenis_kelamin === "P" || extra.gender === "P" ? "P" : "L") as "L" | "P",
-              bagian: u.bagian || extra.bagian || u.status || "pondok",
-              jabatan: u.jabatan || extra.jabatan || u.status || "Pengurus Pondok",
-              tugas_kamar: u.tugas_kamar || extra.tugas_kamar || "",
-              tugas_kelas_sekolah: u.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
-              tugas_kelas_pengajian: u.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",
-              tugas_mapel: u.tugas_mapel || extra.tugas_mapel || "",
-              no_hp: u.no_hp || u.phone || u.nomor_seluler || extra.no_hp || ""
-            };
-          });
+        // Merge localDetails for users registered locally
+        Object.keys(localDetails).forEach((uname) => {
+          const localUser = localDetails[uname];
+          const key = uname.toLowerCase();
+          if (!mapPengurus.has(key)) {
+            const pu = (localUser.peran_utama || localUser.role || localUser.status || "").toLowerCase();
+            if (pu === "pengurus" || pu === "admin") {
+              mapPengurus.set(key, {
+                id: uname,
+                username: uname,
+                nama: localUser.nama_lengkap || localUser.nama || uname,
+                role: "pengurus",
+                gender: (localUser.gender === "P" ? "P" : "L") as "L" | "P",
+                bagian: localUser.bagian || "pondok",
+                jabatan: localUser.jabatan || "Pengurus Pondok",
+                tugas_kamar: localUser.tugas_kamar || "",
+                tugas_kelas_sekolah: localUser.tugas_kelas_sekolah || "",
+                tugas_kelas_pengajian: localUser.tugas_kelas_pengajian || "",
+                tugas_mapel: localUser.tugas_mapel || "",
+                no_hp: localUser.no_hp || ""
+              });
+            }
+          }
+        });
 
-        setPeople(filteredFromDb);
+        setPeople(Array.from(mapPengurus.values()));
       }
     } catch (e) {
       console.warn("Error fetching data for Data Warga:", e);

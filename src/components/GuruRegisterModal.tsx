@@ -65,12 +65,14 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
     setIsLoading(true);
 
     try {
-      const dbPengguna = {
+      const dbPengguna: any = {
+        nama: namaLengkap.trim(),
         nama_lengkap: namaLengkap.trim(),
         username: cleanUsername,
         password: password,
         peran_utama: selectedRole,
         status_akun: "pending",
+        permissions: [],
         tugas_tambahan: []
       };
 
@@ -91,11 +93,24 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
         if (bErrStr.includes("duplicate") || bErrStr.includes("23505") || bErrStr.includes("already exists")) {
           setErrorMsg(`Username ID '${cleanUsername}' sudah terdaftar! Silakan gunakan username lain.`);
         } else {
-          setErrorMsg(`Gagal mendaftar ke database: ${basicErr.message}`);
-          console.error("Database insert error:", basicErr);
+          // Attempt legacy insert if column difference
+          const legacyFallback = {
+            username: cleanUsername,
+            nama: namaLengkap.trim(),
+            password: password
+          };
+          const { error: legErr } = await supabase.from("pengguna").insert([legacyFallback]);
+          if (legErr) {
+            setErrorMsg(`Gagal mendaftar ke database: ${basicErr.message}`);
+            console.error("Database insert error:", basicErr);
+            setIsLoading(false);
+            return;
+          }
         }
-        setIsLoading(false);
-        return;
+        if (basicErr && (bErrStr.includes("duplicate") || bErrStr.includes("23505") || bErrStr.includes("already exists"))) {
+          setIsLoading(false);
+          return;
+        }
       }
 
       setSuccessMsg("Pendaftaran Berhasil! Menunggu Approval Admin.");

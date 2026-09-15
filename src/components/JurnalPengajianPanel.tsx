@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { 
   Save, AlertCircle, Plus, Edit, Trash2, Calendar, BookOpen, 
   Users, CheckCircle, Clock, XCircle, Info, ClipboardEdit, Target,
-  User as UserIcon
+  User as UserIcon, Search
 } from "lucide-react";
 import { SantriData } from "../supabaseClient";
 
@@ -32,6 +32,7 @@ export default function JurnalPengajianPanel({
   const [ustazList, setUstazList] = useState<any[]>([]);
   const [targetInfo, setTargetInfo] = useState<any>(null);
   const [santriList, setSantriList] = useState<SantriData[]>([]);
+  const [searchSantri, setSearchSantri] = useState("");
   
   // Realisasi
   const [selectedMateri, setSelectedMateri] = useState<number | "">("");
@@ -63,11 +64,14 @@ export default function JurnalPengajianPanel({
       const { data: materiData } = await supabase.from("materi_pengajian").select("*").order("urutan", { ascending: true });
       if (materiData) setMateriList(materiData);
 
-      // Fetch Ustaz (Pengguna with role/tugas_tambahan containing 'guru' or 'pengasuh')
-      const { data: penggunaData } = await supabase.from("pengguna").select("id, nama, role, tugas_tambahan");
+      // Fetch Ustaz (Pengguna with peran_utama/role/tugas_tambahan containing 'guru' or 'pengasuh')
+      const { data: penggunaData } = await supabase.from("pengguna").select("*");
       if (penggunaData) {
-        const filteredUstaz = penggunaData.filter(u => {
-          const r = String(u.role || "").toLowerCase();
+        const filteredUstaz = penggunaData.map(u => ({
+          ...u,
+          nama: u.nama_lengkap || u.nama || u.username
+        })).filter(u => {
+          const r = String(u.peran_utama || u.role || "").toLowerCase();
           const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
           return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
         });
@@ -182,10 +186,14 @@ export default function JurnalPengajianPanel({
       
       // If no existing jurnal, init absensi to 'hadir'
       if (!jurnalData) {
-        const initAbs = {};
+        const initAbs: Record<string, { status: string, keterangan: string }> = {};
         classSantri.forEach(s => {
           if (s.id) {
-            initAbs[s.id] = { status: 'hadir', keterangan: '' };
+            let defaultStatus = 'hadir';
+            if (s.status === 'Sakit') defaultStatus = 'sakit';
+            if (s.status === 'Pulang') defaultStatus = 'izin';
+            
+            initAbs[s.id] = { status: defaultStatus, keterangan: '' };
           }
         });
         setAbsensiMap(initAbs);
@@ -497,14 +505,26 @@ export default function JurnalPengajianPanel({
           {/* Absensi Santri */}
           <div className="lg:col-span-2">
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
                 <h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                   <Users className="w-5 h-5 text-slate-500" />
                   Absensi Santri
                 </h3>
-                <span className="text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-1 rounded-full">
-                  {santriList.length} Santri
-                </span>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama santri..."
+                      value={searchSantri}
+                      onChange={(e) => setSearchSantri(e.target.value)}
+                      className="w-full pl-9 pr-4 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <span className="text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 px-2.5 py-1.5 rounded-lg shrink-0">
+                    {santriList.length} Santri
+                  </span>
+                </div>
               </div>
               
               {santriList.length === 0 ? (
@@ -515,7 +535,7 @@ export default function JurnalPengajianPanel({
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[600px] overflow-y-auto">
-                  {santriList.map((santri) => {
+                  {santriList.filter(s => s.nama_lengkap?.toLowerCase().includes(searchSantri.toLowerCase())).map((santri) => {
                     if (!String(String(santri.id || ""))) return null;
                     const absensi = absensiMap[santri.id || 0] || { status: 'hadir', keterangan: '' };
                     return (

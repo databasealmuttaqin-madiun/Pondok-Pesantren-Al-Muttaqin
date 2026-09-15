@@ -102,9 +102,15 @@ export default function ManajemenPenggunaPanel() {
   const roles = [
     { id: "super admin", label: "Super Admin" },
     { id: "admin", label: "Admin" },
-    { id: "pondok", label: "Pondok" },
-    { id: "SMA", label: "SMA" },
-    { id: "SMP", label: "SMP" }
+    { id: "guru_pondok", label: "Guru Pondok" },
+    { id: "guru_sekolah", label: "Guru Sekolah (SMP/SMA)" },
+    { id: "pengurus", label: "Pengurus" },
+    { id: "kantin", label: "Petugas Kantin" },
+    { id: "guru pondok", label: "Guru Pondok (Legacy)" },
+    { id: "guru SMP", label: "Guru SMP (Legacy)" },
+    { id: "pondok", label: "Pondok (Legacy)" },
+    { id: "SMA", label: "SMA (Legacy)" },
+    { id: "SMP", label: "SMP (Legacy)" }
   ];
 
   // Load plotting options on mount
@@ -181,36 +187,27 @@ export default function ManajemenPenggunaPanel() {
       
       const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
       
-      if (error) {
-        console.warn("Custom columns missing or query failed, using fallback:", error.message);
-        const { data: basicData, error: basicError } = await supabase
-          .from("pengguna")
-          .select("id, username, nama, role, gender")
-          .order("created_at", { ascending: false });
-        
-        if (basicError) throw basicError;
-        
-        const merged = (basicData || []).map((u: any) => {
+      const processUserList = (rawList: any[]) => {
+        return (rawList || []).map((u: any) => {
           const extra = localDetails[u.username] || {};
+          const peran = u.peran_utama || u.role || extra.peran_utama || extra.role || "guru_pondok";
+          const rawPermissions = u.permissions || extra.permissions || [];
+          const userPerms = Array.isArray(rawPermissions) ? rawPermissions : [];
+          const rawTugasTambahan = u.tugas_tambahan || extra.tugas_tambahan || [];
+          const userTugasTambahan = Array.isArray(rawTugasTambahan) ? rawTugasTambahan : [];
+
           return {
             ...u,
-            bagian: extra.bagian || (u.role === "admin" ? "pondok,sekolah" : u.role === "guru SMP" ? "sekolah" : "pondok"),
-            jabatan: extra.jabatan || (u.role === "admin" ? "pengurus" : u.role === "guru SMP" ? "guru_mapel" : "guru pondok"),
-            tugas_kamar: extra.tugas_kamar || "",
-            tugas_kelas_sekolah: extra.tugas_kelas_sekolah || "",
-            tugas_kelas_pengajian: extra.tugas_kelas_pengajian || "",
-            tugas_mapel: extra.tugas_mapel || "",
-            tugas_kantin: extra.tugas_kantin || ""
-          };
-        });
-        setUsers(merged);
-      } else {
-        const merged = (data || []).map((u: any) => {
-          const extra = localDetails[u.username] || {};
-          return {
-            ...u,
-            bagian: u.bagian || extra.bagian || (u.role === "admin" ? "pondok,sekolah" : u.role === "guru SMP" ? "sekolah" : "pondok"),
-            jabatan: u.jabatan || extra.jabatan || (u.role === "admin" ? "pengurus" : u.role === "guru SMP" ? "guru_mapel" : "guru pondok"),
+            nama: u.nama_lengkap || u.nama || extra.nama_lengkap || extra.nama || u.username,
+            nama_lengkap: u.nama_lengkap || u.nama || extra.nama_lengkap || extra.nama || u.username,
+            peran_utama: peran,
+            role: peran,
+            status_akun: u.status_akun || extra.status_akun || "approved",
+            permissions: userPerms,
+            tugas_tambahan: userTugasTambahan,
+            gender: u.gender || extra.gender || "Semua",
+            bagian: u.bagian || extra.bagian || (peran === "admin" || peran === "super_admin" || peran === "super admin" ? "pondok,sekolah" : peran === "guru_sekolah" || peran === "guru SMP" ? "sekolah" : "pondok"),
+            jabatan: u.jabatan || extra.jabatan || (peran === "kantin" ? "kantin" : peran === "admin" || peran === "super_admin" || peran === "super admin" ? "pengurus" : peran === "guru_sekolah" || peran === "guru SMP" ? "guru_mapel" : "guru pondok"),
             tugas_kamar: u.tugas_kamar || extra.tugas_kamar || "",
             tugas_kelas_sekolah: u.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
             tugas_kelas_pengajian: u.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",
@@ -218,7 +215,19 @@ export default function ManajemenPenggunaPanel() {
             tugas_kantin: u.tugas_kantin || extra.tugas_kantin || ""
           };
         });
-        setUsers(merged);
+      };
+
+      if (error) {
+        console.warn("Custom columns query failed, trying basic select fallback:", error.message);
+        const { data: basicData, error: basicError } = await supabase
+          .from("pengguna")
+          .select("id, username, nama, gender")
+          .order("created_at", { ascending: false });
+        
+        if (basicError) throw basicError;
+        setUsers(processUserList(basicData || []));
+      } else {
+        setUsers(processUserList(data || []));
       }
     } catch (err: any) {
       console.warn("Gagal mengambil data pengguna:", err.message);
@@ -236,8 +245,9 @@ export default function ManajemenPenggunaPanel() {
       setEditingId(user.id);
       setUsername(user.username || "");
       setPassword(""); // Don't fetch password, require new one if editing
-      setNama(user.nama || "");
-      setRole(user.role || "guru pondok");
+      setNama(user.nama_lengkap || user.nama || "");
+      const r = user.peran_utama || user.role || "guru_pondok";
+      setRole(r);
       setGender(user.gender || "Semua");
       
       const bag = user.bagian || "pondok,sekolah";
@@ -272,7 +282,7 @@ export default function ManajemenPenggunaPanel() {
       setUsername("");
       setPassword("");
       setNama("");
-      setRole("guru pondok");
+      setRole("guru_pondok");
       setGender("Semua");
       setIsPondok(true);
       setIsSekolah(true);
@@ -316,10 +326,19 @@ export default function ManajemenPenggunaPanel() {
 
       const finalJabatan = selectedJabatans.join(",");
       
-      const payload: any = {
-        username: username.trim(),
+      const mappedPeran = 
+        role === "guru SMP" || role === "guru_sekolah" || role === "SMP" || role === "SMA" ? "guru_sekolah" :
+        role === "guru pondok" || role === "guru_pondok" || role === "pondok" ? "guru_pondok" :
+        role === "super admin" || role === "super_admin" ? "super_admin" :
+        role;
+
+      // 1. Save copy to localStorage custom details map
+      const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
+      localDetails[username.trim()] = {
         nama: nama.trim(),
-        role: role,
+        nama_lengkap: nama.trim(),
+        peran_utama: mappedPeran,
+        role: mappedPeran,
         gender: gender,
         bagian: finalBagian,
         jabatan: finalJabatan,
@@ -327,57 +346,52 @@ export default function ManajemenPenggunaPanel() {
         tugas_kelas_sekolah: (selectedJabatans.includes("wali_kelas") || selectedJabatans.includes("guru_mapel")) ? tugasKelasSekolah : "",
         tugas_kelas_pengajian: selectedJabatans.includes("guru pondok") ? tugasKelasPengajian : "",
         tugas_mapel: selectedJabatans.includes("guru_mapel") ? tugasMapel : "",
-        tugas_kantin: selectedJabatans.includes("kantin") ? tugasKantin : ""
-      };
-
-      if (password.trim()) {
-        payload.password = password;
-      }
-
-      // 1. Save copy to localStorage custom details map
-      const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
-      localDetails[username.trim()] = {
-        bagian: finalBagian,
-        jabatan: finalJabatan,
-        tugas_kamar: payload.tugas_kamar,
-        tugas_kelas_sekolah: payload.tugas_kelas_sekolah,
-        tugas_kelas_pengajian: payload.tugas_kelas_pengajian,
-        tugas_mapel: payload.tugas_mapel,
-        tugas_kantin: payload.tugas_kantin
+        tugas_kantin: selectedJabatans.includes("kantin") ? tugasKantin : "",
+        tugas_tambahan: selectedJabatans
       };
       localStorage.setItem("user_additional_details", JSON.stringify(localDetails));
 
-      // 2. Try saving to Supabase
+      // 2. Exact database schema payload for public.pengguna
+      const dbPayload: any = {
+        username: username.trim(),
+        nama: nama.trim(),
+        nama_lengkap: nama.trim(),
+        peran_utama: mappedPeran,
+        gender: gender,
+        status_akun: "approved",
+        permissions: PERMISSION_PRESETS[mappedPeran] || [],
+        tugas_tambahan: selectedJabatans
+      };
+
+      if (password.trim()) {
+        dbPayload.password = password;
+      }
+
+      // 3. Save to Supabase
       if (editingId) {
-        const { error } = await supabase.from("pengguna").update(payload).eq("id", editingId);
+        const { error } = await supabase.from("pengguna").update(dbPayload).eq("id", editingId);
         if (error) {
-          console.warn("Update with custom columns failed, attempting basic update fallback:", error.message);
-          const basicPayload = {
+          console.warn("Update with dbPayload failed, attempting fallback:", error.message);
+          const fallbackPayload: any = {
             username: username.trim(),
             nama: nama.trim(),
-            role: role,
             gender: gender
           };
-          if (password.trim()) {
-            (basicPayload as any).password = password;
-          }
-          const { error: basicError } = await supabase.from("pengguna").update(basicPayload).eq("id", editingId);
+          if (password.trim()) fallbackPayload.password = password;
+          const { error: basicError } = await supabase.from("pengguna").update(fallbackPayload).eq("id", editingId);
           if (basicError) throw basicError;
         }
       } else {
-        const { error } = await supabase.from("pengguna").insert([payload]);
+        const { error } = await supabase.from("pengguna").insert([dbPayload]);
         if (error) {
-          console.warn("Insert with custom columns failed, attempting basic insert fallback:", error.message);
-          const basicPayload = {
+          console.warn("Insert with dbPayload failed, attempting fallback:", error.message);
+          const fallbackPayload: any = {
             username: username.trim(),
             nama: nama.trim(),
-            role: role,
             gender: gender
           };
-          if (password.trim()) {
-            (basicPayload as any).password = password;
-          }
-          const { error: basicError } = await supabase.from("pengguna").insert([basicPayload]);
+          if (password.trim()) fallbackPayload.password = password;
+          const { error: basicError } = await supabase.from("pengguna").insert([fallbackPayload]);
           if (basicError) throw basicError;
         }
       }
