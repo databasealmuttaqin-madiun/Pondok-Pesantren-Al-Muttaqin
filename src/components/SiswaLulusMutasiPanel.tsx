@@ -29,9 +29,7 @@ export interface SiswaLulus {
   id: string | number;
   santri_id?: number;
   nama_lengkap: string;
-  nik: string;
-  nisn?: string;
-  jenis_kelamin: "L" | "P";
+      jenis_kelamin: "L" | "P";
   kategori: "SMP" | "SMA" | "Reguler";
   tahun_lulus: string;
   tanggal_lulus: string;
@@ -45,9 +43,7 @@ export interface SiswaMutasi {
   id: string | number;
   santri_id?: number;
   nama_lengkap: string;
-  nik: string;
-  nisn?: string;
-  jenis_kelamin: "L" | "P";
+      jenis_kelamin: "L" | "P";
   kategori: "SMP" | "SMA" | "Reguler";
   jenis_mutasi: "Pindah Sekolah" | "Pindah Pondok" | "Keluar/Berhenti" | "Lainnya";
   tanggal_mutasi: string;
@@ -199,9 +195,8 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
       .filter(
         (s) =>
           s.nama_lengkap.toLowerCase().includes(q) ||
-          (s.nama_panggilan && s.nama_panggilan.toLowerCase().includes(q)) ||
-          s.nik.includes(q) ||
-          (s.nisn && s.nisn.includes(q))
+          
+          String(String(s.id || "")).includes(q)
       )
       .slice(0, 6);
   }, [formNama, activeStudents, editingItem]);
@@ -223,13 +218,13 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
       return;
     }
     const student = activeStudents.find(
-      (s) => String(s.id) === studentId || s.nik === studentId
+      (s) => String(String(s.id || "")) === studentId || String(String(s.id || "")) === studentId
     );
     if (student) {
       setSelectedStudent(student);
       setFormNama(student.nama_lengkap);
-      setFormNik(student.nik);
-      setFormNisn(student.nisn || "");
+      
+      
       setFormGender(student.jenis_kelamin === "P" ? "P" : "L");
       setFormKategori(student.kategori);
     }
@@ -240,10 +235,10 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     setShowSelectActiveModal(false);
     setEditingItem(null);
     setSelectedStudent(student);
-    setSelectedStudentId(String(student.id || student.nik));
+    setSelectedStudentId(String(String(String(student.id || "")) || String(String(String(student.id || "")) || '')));
     setFormNama(student.nama_lengkap);
-    setFormNik(student.nik);
-    setFormNisn(student.nisn || "");
+    
+    
     setFormGender(student.jenis_kelamin === "P" ? "P" : "L");
     setFormKategori(student.kategori);
     setFormAlasan("");
@@ -257,8 +252,8 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     setSelectedStudentId("");
     setFormNama("");
     setFormAlasan("");
-    setFormNik("");
-    setFormNisn("");
+    
+    
     setFormGender("L");
     setFormKategori("SMP");
     setShowPredictions(false);
@@ -269,8 +264,8 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
   const handleOpenEditModal = (item: SiswaLulus | SiswaMutasi) => {
     setEditingItem(item);
     setFormNama(item.nama_lengkap);
-    setFormNik(item.nik || "");
-    setFormNisn(item.nisn || "");
+    
+    
     setFormGender(item.jenis_kelamin || "L");
     setFormKategori(item.kategori || "SMP");
 
@@ -282,10 +277,10 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
       setFormAlasan(m.alasan_mutasi || m.keterangan || "");
     }
     const matched = activeStudents.find(
-      (s) => s.nik === item.nik || s.nama_lengkap.trim().toLowerCase() === item.nama_lengkap.trim().toLowerCase()
+      (s) => String(String(s.id || "")) === String(String(String(item.id || ""))) || s.nama_lengkap.trim().toLowerCase() === item.nama_lengkap.trim().toLowerCase()
     ) || null;
     setSelectedStudent(matched);
-    setSelectedStudentId(matched ? String(matched.id || matched.nik) : "");
+    setSelectedStudentId(matched ? String(matched.id || matched) : "");
     setShowPredictions(false);
     setShowAddModal(true);
   };
@@ -306,29 +301,25 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
       (s) => s.nama_lengkap.trim().toLowerCase() === formNama.trim().toLowerCase()
     );
 
-    const studentNik = matchedStudent?.nik || formNik || (editingItem ? editingItem.nik : `ID_${Date.now()}`);
-    const studentGender = matchedStudent?.jenis_kelamin || formGender || (editingItem ? editingItem.jenis_kelamin : "L");
+        const studentGender = matchedStudent?.jenis_kelamin || formGender || (editingItem ? editingItem.jenis_kelamin : "L");
     const studentKategori = matchedStudent?.kategori || formKategori || (editingItem ? editingItem.kategori : "SMP");
-    const studentNisn = matchedStudent?.nisn || formNisn || (editingItem ? editingItem.nisn : undefined);
-
+    
     if (viewMode === "lulus") {
       const payload: Partial<SiswaLulus> = {
         nama_lengkap: formNama.trim(),
-        nik: studentNik,
-        nisn: studentNisn,
-        jenis_kelamin: studentGender,
+                        jenis_kelamin: studentGender,
         kategori: studentKategori,
-        tahun_lulus: (editingItem as SiswaLulus)?.tahun_lulus || new Date().getFullYear().toString(),
-        tanggal_lulus: (editingItem as SiswaLulus)?.tanggal_lulus || new Date().toISOString().split("T")[0],
-        no_ijazah: (editingItem as SiswaLulus)?.no_ijazah || undefined,
-        lanjutan_studi: (editingItem as SiswaLulus)?.lanjutan_studi || formAlasan.trim() || undefined,
+        tahun_lulus: (editingItem as any)?.tahun_lulus || new Date().getFullYear().toString(),
+        tanggal_lulus: (editingItem as any)?.tanggal_lulus || new Date().toISOString().split("T")[0],
+        no_ijazah: (editingItem as any)?.no_ijazah || undefined,
+        lanjutan_studi: (editingItem as any)?.lanjutan_studi || formAlasan.trim() || undefined,
         keterangan: formAlasan.trim(),
       };
 
       if (editingItem) {
         setLulusList((prev) =>
           prev.map((item) =>
-            item.id === editingItem.id ? { ...item, ...payload } : item
+            String(String(item.id || "")) === String(String(editingItem.id || "")) ? { ...item, ...payload } : item
           )
         );
 
@@ -336,21 +327,21 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
           const { error } = await supabase
             .from("siswa_lulus")
             .update(payload)
-            .eq("id", editingItem.id);
+            .eq("id", String(String(editingItem.id || "")));
 
           if (error) {
-            await supabase.from("lulus").update(payload).eq("id", editingItem.id);
+            await supabase.from("lulus").update(payload).eq("id", String(String(editingItem.id || "")));
           }
         } catch (err) {
           console.warn("Gagal update data siswa_lulus ke Supabase:", err);
         }
       } else {
         const tempId = `lul_${Date.now()}`;
-        const newItem: SiswaLulus = {
+        const newItem: any = {
           id: tempId,
           ...payload,
           created_at: new Date().toISOString(),
-        } as SiswaLulus;
+        } as any;
 
         setLulusList((prev) => [newItem, ...prev]);
 
@@ -367,12 +358,12 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
               .select();
             if (dataAlt && dataAlt[0]) {
               setLulusList((prev) =>
-                prev.map((item) => (item.id === tempId ? dataAlt[0] : item))
+                prev.map((item) => (String(String(item.id || "")) === tempId ? dataAlt[0] : item))
               );
             }
           } else if (data && data[0]) {
             setLulusList((prev) =>
-              prev.map((item) => (item.id === tempId ? data[0] : item))
+              prev.map((item) => (String(String(item.id || "")) === tempId ? data[0] : item))
             );
           }
         } catch (err) {
@@ -382,22 +373,20 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     } else {
       const payload: Partial<SiswaMutasi> = {
         nama_lengkap: formNama.trim(),
-        nik: studentNik,
-        nisn: studentNisn,
-        jenis_kelamin: studentGender,
+                        jenis_kelamin: studentGender,
         kategori: studentKategori,
-        jenis_mutasi: (editingItem as SiswaMutasi)?.jenis_mutasi || "Pindah Sekolah",
-        tanggal_mutasi: (editingItem as SiswaMutasi)?.tanggal_mutasi || new Date().toISOString().split("T")[0],
-        tujuan_mutasi: (editingItem as SiswaMutasi)?.tujuan_mutasi || formAlasan.trim() || "-",
+        jenis_mutasi: (editingItem as any)?.jenis_mutasi || "Pindah Sekolah",
+        tanggal_mutasi: (editingItem as any)?.tanggal_mutasi || new Date().toISOString().split("T")[0],
+        tujuan_mutasi: (editingItem as any)?.tujuan_mutasi || formAlasan.trim() || "-",
         alasan_mutasi: formAlasan.trim(),
-        no_surat_mutasi: (editingItem as SiswaMutasi)?.no_surat_mutasi || undefined,
+        no_surat_mutasi: (editingItem as any)?.no_surat_mutasi || undefined,
         keterangan: formAlasan.trim(),
       };
 
       if (editingItem) {
         setMutasiList((prev) =>
           prev.map((item) =>
-            item.id === editingItem.id ? { ...item, ...payload } : item
+            String(String(item.id || "")) === String(String(editingItem.id || "")) ? { ...item, ...payload } : item
           )
         );
 
@@ -405,21 +394,21 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
           const { error } = await supabase
             .from("siswa_mutasi")
             .update(payload)
-            .eq("id", editingItem.id);
+            .eq("id", String(String(editingItem.id || "")));
 
           if (error) {
-            await supabase.from("mutasi").update(payload).eq("id", editingItem.id);
+            await supabase.from("mutasi").update(payload).eq("id", String(String(editingItem.id || "")));
           }
         } catch (err) {
           console.warn("Gagal update data siswa_mutasi ke Supabase:", err);
         }
       } else {
         const tempId = `mut_${Date.now()}`;
-        const newItem: SiswaMutasi = {
+        const newItem: any = {
           id: tempId,
           ...payload,
           created_at: new Date().toISOString(),
-        } as SiswaMutasi;
+        } as any;
 
         setMutasiList((prev) => [newItem, ...prev]);
 
@@ -436,12 +425,12 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
               .select();
             if (dataAlt && dataAlt[0]) {
               setMutasiList((prev) =>
-                prev.map((item) => (item.id === tempId ? dataAlt[0] : item))
+                prev.map((item) => (String(String(item.id || "")) === tempId ? dataAlt[0] : item))
               );
             }
           } else if (data && data[0]) {
             setMutasiList((prev) =>
-              prev.map((item) => (item.id === tempId ? data[0] : item))
+              prev.map((item) => (String(String(item.id || "")) === tempId ? data[0] : item))
             );
           }
         } catch (err) {
@@ -460,7 +449,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     const targetId = deleteTarget.id;
 
     if (viewMode === "lulus") {
-      setLulusList((prev) => prev.filter((item) => item.id !== targetId));
+      setLulusList((prev) => prev.filter((item) => String(String(item.id || "")) !== targetId));
       try {
         const { error } = await supabase.from("siswa_lulus").delete().eq("id", targetId);
         if (error) {
@@ -470,7 +459,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
         console.warn("Gagal hapus data siswa_lulus dari Supabase:", err);
       }
     } else {
-      setMutasiList((prev) => prev.filter((item) => item.id !== targetId));
+      setMutasiList((prev) => prev.filter((item) => String(String(item.id || "")) !== targetId));
       try {
         const { error } = await supabase.from("siswa_mutasi").delete().eq("id", targetId);
         if (error) {
@@ -490,12 +479,11 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     let rows: string[][] = [];
 
     if (viewMode === "lulus") {
-      headers = ["Nama Lengkap", "Gender", "NIK", "NISN", "Kategori", "Tahun Lulus", "Tanggal Lulus", "No Ijazah", "Lanjutan Studi", "Keterangan"];
+      headers = ["Nama Lengkap", "Gender", "ID", "Kategori", "Tahun Lulus", "Tanggal Lulus", "No Ijazah", "Lanjutan Studi", "Keterangan"];
       rows = filteredLulus.map((item) => [
         item.nama_lengkap,
         item.jenis_kelamin === "L" ? "Laki-laki" : "Perempuan",
-        item.nik,
-        item.nisn || "",
+        String(item.id || ""),
         item.kategori,
         item.tahun_lulus,
         item.tanggal_lulus,
@@ -504,12 +492,11 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
         item.keterangan || "",
       ]);
     } else {
-      headers = ["Nama Lengkap", "Gender", "NIK", "NISN", "Kategori", "Jenis Mutasi", "Tanggal Mutasi", "Tujuan Mutasi", "Alasan Mutasi", "No Surat", "Keterangan"];
+      headers = ["Nama Lengkap", "Gender", "ID", "Kategori", "Jenis Mutasi", "Tanggal Mutasi", "Tujuan Mutasi", "Alasan Mutasi", "No Surat", "Keterangan"];
       rows = filteredMutasi.map((item) => [
         item.nama_lengkap,
         item.jenis_kelamin === "L" ? "Laki-laki" : "Perempuan",
-        item.nik,
-        item.nisn || "",
+        String(item.id || ""),
         item.kategori,
         item.jenis_mutasi,
         item.tanggal_mutasi,
@@ -538,8 +525,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     const q = searchQuery.toLowerCase();
     const matchSearch =
       item.nama_lengkap.toLowerCase().includes(q) ||
-      item.nik.includes(q) ||
-      (item.nisn && item.nisn.includes(q)) ||
+      String(item.id || "").includes(q) ||
       (item.no_ijazah && item.no_ijazah.toLowerCase().includes(q)) ||
       (item.lanjutan_studi && item.lanjutan_studi.toLowerCase().includes(q));
 
@@ -554,8 +540,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
     const q = searchQuery.toLowerCase();
     const matchSearch =
       item.nama_lengkap.toLowerCase().includes(q) ||
-      item.nik.includes(q) ||
-      (item.nisn && item.nisn.includes(q)) ||
+      String(item.id || "").includes(q) ||
       item.tujuan_mutasi.toLowerCase().includes(q) ||
       item.alasan_mutasi.toLowerCase().includes(q);
 
@@ -796,7 +781,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
                   {filteredLulus.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
+                    <tr key={String(String(item.id || ""))} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
                       <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-semibold">{idx + 1}</td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
@@ -810,8 +795,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-mono text-slate-800 dark:text-slate-200 font-semibold">{item.nik}</div>
-                        {item.nisn && <div className="text-[10px] text-slate-400 font-mono">NISN: {item.nisn}</div>}
+                        <div className="font-mono text-slate-800 dark:text-slate-200 font-semibold">{String(item.id || "")}</div>
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40">
@@ -888,7 +872,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
                   {filteredMutasi.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
+                    <tr key={String(String(item.id || ""))} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors">
                       <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-semibold">{idx + 1}</td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
@@ -902,8 +886,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-mono text-slate-800 dark:text-slate-200 font-semibold">{item.nik}</div>
-                        {item.nisn && <div className="text-[10px] text-slate-400 font-mono">NISN: {item.nisn}</div>}
+                        <div className="font-mono text-slate-800 dark:text-slate-200 font-semibold">{String(item.id || "")}</div>
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/40">
@@ -1018,16 +1001,16 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                     </div>
                     {predictedStudents.map((student) => (
                       <button
-                        key={student.id || student.nik}
+                        key={String(String(student.id || "")) || String(String(String(student.id || "")) || '')}
                         type="button"
                         onClick={() => {
                           setFormNama(student.nama_lengkap);
-                          setFormNik(student.nik);
-                          setFormNisn(student.nisn || "");
+                          
+                          
                           setFormGender(student.jenis_kelamin === "P" ? "P" : "L");
                           setFormKategori(student.kategori);
                           setSelectedStudent(student);
-                          setSelectedStudentId(String(student.id || student.nik));
+                          setSelectedStudentId(String(String(String(student.id || "")) || String(String(String(student.id || "")) || '')));
                           setShowPredictions(false);
                         }}
                         className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors flex items-center justify-between group"
@@ -1038,7 +1021,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                           </div>
                           <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
                             <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300">
-                              NIK: {student.nik}
+                              NIK: {String(String(String(student.id || "")) || '')}
                             </span>
                             <span>•</span>
                             <span>Kamar: {student.kamar || "-"}</span>
@@ -1062,7 +1045,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                       <div>
                         <span className="font-bold">{selectedStudent.nama_lengkap}</span>
                         <span className="text-[11px] text-slate-500 dark:text-slate-400 ml-1.5">
-                          ({selectedStudent.kategori} • Kamar: {selectedStudent.kamar || "-"} • NIK: {selectedStudent.nik})
+                          ({selectedStudent.kategori} • Kamar: {selectedStudent.kamar || "-"} • ID: {selectedStudent.id || "-"})
                         </span>
                       </div>
                     </div>
@@ -1156,11 +1139,11 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                 .filter(
                   (s) =>
                     s.nama_lengkap.toLowerCase().includes(activeSearch.toLowerCase()) ||
-                    s.nik.includes(activeSearch)
+                    String(String(s.id || "")).includes(activeSearch)
                 )
                 .map((student) => (
                   <div
-                    key={student.id || student.nik}
+                    key={String(String(student.id || "")) || String(String(String(student.id || "")) || '')}
                     onClick={() => handleSelectActiveStudent(student)}
                     className="p-3 bg-slate-50 hover:bg-amber-50/60 dark:bg-slate-900/50 dark:hover:bg-slate-700/60 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center justify-between cursor-pointer transition-all"
                   >
@@ -1171,7 +1154,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                       <div>
                         <div className="font-bold text-slate-900 dark:text-slate-100 text-xs">{student.nama_lengkap}</div>
                         <div className="text-[10px] text-slate-400 font-mono">
-                          NIK: {student.nik} • {student.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"} • {student.kategori}
+                          NIK: {String(String(String(student.id || "")) || '')} • {student.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"} • {student.kategori}
                         </div>
                       </div>
                     </div>
@@ -1215,7 +1198,7 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                 </div>
                 <div>
                   <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">{viewingItem.nama_lengkap}</h4>
-                  <div className="text-[11px] text-slate-500 font-mono">NIK: {viewingItem.nik}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">ID: {String(viewingItem.id || "")}</div>
                   <div className="text-[10px] text-slate-400">
                     {viewingItem.jenis_kelamin === "P" ? "Perempuan (Siswi)" : "Laki-laki (Siswa)"} • Kategori {viewingItem.kategori}
                   </div>
@@ -1227,25 +1210,25 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                   <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 rounded-lg">
                     <span className="text-[10px] text-amber-700 dark:text-amber-300 block font-bold uppercase tracking-wider">Alasan / Keterangan Kelulusan</span>
                     <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs mt-0.5 block leading-relaxed">
-                      {(viewingItem as SiswaLulus).keterangan || (viewingItem as SiswaLulus).lanjutan_studi || "-"}
+                      {(viewingItem as any).keterangan || (viewingItem as any).lanjutan_studi || "-"}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Tahun Lulus</span>
-                      <span className="font-extrabold text-slate-800 dark:text-slate-200">Tahun {(viewingItem as SiswaLulus).tahun_lulus}</span>
+                      <span className="font-extrabold text-slate-800 dark:text-slate-200">Tahun {(viewingItem as any).tahun_lulus}</span>
                     </div>
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Tanggal Lulus</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaLulus).tanggal_lulus || "-"}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{(viewingItem as any).tanggal_lulus || "-"}</span>
                     </div>
                   </div>
 
-                  {(viewingItem as SiswaLulus).no_ijazah && (
+                  {(viewingItem as any).no_ijazah && (
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">No. Ijazah Resmi</span>
-                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaLulus).no_ijazah}</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as any).no_ijazah}</span>
                     </div>
                   )}
                 </>
@@ -1254,32 +1237,32 @@ export default function SiswaLulusMutasiPanel({ currentUserRole,
                   <div className="p-2.5 bg-sky-50 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-800/40 rounded-lg">
                     <span className="text-[10px] text-sky-700 dark:text-sky-300 block font-bold uppercase tracking-wider">Alasan Mutasi</span>
                     <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs mt-0.5 block leading-relaxed">
-                      {(viewingItem as SiswaMutasi).alasan_mutasi || (viewingItem as SiswaMutasi).keterangan || "-"}
+                      {(viewingItem as any).alasan_mutasi || (viewingItem as any).keterangan || "-"}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Jenis Mutasi</span>
-                      <span className="font-extrabold text-sky-600 dark:text-sky-400">{(viewingItem as SiswaMutasi).jenis_mutasi}</span>
+                      <span className="font-extrabold text-sky-600 dark:text-sky-400">{(viewingItem as any).jenis_mutasi}</span>
                     </div>
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Tanggal Mutasi</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).tanggal_mutasi || "-"}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{(viewingItem as any).tanggal_mutasi || "-"}</span>
                     </div>
                   </div>
 
-                  {(viewingItem as SiswaMutasi).tujuan_mutasi && (
+                  {(viewingItem as any).tujuan_mutasi && (
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">Tujuan Mutasi</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).tujuan_mutasi}</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{(viewingItem as any).tujuan_mutasi}</span>
                     </div>
                   )}
 
-                  {(viewingItem as SiswaMutasi).no_surat_mutasi && (
+                  {(viewingItem as any).no_surat_mutasi && (
                     <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg">
                       <span className="text-[10px] text-slate-400 block font-bold">No. Surat Resmi</span>
-                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as SiswaMutasi).no_surat_mutasi}</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{(viewingItem as any).no_surat_mutasi}</span>
                     </div>
                   )}
                 </>

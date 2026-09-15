@@ -44,9 +44,7 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
             if (val && val.length > 3) {
               // Verify if there is a student that matches this name (case-insensitive)
               const matchedByName = students.find(
-                (s) =>
-                  s.nama_lengkap.trim().toLowerCase() === val.toLowerCase() ||
-                  s.nama_panggilan.trim().toLowerCase() === val.toLowerCase()
+                (s) => s.nama_lengkap.trim().toLowerCase() === val.toLowerCase()
               );
               if (matchedByName) {
                 extractedName = val;
@@ -73,23 +71,21 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
     if (s.nfc_id && isNfcMatch(cleanCode, s.nfc_id)) {
       return true;
     }
-    const studentNikNormalized = s.nik ? s.nik.trim().toUpperCase() : "";
+    const studentNikNormalized = s.id ? String(s.id).trim().toUpperCase() : "";
     return studentNikNormalized !== "" && studentNikNormalized === cleanCode.toUpperCase();
   });
 
   // FALLBACK: If not matched by card ID / NIK, match directly against student name or nickname
   if (!matchedStudent && cleanCode.length > 2) {
     const cleanAndNormalizeString = (str: string) => {
-      return str.trim().toLowerCase().replace(/\s+/g, " ");
+      return str.trim();
     };
     const scanNormalized = cleanAndNormalizeString(cleanCode);
     
     matchedStudent = students.find((s) => {
       const studentNameNormalized = cleanAndNormalizeString(s.nama_lengkap);
-      const studentNickNormalized = s.nama_panggilan ? cleanAndNormalizeString(s.nama_panggilan) : "";
       return (
-        studentNameNormalized === scanNormalized ||
-        studentNickNormalized === scanNormalized
+        studentNameNormalized === scanNormalized || String(s.id || "").trim() === scanNormalized
       );
     });
   }
@@ -277,7 +273,7 @@ export default function NfcRegisterPanel({
       setAssignSearch("");
     } else {
       setSelectedRoom(res.matchedStudent.kamar || "");
-      setSelectedStudentId(String(res.matchedStudent.id ?? res.matchedStudent.nik));
+      setSelectedStudentId(String(res.matchedStudent.id ?? res.matchedStudent.id));
       setSelectedStudent(res.matchedStudent);
       setAssignSearch(res.matchedStudent.nama_lengkap);
     }
@@ -286,7 +282,7 @@ export default function NfcRegisterPanel({
   // Select student handler
   const handleSelectStudent = (s: SantriData) => {
     setSelectedStudent(s);
-    setSelectedStudentId(String(s.id ?? s.nik));
+    setSelectedStudentId(String(s.id ?? s.id));
     setAssignSearch(s.nama_lengkap);
     setIsDropdownOpen(false);
   };
@@ -294,7 +290,7 @@ export default function NfcRegisterPanel({
   // Trigger registration to database
   const handleAssignCard = async () => {
     if (!scannedCode) return;
-    const target = selectedStudent || students.find(s => String(s.id) === selectedStudentId || (s.nik && s.nik === selectedStudentId));
+    const target = selectedStudent || students.find(s => String(s.id) === selectedStudentId);
     if (!target) {
       alert("Harap cari dan pilih nama santri terlebih dahulu.");
       return;
@@ -334,8 +330,7 @@ export default function NfcRegisterPanel({
     const query = assignSearch.trim().toLowerCase();
     const matchSearch = query
       ? (s.nama_lengkap || "").toLowerCase().includes(query) ||
-        (s.nama_panggilan || "").toLowerCase().includes(query) ||
-        (s.nik || "").toLowerCase().includes(query) ||
+        String(s.id || "").toLowerCase().includes(query) ||
         (s.kamar || "").toLowerCase().includes(query) ||
         (s.kelas_sekolah || "").toLowerCase().includes(query) ||
         (s.kelas_pengajian || "").toLowerCase().includes(query)
@@ -384,7 +379,6 @@ export default function NfcRegisterPanel({
     const query = dbSearch.toLowerCase();
     return (
       s.nama_lengkap.toLowerCase().includes(query) ||
-      s.nama_panggilan.toLowerCase().includes(query) ||
       (s.kamar || "").toLowerCase().includes(query) ||
       s.nfc_id?.toLowerCase().includes(query)
     );
@@ -544,7 +538,7 @@ export default function NfcRegisterPanel({
                             <span>Jenkel: <strong className="text-slate-800 dark:text-slate-200">{matchedStudent.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"}</strong></span>
                           </div>
                           <div className="col-span-2 text-center sm:text-left font-mono text-xs text-slate-400">
-                            NIK: {matchedStudent.nik || "-"}
+                            NIK: {matchedStudent.id || "-"}
                           </div>
                         </div>
                       </div>
@@ -664,10 +658,10 @@ export default function NfcRegisterPanel({
                               >
                                 {filteredStudentsForAssign.length > 0 ? (
                                   filteredStudentsForAssign.slice(0, 40).map((s) => {
-                                    const isSelected = selectedStudentId === String(s.id ?? s.nik);
+                                    const isSelected = selectedStudentId === String(s.id ?? s.id);
                                     return (
                                       <div
-                                        key={s.id ?? s.nik}
+                                        key={s.id ?? s.id}
                                         onMouseDown={(e) => {
                                           e.preventDefault();
                                           handleSelectStudent(s);
@@ -695,7 +689,7 @@ export default function NfcRegisterPanel({
                                               <span>{s.kategori}</span>
                                               {s.kamar && <span>• Kamar: {s.kamar}</span>}
                                               {s.kelas_sekolah && <span>• {s.kelas_sekolah}</span>}
-                                              {s.nik && <span className="font-mono">• NIK: {s.nik}</span>}
+                                              {s.id && <span className="font-mono">• NIK: {s.id}</span>}
                                             </div>
                                           </div>
                                         </div>
@@ -749,7 +743,7 @@ export default function NfcRegisterPanel({
                               <div className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-2 flex-wrap">
                                 <span>Kamar: <strong className="text-slate-800 dark:text-slate-200">{selectedStudent.kamar || "Belum diplot"}</strong></span>
                                 {selectedStudent.kelas_sekolah && <span>• Kelas: <strong>{selectedStudent.kelas_sekolah}</strong></span>}
-                                {selectedStudent.nik && <span>• NIK: <span className="font-mono">{selectedStudent.nik}</span></span>}
+                                {selectedStudent.id && <span>• NIK: <span className="font-mono">{selectedStudent.id}</span></span>}
                               </div>
                             </div>
                           </div>
@@ -902,7 +896,7 @@ export default function NfcRegisterPanel({
                       {/* Name */}
                       <td className="p-4">
                         <div className="font-bold text-slate-850 dark:text-white text-xs">{s.nama_lengkap}</div>
-                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Panggilan: {s.nama_panggilan}</div>
+                        {s.id && <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">ID: {s.id}</div>}
                       </td>
 
                       {/* Category */}

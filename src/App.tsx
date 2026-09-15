@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { supabase, SantriData, TABLE_NAME, formatSantriData } from "./supabaseClient";
+import { supabase, SantriData, TABLE_NAME, formatSantriData, DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY } from "./supabaseClient";
 import RegistrationForm from "./components/RegistrationForm";
 import SantriList from "./components/SantriList";
 import Dashboard from "./components/Dashboard";
@@ -14,7 +14,6 @@ import PerizinanRiwayat from "./components/PerizinanRiwayat";
 import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ManajemenPenggunaPanel from "./components/ManajemenPenggunaPanel";
-import ManajemenSesiPanel from "./components/ManajemenSesiPanel";
 import ManajemenPondokPanel from "./components/ManajemenPondokPanel";
 import ManajemenSekolahPanel from "./components/ManajemenSekolahPanel";
 import ManajemenMateriPanel from "./components/ManajemenMateriPanel";
@@ -44,6 +43,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<{
     username: string;
     role: string;
+    peran_utama?: string;
+    permissions?: string[];
     name: string;
     gender?: string;
     bagian?: string;
@@ -58,7 +59,7 @@ export default function App() {
     if (saved) {
       try {
         const u = JSON.parse(saved);
-        const rLower = String(u.role || "").toLowerCase();
+        const rLower = String(u.peran_utama || u.role || "").toLowerCase();
         const unLower = String(u.username || "").toLowerCase();
         if (rLower === "pondok") {
           u.role = (unLower.includes("kantin") || (u.tugas_tambahan && u.tugas_tambahan.some((t: string) => String(t).toLowerCase().includes("kantin")))) ? "kantin" : "guru pondok";
@@ -91,12 +92,12 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
         const u = JSON.parse(saved);
-        const r = String(u.role || "").toLowerCase();
+        const r = String(u.peran_utama || u.role || "").toLowerCase();
         const un = String(u.username || "").toLowerCase();
         const hasK = r.includes("kantin") || un.includes("kantin") || 
           (u.tugas_tambahan && u.tugas_tambahan.some((t: string) => String(t).toLowerCase().includes("kantin")));
@@ -136,8 +137,8 @@ export default function App() {
   const [dbStatus, setDbStatus] = useState<"connected" | "missing_table" | "error" | "loading">("loading");
   const [dbErrorMsg, setDbErrorMsg] = useState<string>("");
   const [isDbConfigModalOpen, setIsDbConfigModalOpen] = useState(false);
-  const [modalDbUrl, setModalDbUrl] = useState(() => localStorage.getItem("supabase_url") || "");
-  const [modalDbKey, setModalDbKey] = useState(() => localStorage.getItem("supabase_anon_key") || "");
+  const [modalDbUrl, setModalDbUrl] = useState(() => localStorage.getItem("supabase_url") || DEFAULT_SUPABASE_URL);
+  const [modalDbKey, setModalDbKey] = useState(() => localStorage.getItem("supabase_anon_key") || DEFAULT_SUPABASE_KEY);
   const [modalSuccessMsg, setModalSuccessMsg] = useState("");
   const [editingStudent, setEditingStudent] = useState<SantriData | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
@@ -203,7 +204,7 @@ export default function App() {
 
       // Plottings
       const cloudPlot = cloudPlottingMap ? cloudPlottingMap[nameKey] : null;
-      const localPlot = savedMetadataMap[s.nik] || {};
+      const localPlot = savedMetadataMap[String(s.id || "")] || {};
       
       // NFC Mapping override
       const cloudNfcId = cloudNfcMap ? cloudNfcMap[nameKey] : null;
@@ -239,7 +240,7 @@ export default function App() {
     // Update students state immediately for ultra-fast local reactivity
     setStudents((prev) =>
       prev.map((s) => {
-        if (s.nik === nik) {
+        if (String(s.id) === String(nik)) {
           return {
             ...s,
             [key]: value
@@ -251,7 +252,7 @@ export default function App() {
 
     // Try to update database if connected
     if (dbStatus === "connected") {
-      const studentObj = students.find((s) => s.nik === nik);
+      const studentObj = students.find((s) => String(s.id) === String(nik));
       if (studentObj) {
         const studentName = studentObj.nama_lengkap.trim();
         try {
@@ -377,10 +378,19 @@ export default function App() {
         .order("id", { ascending: false });
 
       if (error) {
-        // PostGrest database code "42P01" signifies that the table "santri" does not exist yet
+        // If there were custom local credentials that failed, clear them and retry with default
+        if (typeof window !== "undefined" && (localStorage.getItem("supabase_url") || localStorage.getItem("supabase_anon_key"))) {
+          console.warn("Koneksi kustom gagal, mereset ke default database resmi...");
+          localStorage.removeItem("supabase_url");
+          localStorage.removeItem("supabase_anon_key");
+          window.location.reload();
+          return;
+        }
+
+        // PostGrest database code "42P01" signifies that the table "siswa" does not exist yet
         if (error.code === "42P01") {
           setDbStatus("missing_table");
-          setDbErrorMsg("Tabel 'santri' tidak ditemukan di database Supabase.");
+          setDbErrorMsg("Tabel 'siswa' tidak ditemukan di database Supabase.");
           loadLocalFallback();
         } else {
           setDbStatus("error");
@@ -615,7 +625,7 @@ export default function App() {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        const filtered = Array.isArray(parsed) ? parsed.filter((s: any) => !demoNiks.includes(s.nik)) : [];
+        const filtered = Array.isArray(parsed) ? parsed.filter((s: any) => !demoNiks.includes(s)) : [];
         setStudents(hydrateStudentsWithStatus(filtered));
       } catch {
         setStudents([]);
@@ -623,7 +633,7 @@ export default function App() {
     } else if (backup) {
       try {
         const parsed = JSON.parse(backup);
-        const filtered = Array.isArray(parsed) ? parsed.filter((s: any) => !demoNiks.includes(s.nik)) : [];
+        const filtered = Array.isArray(parsed) ? parsed.filter((s: any) => !demoNiks.includes(s)) : [];
         setStudents(hydrateStudentsWithStatus(filtered));
       } catch {
         setStudents([]);
@@ -653,6 +663,9 @@ export default function App() {
     // Subscribing to Supabase Realtime changes on crucial tables
     const realtimeChannel = supabase
       .channel("sub-all-tables-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "siswa" }, () => {
+        debouncedReload();
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "santri" }, () => {
         debouncedReload();
       })
@@ -704,42 +717,21 @@ export default function App() {
     try {
       const formattedData = formatSantriData(data);
       const targetStatus = formattedData.status || "Aktif";
-      // Clean undefined fields to keep Supabase happy, exclude removed 'status' column
       const payload: Partial<SantriData> = {
         kategori: formattedData.kategori,
         nama_lengkap: formattedData.nama_lengkap,
-        nama_panggilan: formattedData.nama_panggilan,
-        nik: formattedData.nik,
-        tempat_lahir: formattedData.tempat_lahir,
-        tanggal_lahir: formattedData.tanggal_lahir,
-        alamat: formattedData.alamat,
-        rt: formattedData.rt,
-        rw: formattedData.rw,
-        desa_kelurahan: formattedData.desa_kelurahan,
-        kecamatan: formattedData.kecamatan,
-        kabupaten_kota: formattedData.kabupaten_kota,
-        provinsi: formattedData.provinsi,
-        nama_ayah: formattedData.nama_ayah,
-        nama_ibu: formattedData.nama_ibu,
-        kelompok_sambung: formattedData.kelompok_sambung,
-        desa_sambung: formattedData.desa_sambung,
-        daerah: formattedData.daerah,
+        jenis_kelamin: formattedData.jenis_kelamin || "L",
         kamar: formattedData.kamar || "",
         kelas_pengajian: formattedData.kelas_pengajian || "",
         kelas_sekolah: formattedData.kelas_sekolah || "",
-        jenis_kelamin: formattedData.jenis_kelamin || "L",
         foto: formattedData.foto || "",
         nfc_id: formattedData.nfc_id || "",
+        kelompok_sambung: formattedData.kelompok_sambung || "",
+        desa_sambung: formattedData.desa_sambung || "",
+        daerah: formattedData.daerah || "",
         no_hp_ortu: formattedData.no_hp_ortu || "",
+        status: targetStatus,
       };
-
-      if (data.kategori !== "Reguler") {
-        payload.nisn = data.nisn;
-        payload.npsn = null as any;
-      } else {
-        payload.npsn = data.npsn;
-        payload.nisn = null as any;
-      }
 
       if (dbStatus === "connected") {
         // Attempt Supabase SQL Insert or Update
@@ -752,7 +744,7 @@ export default function App() {
           // Retry logic if there are column cache mismatches (nfc_id or no_hp_ortu)
           if (error && (error.message.includes("column") || error.message.includes("does not exist") || error.message.includes("nfc_id") || error.message.includes("no_hp_ortu"))) {
             console.warn("PostgREST schema cache mismatch. Stripping missing columns and retrying...");
-            let strippedPayload = { ...payload };
+            let strippedPayload: any = { ...payload };
             let hasNoHpOrtuError = error.message.includes("no_hp_ortu");
             
             if (error.message.includes("no_hp_ortu")) {
@@ -794,7 +786,7 @@ export default function App() {
           // Retry logic if there are column cache mismatches (nfc_id or no_hp_ortu)
           if (error && (error.message.includes("column") || error.message.includes("does not exist") || error.message.includes("nfc_id") || error.message.includes("no_hp_ortu"))) {
             console.warn("PostgREST schema cache mismatch. Stripping missing columns and retrying...");
-            let strippedPayload = { ...payload };
+            let strippedPayload: any = { ...payload };
             let hasNoHpOrtuError = error.message.includes("no_hp_ortu");
             
             if (error.message.includes("no_hp_ortu")) {
@@ -929,7 +921,7 @@ export default function App() {
 
       // 2. Update status in local memory list state
       const updatedList = students.map((s) => {
-        if ((s.id && s.id === studentIdOrNik) || s.nik === studentIdOrNik) {
+        if (s.id && (s.id === studentIdOrNik || String(s.id) === String(studentIdOrNik))) {
           return { ...s, status: newStatus };
         }
         return s;
@@ -939,7 +931,7 @@ export default function App() {
 
       // 3. Try to update status in supabase status_siswa if connected
       if (dbStatus === "connected") {
-        const studentObj = students.find((s) => (s.id && s.id === studentIdOrNik) || s.nik === studentIdOrNik);
+        const studentObj = students.find((s) => s.id && (s.id === studentIdOrNik || String(s.id) === String(studentIdOrNik)));
         const studentName = studentObj ? studentObj.nama_lengkap : "";
 
         if (studentName) {
@@ -987,13 +979,11 @@ export default function App() {
 
   // Update students NFC Card ID
   const handleUpdateStudentNfc = async (studentId: number, nfcId: string | null): Promise<boolean> => {
-    const targetStudent = students.find((s) => (s.id && Number(s.id) === Number(studentId)));
-    const targetNik = targetStudent?.nik;
     const isTarget = (s: any) => 
-      (s.id !== undefined && studentId !== undefined && Number(s.id) === Number(studentId)) ||
-      (targetNik && s.nik === targetNik);
+      s.id !== undefined && studentId !== undefined && Number(s.id) === Number(studentId);
 
     // Update students immediately in memory for real-time responsiveness
+    const targetStudent = students.find((s) => Number(s.id) === Number(studentId));
     setStudents((prev) =>
       prev.map((s) => (isTarget(s) ? { ...s, nfc_id: nfcId || "" } : s))
     );
@@ -1074,19 +1064,18 @@ export default function App() {
   // Delete a Santri
   const handleDeleteStudent = async (id?: number, student?: SantriData) => {
     try {
-      const targetId = Number(id && Number(id) > 0 ? id : student?.id) || undefined;
-      const targetNik = student?.nik ? String(student.nik).trim() : undefined;
+      const targetNik = Number(id && Number(id) > 0 ? id : student?.id) || undefined;
+      
       const targetName = student?.nama_lengkap ? String(student.nama_lengkap).trim() : undefined;
 
-      if (!targetId && !targetNik && !targetName) {
-        triggerNotification("Gagal menghapus: Identitas santri tidak valid", "error");
+      if (!targetNik && !targetName) {
+        triggerNotification("Gagal menghapus: Identitas siswa tidak valid", "error");
         return;
       }
 
       // 1. Immediately update local state & storage for snappy UI response
       const filterOut = (item: SantriData) => {
-        if (targetId && item.id && Number(item.id) === targetId) return false;
-        if (targetNik && item.nik && String(item.nik).trim() === targetNik) return false;
+        if (targetNik && item.id && Number(item.id) === targetNik) return false;
         if (targetName && item.nama_lengkap && item.nama_lengkap.trim().toLowerCase() === targetName.toLowerCase()) return false;
         return true;
       };
@@ -1135,11 +1124,11 @@ export default function App() {
         }
 
         // Try Delete by ID from primary 'santri' table
-        if (targetId) {
+        if (targetNik) {
           const { error } = await supabase
             .from(TABLE_NAME)
             .delete()
-            .eq("id", targetId);
+            .eq("id", targetNik);
 
           if (!error) {
             isDeleted = true;
@@ -1205,7 +1194,7 @@ export default function App() {
     const listToLoad = [...students];
     DEMO_SANTRI.forEach((demo) => {
       // Check if duplicate NIK
-      if (!listToLoad.some((item) => item.nik === demo.nik)) {
+      if (!listToLoad.some((item) => item === demo)) {
         listToLoad.unshift({
           ...demo,
           id: Math.floor(Math.random() * 1000000),
@@ -1216,35 +1205,38 @@ export default function App() {
     const formattedList = listToLoad.map(formatSantriData);
     setStudents(formattedList);
     localStorage.setItem("santri_data", JSON.stringify(formattedList));
-    triggerNotification("4 Data Santri Demo berhasil dimasukkan! Lihat di menu Database.", "success");
+    triggerNotification("4 Data Siswa Demo berhasil dimasukkan! Lihat di menu Siswa.", "success");
     setActiveTab("list");
   };
 
   const userRole = (() => {
-    let r = String(currentUser?.role || "admin").toLowerCase().trim();
+    let r = String(currentUser?.peran_utama || currentUser?.role || "admin").toLowerCase().trim();
     const un = String(currentUser?.username || "").toLowerCase().trim();
     const tt = (currentUser?.tugas_tambahan as string[]) || [];
+    
+    // Map new peran_utama to existing role strings for backward compatibility with arrays
+    if (r === "guru_pondok" || r === "pondok") return "guru pondok";
+    if (r === "guru_sekolah" || r === "smp" || r === "sma" || r === "guru smp") return "guru SMP";
+    if (r === "super_admin" || r === "superadmin") return "super admin";
+    if (r === "pengurus") return "pengurus"; // Make sure to return 'pengurus'
+    
     const isPureKantin = r.includes("kantin") || un.includes("kantin") || (tt.length > 0 && tt.every((t: string) => String(t).toLowerCase().includes("kantin")));
-    if (isPureKantin && r !== "super admin" && r !== "admin" && r !== "superadmin") return "kantin";
-    if (r === "pondok") return "guru pondok";
-    if (r === "smp" || r === "sma") return "guru SMP";
-    return currentUser?.role || "admin";
+    if (isPureKantin && r !== "super admin" && r !== "admin") return "kantin";
+    
+    return currentUser?.peran_utama || currentUser?.role || "admin";
   })();
   const userGenderAccess = currentUser?.gender || "Semua";
 
   const displayedStudents = useMemo(() => {
     const excludedSantriIds = new Set<number>();
-    const excludedNiks = new Set<string>();
-    const excludedNisns = new Set<string>();
     const excludedNames = new Set<string>();
 
     const processItem = (item: any) => {
       if (!item) return;
       if (item.santri_id) excludedSantriIds.add(Number(item.santri_id));
-      if (item.nik && String(item.nik).trim()) excludedNiks.add(String(item.nik).trim().toLowerCase());
-      if (item.nisn && String(item.nisn).trim()) excludedNisns.add(String(item.nisn).trim().toLowerCase());
-      if (item.nama_lengkap && String(item.nama_lengkap).trim()) {
-        excludedNames.add(String(item.nama_lengkap).trim().toLowerCase());
+      if (item.siswa_id) excludedSantriIds.add(Number(item.siswa_id));
+      if (item.nama_lengkap && typeof item.nama_lengkap === "string" && item.nama_lengkap.trim()) {
+        excludedNames.add(item.nama_lengkap.trim().toLowerCase());
       }
     };
 
@@ -1263,9 +1255,7 @@ export default function App() {
 
     return students.filter((s) => {
       if (s.id && excludedSantriIds.has(Number(s.id))) return false;
-      if (s.nik && excludedNiks.has(String(s.nik).trim().toLowerCase())) return false;
-      if (s.nisn && excludedNisns.has(String(s.nisn).trim().toLowerCase())) return false;
-      if (s.nama_lengkap && excludedNames.has(String(s.nama_lengkap).trim().toLowerCase())) return false;
+      if (s.nama_lengkap && excludedNames.has(s.nama_lengkap.trim().toLowerCase())) return false;
       return true;
     });
   }, [students, lulusList, mutasiList]);
@@ -1291,7 +1281,7 @@ export default function App() {
     { id: "nfc_database", group: "REGISTRASI NFC", isSubmenu: true, subLabel: "Database Kartu", label: `Database Kartu (${students.filter(s => !!s.nfc_id).length})`, shortLabel: "Database Kartu", icon: Database, roles: ["super admin", "admin", "guru pondok"] },
     
     // DATA WARGA GROUP WITH SUBMENUS
-    { id: "list", group: "DATA WARGA", isSubmenu: true, subLabel: "Santri", label: "Santri", shortLabel: "Santri", icon: Users, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "list", group: "DATA WARGA", isSubmenu: true, subLabel: "Siswa", label: "Siswa", shortLabel: "Siswa", icon: Users, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     { id: "warga_guru", group: "DATA WARGA", isSubmenu: true, subLabel: "Guru", label: "Guru", shortLabel: "Guru", icon: GraduationCap, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     { id: "warga_pengurus", group: "DATA WARGA", isSubmenu: true, subLabel: "Pengurus", label: "Pengurus", shortLabel: "Pengurus", icon: Shield, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     { id: "warga_mutasi", group: "DATA WARGA", isSubmenu: true, subLabel: "Mutasi", label: "Mutasi", shortLabel: "Mutasi", icon: UserMinus, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
@@ -1328,7 +1318,40 @@ export default function App() {
     userRole === "super admin" || 
     userRole === "superadmin";
 
+  const getTabPermissionId = (tabId: string): string | null => {
+    if (tabId === "dashboard") return "dasbor";
+    if (tabId === "absensi") return "absensi_siswa";
+    if (tabId.startsWith("perizinan_")) return "perizinan";
+    if (tabId === "rekap_sholat") return "rekap_sholat";
+    if (tabId.startsWith("pelanggaran_")) return "pelanggaran";
+    if (tabId === "manajemen_pondok" || tabId === "manajemen_sesi") return "plotting_pondok";
+    if (tabId === "manajemen_sekolah") return "plotting_sekolah";
+    if (tabId.startsWith("nfc_")) return "registrasi_nfc";
+    if (tabId === "list" || tabId.startsWith("warga_")) return "data_warga";
+    if (tabId === "kantin_input") return "kas_kantin";
+    if (tabId === "kantin_rekap") return "rekap_pembukuan";
+    if (tabId === "absensi_guru") return "guru_sekolah";
+    if (tabId === "rekap_sekolah") return "rekap_sekolah";
+    if (["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(tabId)) return "pengajian";
+    if (tabId === "pengguna") return "admin_only";
+    return null;
+  };
+
   const accessibleTabs = allTabs.filter(t => {
+    const userPermissions = (currentUser as any)?.permissions || [];
+    
+    // Check custom permissions first if available
+    if (userPermissions.length > 0) {
+      if (userRole === "super admin") return true;
+      if (t.id === "pengguna" && userRole !== "admin" && userRole !== "super admin") return false;
+      const permId = getTabPermissionId(t.id);
+      if (permId === "dasbor") return true; // Dasbor always available if has permissions
+      if (permId && userPermissions.includes(permId)) return true;
+      if (!permId && t.roles.includes(userRole)) return true;
+      return false;
+    }
+
+    // Fallback to role-based access
     if (t.group === "KANTIN") return hasKantinAccess;
     if (userRole === "kantin") return false;
     return t.roles.includes(userRole);
@@ -1356,12 +1379,12 @@ export default function App() {
       <LoginForm 
         onSuccess={(user) => {
           setCurrentUser(user);
-          const r = String(user.role || "").toLowerCase();
+          const r = String(user.peran_utama || user.role || "").toLowerCase();
           const un = String(user.username || "").toLowerCase();
           const tt = (user as any).tugas_tambahan || [];
           const isKantin = r.includes("kantin") || un.includes("kantin") || (tt.length > 0 && tt.every((t: any) => String(t).toLowerCase().includes("kantin")));
 
-          if (user.role === "siswa") {
+          if (r === "siswa") {
             setActiveTab("absensi");
           } else if (isKantin && r !== "admin" && r !== "super admin" && r !== "superadmin") {
             setActiveTab("kantin_input");
@@ -2512,7 +2535,7 @@ export default function App() {
                         {currentUser?.name || "Administrator"}
                       </div>
                       <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 capitalize truncate mt-0.5">
-                        {currentUser?.role?.replace('_', ' ') || "Admin"}
+                        {currentUser?.peran_utama?.replace('_', ' ') || currentUser?.role?.replace('_', ' ') || "Admin"}
                       </div>
                     </div>
                   </div>

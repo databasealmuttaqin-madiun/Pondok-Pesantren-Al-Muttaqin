@@ -160,16 +160,6 @@ export default function PerizinanPanel({
     setFormStudent(student);
     if (student) {
       setFormKamar(student.kamar || "");
-      if (student.no_hp_ortu) {
-        setFormNoHp(student.no_hp_ortu);
-      }
-      if (student.nama_ayah) {
-        setFormHubunganWali("Ayah");
-        setFormPenjemput(student.nama_ayah);
-      } else if (student.nama_ibu) {
-        setFormHubunganWali("Ibu");
-        setFormPenjemput(student.nama_ibu);
-      }
       setFormSearchSantri(student.nama_lengkap);
       setIsSantriDropdownOpen(false);
     } else {
@@ -212,8 +202,7 @@ export default function PerizinanPanel({
         if (code.length >= 3) {
           const matched = students.find(s => 
             (s.nfc_id && s.nfc_id.toLowerCase() === code.toLowerCase()) ||
-            (s.nik && s.nik === code) ||
-            (s.nisn && s.nisn === code)
+            (s.id && String(s.id) === code)
           );
           if (matched) {
             handleSelectStudent(matched);
@@ -455,18 +444,14 @@ export default function PerizinanPanel({
     const map = new Map<string, SantriData>();
     students.forEach(s => {
       map.set(s.nama_lengkap.toLowerCase(), s);
-      if (s.id) map.set(String(s.id), s);
+      if (String(String(s.id || ""))) map.set(String(String(String(s.id || ""))), s);
     });
     return map;
   }, [students]);
 
   const uniqueDaerah = useMemo(() => {
-    const set = new Set<string>();
-    students.forEach(s => {
-      if (s.daerah) set.add(s.daerah.trim());
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [students]);
+    return [];
+  }, []);
 
   const kamarOptions = useMemo(() => [
     { value: "All", label: "Semua Kamar" },
@@ -563,8 +548,7 @@ export default function PerizinanPanel({
 
       // 5. Daerah Filter (Hanya untuk Sakit & Haid)
       if (activeSubMenu !== "sambang" && filterDaerah !== "All") {
-        const student = (item.siswa_id ? studentsMap.get(String(item.siswa_id)) : null) || studentsMap.get((item.nama_siswa || "").toLowerCase());
-        if (!student || (student.daerah || "").trim() !== filterDaerah) return false;
+        return false;
       }
 
       // 6. Status Filter
@@ -1168,10 +1152,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
     const q = formSearchSantri.toLowerCase().trim();
     return list.filter(s => 
       (s.nama_lengkap || "").toLowerCase().includes(q) ||
-      (s.nama_panggilan || "").toLowerCase().includes(q) ||
       (s.nfc_id || "").toLowerCase().includes(q) ||
-      (s.nik || "").includes(q) ||
-      (s.nisn || "").includes(q) ||
+      (String(s.id || "")).includes(q) ||
       (s.kamar || "").toLowerCase().includes(q)
     ).slice(0, 40);
   }, [students, activeSubMenu, formSearchSantri]);
@@ -1714,7 +1696,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
                               ) : (
                                 searchedModalStudents.map((s) => (
                                   <button
-                                    key={s.id || s.nik}
+                                    key={String(String(s.id || "")) || String(String(s.id || ""))}
                                     type="button"
                                     onClick={() => handleSelectStudent(s)}
                                     className="w-full px-3.5 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center justify-between transition-colors cursor-pointer"
@@ -1903,7 +1885,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
                               ) : (
                                 searchedModalStudents.map((s) => (
                                   <button
-                                    key={s.id || s.nik}
+                                    key={String(String(s.id || "")) || String(String(s.id || ""))}
                                     type="button"
                                     onClick={() => handleSelectStudent(s)}
                                     className="w-full px-3.5 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center justify-between transition-colors cursor-pointer"
@@ -2032,7 +2014,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
                             >
                               {searchedModalStudents.map((s) => (
                                 <button
-                                  key={s.id || s.nik}
+                                  key={String(String(s.id || "")) || String(String(s.id || ""))}
                                   type="button"
                                   onClick={() => handleSelectStudent(s)}
                                   className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-between transition-colors cursor-pointer"

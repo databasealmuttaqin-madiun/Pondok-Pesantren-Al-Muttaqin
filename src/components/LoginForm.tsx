@@ -5,7 +5,7 @@ import { supabase } from "../supabaseClient";
 import GuruRegisterModal from "./GuruRegisterModal";
 
 interface LoginFormProps {
-  onSuccess: (user: { username: string; role: string; name: string; gender?: string }) => void;
+  onSuccess: (user: { username: string; role: string; peran_utama?: string; permissions?: string[]; name: string; gender?: string }) => void;
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
 }
@@ -63,7 +63,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           const rawTugasTambahan = user.tugas_tambahan || extra.tugas_tambahan || [];
           const tugasTambahanList: string[] = Array.isArray(rawTugasTambahan) ? rawTugasTambahan : [];
 
-          let userRole = user.role || extra.role || "guru pondok";
+          let userRole = user.peran_utama || user.role || extra.peran_utama || extra.role || "guru pondok";
           const rLower = String(userRole).toLowerCase().trim();
           if (rLower === "super admin" || rLower === "super_admin" || rLower === "superadmin") {
             userRole = "super admin";
@@ -96,6 +96,8 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           const dbUserVal = {
             username: user.username,
             role: userRole,
+            peran_utama: user.peran_utama || extra.peran_utama,
+            permissions: user.permissions || extra.permissions || [],
             name: user.nama || user.nama_lengkap || user.username,
             gender: inferredGender,
             bagian: user.bagian || extra.bagian || (userRole === "admin" || userRole === "super admin" ? "kedua" : userRole === "guru SMP" ? "sekolah" : "pondok"),
@@ -145,7 +147,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
         const rawTugasTambahan = extra.tugas_tambahan || [];
         const tugasTambahanList: string[] = Array.isArray(rawTugasTambahan) ? rawTugasTambahan : [];
 
-        let userRole = extra.role || "guru pondok";
+        let userRole = extra.peran_utama || extra.role || "guru pondok";
         const rLower = String(userRole).toLowerCase().trim();
         if (rLower === "super admin" || rLower === "super_admin") {
           userRole = "super admin";

@@ -13,7 +13,7 @@ interface ManagementPanelProps {
   schoolClasses: string[];
   setSchoolClasses: (classes: string[]) => void;
   
-  metadataMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>;
+  metadataMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: any}>;
   onAssignMetadata: (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => void;
 }
 
@@ -40,7 +40,7 @@ export default function ManagementPanel({
   const [showAddSchool, setShowAddSchool] = useState(false);
 
   // State for moving a student
-  const [movingStudent, setMovingStudent] = useState<{ nik: string; name: string; currentVal: string } | null>(null);
+  const [movingStudent, setMovingStudent] = useState<{ nik: string; name: string; currentVal: any} | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
 
   // Quick form input states
@@ -62,7 +62,7 @@ export default function ManagementPanel({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Feedback notifications
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<any| null>(null);
 
   const triggerFeedback = (msg: string) => {
     setFeedback(msg);
@@ -81,7 +81,7 @@ export default function ManagementPanel({
   };
 
   // Get active lists based on the selected mode
-  const getModeLabelKey = () => {
+  const getModeInfo = () => {
     switch (activeMode) {
       case "kamar": return { key: "kamar" as const, label: "Kamar", options: rooms };
       case "pengajian": return { key: "kelas_pengajian" as const, label: "Kelas Pengajian", options: recitationClasses };
@@ -89,7 +89,7 @@ export default function ManagementPanel({
     }
   };
 
-  const modeInfo = getModeLabelKey();
+  const modeInfo = getModeInfo();
 
   // Handle student plotting submission
   const handleSavePlot = (e: React.FormEvent) => {
@@ -106,7 +106,7 @@ export default function ManagementPanel({
     onAssignMetadata(selectedNik, modeInfo.key, selectedTarget);
     
     // Find student name for custom helpful message
-    const matched = students.find((s) => s.nik === selectedNik);
+    const matched = students.find((s) => String(s.id) === String(selectedNik));
     const sName = matched ? matched.nama_lengkap : "Siswa";
     
     triggerFeedback(`Berhasil memplot ${sName} ke ${modeInfo.label} "${selectedTarget}"`);
@@ -247,7 +247,7 @@ export default function ManagementPanel({
       try {
         await supabase.from("kamar").delete().ilike("kamar", itemToDelete);
         await supabase.from("plotting").delete().ilike("nama", itemToDelete).eq("jenis", "kamar");
-        await supabase.from("santri").update({ kamar: "" }).ilike("kamar", itemToDelete);
+        await supabase.from("siswa").update({ kamar: "" }).ilike("kamar", itemToDelete);
       } catch (e: any) {
         console.warn("Supabase delete error:", e.message);
       }
@@ -288,7 +288,7 @@ export default function ManagementPanel({
     students.forEach((s) => {
       const plottedVal = getStudentCurrentPlot(s, activeMode);
       if (plottedVal && plottedVal.trim().toLowerCase() === targetLower) {
-        onAssignMetadata(s.nik, modeInfo.key, "");
+        onAssignMetadata(String(s.id || ""), modeInfo.key, "");
       }
     });
 
@@ -384,10 +384,12 @@ export default function ManagementPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    onAssignMetadata(movingStudent.nik, modeInfo.key, moveTarget);
-                    triggerFeedback(`Berhasil memindahkan ${movingStudent.name} ke "${moveTarget || 'Dikosongkan'}"`);
-                    setMovingStudent(null);
-                    setMoveTarget("");
+                    if (movingStudent) {
+                      onAssignMetadata(movingStudent.nik, modeInfo.key, moveTarget);
+                      triggerFeedback(`Berhasil memindahkan ${movingStudent.name} ke "${moveTarget || 'Dikosongkan'}"`);
+                      setMovingStudent(null);
+                      setMoveTarget("");
+                    }
                   }}
                   className="px-4 py-2 bg-indigo-650 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 cursor-pointer"
                 >
@@ -646,12 +648,12 @@ export default function ManagementPanel({
                       students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).map((student) => {
                         const currentPlotted = getStudentCurrentPlot(student, activeMode);
                         const suffix = currentPlotted ? `(${currentPlotted})` : "(Belum di-plot)";
-                        const isSelected = selectedNik === student.nik;
+                        const isSelected = selectedNik === String(student.id || "");
                         return (
                           <div
-                            key={student.nik}
+                            key={student.id}
                             onClick={() => {
-                              setSelectedNik(student.nik);
+                              setSelectedNik(String(student.id || ""));
                               setSearchQuery(`${student.nama_lengkap} ${suffix}`);
                               setIsDropdownOpen(false);
                             }}
@@ -750,7 +752,7 @@ export default function ManagementPanel({
                           ) : (
                             mappedStudents.map((siswa, idx) => (
                               <div 
-                                key={siswa.nik} 
+                                key={siswa.id || idx} 
                                 className="flex justify-between items-center text-[11px] py-1 hover:bg-slate-50 rounded px-1 group"
                               >
                                 <span className="font-semibold text-slate-700 truncate">
@@ -761,7 +763,7 @@ export default function ManagementPanel({
                                   onClick={() => {
                                     setMoveTarget(groupName);
                                     setMovingStudent({
-                                      nik: siswa.nik,
+                                      nik: String(siswa.id || ""),
                                       name: siswa.nama_lengkap,
                                       currentVal: groupName
                                     });

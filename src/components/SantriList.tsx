@@ -45,9 +45,9 @@ function formatIndoDate(dateStr: string | undefined): string {
   return dateStr;
 }
 
-function getDeterministicStats(name: string, nik: string) {
+function getDeterministicStats(name: string, id: string | number) {
   let hash = 0;
-  const str = (name || "") + (nik || "");
+  const str = String(name || "") + String(id || "");
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
@@ -72,7 +72,7 @@ function getDeterministicStats(name: string, nik: string) {
   
   const emails = ["gmail.com", "yahoo.com", "outlook.com"];
   const emailDomain = emails[hash % emails.length];
-  const email = `${(name || "").toLowerCase().split(' ')[0] || "santri"}${hash % 100}@${emailDomain}`;
+  const email = `${(name ).toLowerCase().split(' ')[0] || "santri"}${hash % 100}@${emailDomain}`;
 
   // Hobby & Keahlian (Skills)
   const hobbies = ["Sepakbola", "Membaca Buku", "Seni Kaligrafi", "Renang", "Bermain Musik", "Bulutangkis", "Desain Grafis", "Menulis"];
@@ -204,15 +204,19 @@ export default function SantriList({
 
   // Filter students based on search query and category/daerah selections
   const filteredStudents = students.filter((s) => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.nama_panggilan.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.nik.includes(searchQuery) ||
-      (s.nisn && s.nisn.includes(searchQuery)) ||
-      (s.npsn && s.npsn.includes(searchQuery));
+      s.nama_lengkap.toLowerCase().includes(q) ||
+      String(s.id || "").includes(q) ||
+      (s.daerah || "").toLowerCase().includes(q) ||
+      (s.kelompok_sambung || "").toLowerCase().includes(q) ||
+      (s.desa_sambung || "").toLowerCase().includes(q) ||
+      (s.kamar || "").toLowerCase().includes(q) ||
+      (s.kelas_sekolah || "").toLowerCase().includes(q) ||
+      (s.kelas_pengajian || "").toLowerCase().includes(q);
 
     const matchesCategory = filterCategory === "All" || s.kategori === filterCategory;
-    const matchesDaerah = filterDaerah === "All" || s.daerah === filterDaerah;
+    const matchesDaerah = filterDaerah === "All" || (s.daerah && s.daerah.trim() === filterDaerah);
     const matchesGender = filterGender === "All" || s.jenis_kelamin === filterGender;
     const matchesStatus = filterStatus === "All" || (s.status || "Aktif") === filterStatus;
 
@@ -240,7 +244,7 @@ export default function SantriList({
   });
 
   // Extract unique regions/daerah for filter dropdown
-  const uniqueDaerah = Array.from(new Set(students.map((s) => s.daerah))).filter(Boolean);
+  const uniqueDaerah = Array.from(new Set(students.map((s) => s.daerah || "").filter(Boolean)));
 
   // Export filtered students to CSV format
   const exportToCSV = () => {
@@ -253,28 +257,15 @@ export default function SantriList({
       "Kategori",
       "Status",
       "Nama Lengkap",
-      "Nama Panggilan",
-      "NIK",
-      "NISN",
-      "NPSN",
+      "Jenis Kelamin",
       "Kamar",
       "Kelas Sekolah",
       "Kelas Pengajian",
-      "Tempat Lahir",
-      "Tanggal Lahir",
-      "Alamat",
-      "RT",
-      "RW",
-      "Desa/Kelurahan",
-      "Kecamatan",
-      "Kabupaten/Kota",
-      "Provinsi",
-      "Nama Ayah",
-      "Nama Ibu",
-      "No HP Ortu",
+      "Daerah",
       "Kelompok Sambung",
       "Desa Sambung",
-      "Daerah",
+      "No HP Ortu",
+      "NFC ID",
     ];
 
     const rows = filteredStudents.map((s) => [
@@ -282,28 +273,15 @@ export default function SantriList({
       s.kategori,
       s.status || "Aktif",
       `"${s.nama_lengkap.replace(/"/g, '""')}"`,
-      `"${s.nama_panggilan.replace(/"/g, '""')}"`,
-      `'${s.nik}`,
-      s.nisn ? `'${s.nisn}` : "",
-      s.npsn ? `'${s.npsn}` : "",
+      s.jenis_kelamin || "L",
       `"${(s.kamar || "").replace(/"/g, '""')}"`,
       `"${(s.kelas_sekolah || "").replace(/"/g, '""')}"`,
       `"${(s.kelas_pengajian || "").replace(/"/g, '""')}"`,
-      s.tempat_lahir,
-      s.tanggal_lahir,
-      `"${s.alamat.replace(/"/g, '""')}"`,
-      s.rt,
-      s.rw,
-      s.desa_kelurahan,
-      s.kecamatan,
-      s.kabupaten_kota,
-      s.provinsi,
-      `"${s.nama_ayah.replace(/"/g, '""')}"`,
-      `"${s.nama_ibu.replace(/"/g, '""')}"`,
+      `"${(s.daerah || "").replace(/"/g, '""')}"`,
+      `"${(s.kelompok_sambung || "").replace(/"/g, '""')}"`,
+      `"${(s.desa_sambung || "").replace(/"/g, '""')}"`,
       `"${(s.no_hp_ortu || "").replace(/"/g, '""')}"`,
-      `"${s.kelompok_sambung.replace(/"/g, '""')}"`,
-      `"${s.desa_sambung.replace(/"/g, '""')}"`,
-      s.daerah,
+      `"${(s.nfc_id || "").replace(/"/g, '""')}"`,
     ]);
 
     const csvContent =
@@ -313,7 +291,7 @@ export default function SantriList({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `data_santri_pesantren_digital_${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute("download", `data_siswa_pesantren_digital_${new Date().toISOString().split("T")[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -436,7 +414,7 @@ export default function SantriList({
         <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
           <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
             <Filter className="w-4 h-4 text-blue-600" />
-            <span>Filter Data Santri</span>
+            <span>Filter Data Siswa</span>
           </h3>
           <button 
             type="button"
@@ -462,7 +440,7 @@ export default function SantriList({
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari nama, NIK, NISN..."
+                placeholder="Cari nama, ID, daerah, kelas..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400"
@@ -559,7 +537,7 @@ export default function SantriList({
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 font-medium mr-2">
-              Menampilkan <strong className="text-slate-800 dark:text-white font-semibold">{filteredStudents.length}</strong> dari <strong className="text-slate-800 dark:text-white font-semibold">{students.length}</strong> santri
+              Menampilkan <strong className="text-slate-800 dark:text-white font-semibold">{filteredStudents.length}</strong> dari <strong className="text-slate-800 dark:text-white font-semibold">{students.length}</strong> siswa
             </span>
             <button
               onClick={exportToCSV}
@@ -583,7 +561,7 @@ export default function SantriList({
           <div className="space-y-1.5">
             <h3 className="font-extrabold text-slate-900 text-base md:text-lg">Koneksi Berhasil, Data Masih Kosong</h3>
             <p className="text-slate-500 text-xs leading-relaxed max-w-md mx-auto">
-              Berhasil menghubungkan ke database Supabase Anda, namun tabel <code className="font-mono bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">santri</code> (siswa) belum memiliki baris data atau record apa pun. Silakan tambahkan siswa baru atau gunakan data simulasi offline!
+              Berhasil menghubungkan ke database Supabase Anda, namun tabel <code className="font-mono bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">siswa</code> belum memiliki baris data atau record apa pun. Silakan tambahkan siswa baru atau gunakan data simulasi offline!
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
@@ -616,7 +594,6 @@ export default function SantriList({
                   <th className="p-4 py-3.5 pl-6">NAMA LENGKAP</th>
                   <th className="p-4 py-3.5">KAMAR & KELAS</th>
                   <th className="p-4 py-3.5">KATEGORI</th>
-                  <th className="p-4 py-3.5">ALAMAT SAMBUNG</th>
                   <th className="p-4 py-3.5">STATUS</th>
                   <th className="p-4 py-3.5">JENIS KELAMIN</th>
                   <th className="p-4 py-3.5 text-right pr-6 w-52">AKSI</th>
@@ -641,7 +618,7 @@ export default function SantriList({
 
                   return (
                     <tr 
-                      key={`santri-${s.id || s.nik || idx}-${idx}`} 
+                      key={`santri-${s.id || idx}-${idx}`} 
                       className={`${rowBgClass} transition-colors duration-150 group`}
                     >
                       {/* Name with circular avatar */}
@@ -667,7 +644,7 @@ export default function SantriList({
                               {s.nama_lengkap}
                             </span>
                             <span className="text-[10px] text-slate-400 font-mono tracking-wider font-medium mt-0.5">
-                              {(s.kategori === "Reguler" ? s.npsn : s.nisn) || s.nik || "No ID"}
+                              {s.id || "No ID"}
                             </span>
                           </div>
                         </div>
@@ -721,13 +698,7 @@ export default function SantriList({
                         </div>
                       </td>
 
-                      {/* Destination (Alamat Sambung) */}
-                      <td className="p-4 py-3 max-w-xs truncate whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-700 text-xs">{s.kelompok_sambung || "-"}</span>
-                          <span className="text-[10px] text-slate-400 font-medium mt-0.5">{s.daerah || "-"}</span>
-                        </div>
-                      </td>
+
 
                       {/* Status Santri (Static Badge) */}
                       <td className="p-4 py-3 whitespace-nowrap">
@@ -848,7 +819,7 @@ export default function SantriList({
                   </h3>
                   <div className="mt-2 text-sm text-slate-600 dark:text-slate-400 space-y-1.5">
                     <p>
-                      Apakah Anda yakin ingin menghapus data siswa <strong className="text-slate-900 dark:text-slate-100">{deleteConfirmTarget.nama_lengkap}</strong> {deleteConfirmTarget.nik ? `(NIK: ${deleteConfirmTarget.nik})` : ""} secara permanen dari database pesantren?
+                      Apakah Anda yakin ingin menghapus data siswa <strong className="text-slate-900 dark:text-slate-100">{deleteConfirmTarget.nama_lengkap}</strong> secara permanen dari database pesantren?
                     </p>
                     <p className="text-red-600 dark:text-red-400 text-xs font-semibold">
                       Tindakan ini tidak dapat dibatalkan.
@@ -960,7 +931,7 @@ export default function SantriList({
                         Formulir Data Pribadi Siswa
                       </h3>
                       <p className="text-[10px] text-gray-500 font-semibold mt-1">
-                        Nomor Induk: {selectedStudent.nisn || selectedStudent.npsn || "2509088" + String(selectedStudent.id || "").padStart(3, "0")} | Tahun Ajaran 2026/2027
+                        Nomor Induk: {"ID-" + String(selectedStudent.id || 0).padStart(3, "0")} | Tahun Ajaran 2026/2027
                       </p>
                     </div>
 
@@ -1000,82 +971,15 @@ export default function SantriList({
                             {/* A. DATA SISWA list */}
                             <div className="flex-1 w-full space-y-0.5">
                               {renderFormRow("Nama Lengkap", selectedStudent.nama_lengkap)}
-                              {renderFormRow("Nama Panggilan", selectedStudent.nama_panggilan)}
                               {renderFormRow("Jenis Kelamin", isFemale ? "Perempuan" : "Laki-laki")}
-                              {renderFormRow("Tempat, Tgl Lahir", `${selectedStudent.tempat_lahir}, ${selectedStudent.tanggal_lahir ? formatIndoDate(selectedStudent.tanggal_lahir) : "—"}`)}
                               {renderFormRow("Kategori Data", selectedStudent.kategori)}
-                              {renderFormRow("NIK", selectedStudent.nik)}
-                              {renderFormRow(selectedStudent.kategori === "Reguler" ? "NPSN" : "NISN", selectedStudent.kategori === "Reguler" ? selectedStudent.npsn : selectedStudent.nisn)}
-                            </div>
-                          </div>
-
-                          {/* B. STATUS PENDIDIKAN & ASRAMA */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
-                              <GraduationCap className="w-4 h-4 text-sky-200" />
-                              <span>B. STATUS PENDIDIKAN & ASRAMA</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
-                              <div>
-                                {renderFormRow("Kamar", selectedStudent.kamar)}
-                                {renderFormRow("Status", selectedStudent.status || "Aktif")}
-                              </div>
-                              <div>
-                                {renderFormRow("Kelas Pengajian", selectedStudent.kelas_pengajian)}
-                                {renderFormRow("Kelas Sekolah", selectedStudent.kelas_sekolah)}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* C. ALAMAT LENGKAP */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
-                              <Home className="w-4 h-4 text-sky-200" />
-                              <span>C. ALAMAT LENGKAP</span>
-                            </div>
-                            <div className="space-y-0.5">
-                              {renderFormRow("Alamat Lengkap", selectedStudent.alamat)}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5 mt-0.5">
-                              <div>
-                                {renderFormRow("RT / RW", `${selectedStudent.rt || "—"} / ${selectedStudent.rw || "—"}`)}
-                                {renderFormRow("Desa/Kelurahan", selectedStudent.desa_kelurahan)}
-                              </div>
-                              <div>
-                                {renderFormRow("Kecamatan", selectedStudent.kecamatan)}
-                                {renderFormRow("Kab./Kota", selectedStudent.kabupaten_kota)}
-                                {renderFormRow("Provinsi", selectedStudent.provinsi)}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* D. ALAMAT SAMBUNG */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-3">
-                              <MapPin className="w-4 h-4 text-sky-200" />
-                              <span>D. ALAMAT SAMBUNG</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0.5">
-                              <div>
-                                {renderFormRow("Kelompok Sambung", selectedStudent.kelompok_sambung)}
-                                {renderFormRow("Daerah", selectedStudent.daerah)}
-                              </div>
-                              <div>
-                                {renderFormRow("Desa Sambung", selectedStudent.desa_sambung)}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* E. ORANG TUA */}
-                          <div>
-                            <div className="bg-[#104e7a] text-white py-1.5 px-3 rounded flex items-center gap-2 text-[11px] md:text-xs font-bold shadow-sm mb-2">
-                              <Users className="w-4 h-4 text-sky-200" />
-                              <span>E. ORANG TUA & WA</span>
-                            </div>
-                            <div className="grid grid-cols-1 gap-y-0.5">
-                              {renderFormRow("Nama Ayah", selectedStudent.nama_ayah)}
-                              {renderFormRow("Nama Ibu", selectedStudent.nama_ibu)}
-                              {renderFormRow("No. WA Ortu", selectedStudent.no_hp_ortu || "-")}
+                              {selectedStudent.daerah && renderFormRow("Daerah Asal", selectedStudent.daerah)}
+                              {(selectedStudent.kelompok_sambung || selectedStudent.desa_sambung) && 
+                                renderFormRow("Kelompok Sambung", [selectedStudent.kelompok_sambung, selectedStudent.desa_sambung].filter(Boolean).join(" - "))}
+                              {selectedStudent.kamar && renderFormRow("Kamar Asrama", selectedStudent.kamar)}
+                              {selectedStudent.kelas_sekolah && renderFormRow("Kelas Sekolah", selectedStudent.kelas_sekolah)}
+                              {selectedStudent.kelas_pengajian && renderFormRow("Kelas Pengajian", selectedStudent.kelas_pengajian)}
+                              {selectedStudent.no_hp_ortu && renderFormRow("No. HP Wali/Ortu", selectedStudent.no_hp_ortu)}
                             </div>
                           </div>
 
@@ -1166,29 +1070,37 @@ export default function SantriList({
 
                               <div>
                                 <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">
-                                  {selectedStudent.kategori === "Reguler" ? "NPSN" : "NISN"}
+                                  ID Siswa
                                 </span>
                                 <span className="font-mono text-xs font-bold text-gray-800 block mt-0.5">
-                                  {selectedStudent.kategori === "Reguler" ? selectedStudent.npsn : selectedStudent.nisn}
+                                  {selectedStudent.id || "-"}
                                 </span>
                               </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
                               <div>
-                                <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">NIK Siswa</span>
-                                <span className="font-mono text-xs text-gray-700">{selectedStudent.nik}</span>
+                                <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">Jenis Kelamin</span>
+                                <span className="text-xs font-bold text-gray-850 mt-0.5 block truncate">{(selectedStudent.jenis_kelamin || "L") === "P" ? "Perempuan" : "Laki-laki"}</span>
                               </div>
                               <div>
-                                <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">Daerah</span>
-                                <span className="text-xs font-bold text-gray-850 mt-0.5 block truncate">{selectedStudent.daerah}</span>
+                                <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">NFC Card ID</span>
+                                <span className="text-xs font-mono text-gray-600 block">{selectedStudent.nfc_id || "Belum Terdaftar"}</span>
                               </div>
                             </div>
 
-                            <div>
-                              <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">Kelompok Sambung</span>
-                              <span className="text-xs text-gray-600 block">{selectedStudent.kelompok_sambung} - {selectedStudent.desa_sambung}</span>
-                            </div>
+                            {(selectedStudent.daerah || selectedStudent.kelompok_sambung) && (
+                              <div className="grid grid-cols-2 gap-2 mt-1">
+                                <div>
+                                  <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">Daerah</span>
+                                  <span className="text-xs text-gray-700 block truncate">{selectedStudent.daerah || "-"}</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[8px] text-gray-400 font-bold uppercase tracking-widest">Kelompok Sambung</span>
+                                  <span className="text-xs text-gray-700 block truncate">{[selectedStudent.kelompok_sambung, selectedStudent.desa_sambung].filter(Boolean).join(" - ") || "-"}</span>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Custom placement display */}
                             <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 mt-2">

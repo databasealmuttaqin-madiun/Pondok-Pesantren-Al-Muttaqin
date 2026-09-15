@@ -515,7 +515,7 @@ export default function ManajemenSekolahPanel({
 
     onAssignMetadata(selectedNik, "kelas_sekolah", selectedTargetClass);
     
-    const matched = students.find(s => s.nik === selectedNik);
+    const matched = students.find(s => String(s.id) === String(selectedNik));
     const sName = matched ? matched.nama_lengkap : "Siswa";
     
     triggerFeedback("success", `Berhasil memplot ${sName} ke Kelas ${selectedTargetClass}`);
@@ -659,12 +659,12 @@ export default function ManajemenSekolahPanel({
                       {students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 ? (
                         students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).map((student, sIdx) => {
                           const clsVal = student.kelas_sekolah || "Belum ada kelas";
-                          const isSelected = selectedNik === student.nik;
+                          const isSelected = selectedNik === String(student.id || "");
                           return (
                             <div
-                              key={`sch-st-dd-${student.nik || student.id || sIdx}-${sIdx}`}
+                              key={`sch-st-dd-${student.id || sIdx}-${sIdx}`}
                               onClick={() => {
-                                setSelectedNik(student.nik);
+                                setSelectedNik(String(student.id || ""));
                                 setSearchQuery(`${student.nama_lengkap} (${clsVal})`);
                                 setIsDropdownOpen(false);
                               }}
@@ -747,7 +747,7 @@ export default function ManajemenSekolahPanel({
                               <p className="text-[10px] text-slate-400 italic py-1 font-medium">Kosong (belum ada siswa)</p>
                             ) : (
                               mapped.map((siswa, idx) => (
-                                <div key={`sch-cls-st-${siswa.nik || siswa.id || idx}-${idx}`} className="flex justify-between items-center text-[11px] py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1">
+                                <div key={`sch-cls-st-${siswa.id || idx}-${idx}`} className="flex justify-between items-center text-[11px] py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1">
                                   <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
                                     {idx + 1}. {siswa.nama_lengkap}
                                   </span>
@@ -755,7 +755,7 @@ export default function ManajemenSekolahPanel({
                                     onClick={() => {
                                       setMoveTarget(clsName);
                                       setMovingStudent({
-                                        nik: siswa.nik,
+                                        nik: String(siswa.id || ""),
                                         name: siswa.nama_lengkap,
                                         currentVal: clsName
                                       });

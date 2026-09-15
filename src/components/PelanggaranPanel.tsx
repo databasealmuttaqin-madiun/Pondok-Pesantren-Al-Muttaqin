@@ -711,7 +711,7 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
                           </div>
                           {filteredCandidateStudents.map((s) => (
                             <div
-                              key={s.id || s.nik || s.nama_lengkap}
+                              key={s.id || s.id || s.nama_lengkap}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSelectStudent(s);

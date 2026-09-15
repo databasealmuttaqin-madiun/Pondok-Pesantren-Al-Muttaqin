@@ -196,7 +196,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       }
 
       const { data, error } = await supabase
-        .from("santri")
+        .from("siswa")
         .select("*")
         .order("nama_lengkap", { ascending: true });
       
@@ -204,7 +204,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         const savedMetadataMap = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
         const mappedStudents = data.map((s: any) => {
           const key = (s.nama_lengkap || "").trim().toLowerCase();
-          const localPlot = savedMetadataMap[s.nik] || {};
+          const localPlot = savedMetadataMap[s.id] || {};
           return {
             ...s,
             kelas_sekolah: schoolAssignments[key] || localPlot.kelas_sekolah || s.kelas_sekolah || ""
@@ -977,7 +977,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       return;
     }
 
-    if (!profile.nik || profile.nik.length !== 16 || !/^\d+$/.test(profile.nik)) {
+    if (!profile.id || !/^\d+$/.test(String(profile.id))) {
       MySwal.fire({
         icon: 'warning',
         title: 'Validasi NIK',
@@ -1011,7 +1011,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       const payload: any = {
         username: profile.username,
         nama_lengkap: profile.nama_lengkap,
-        nik: profile.nik,
+        nik: profile.id,
         jenis_kelamin: profile.jenis_kelamin,
         tempat_lahir: profile.tempat_lahir,
         tanggal_lahir: profile.tanggal_lahir,
@@ -1025,7 +1025,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       const guruPayload = {
         username: profile.username,
         nama_lengkap: profile.nama_lengkap,
-        nik: profile.nik,
+        nik: profile.id,
         jenis_kelamin: profile.jenis_kelamin,
         tempat_lahir: profile.tempat_lahir,
         tanggal_lahir: profile.tanggal_lahir,
@@ -1224,7 +1224,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                   <Sparkles className="w-2.5 h-2.5" /> Pendidik Resmi
                 </span>
                 
-                {profile.nama_lengkap && profile.nik ? (
+                {profile.nama_lengkap && profile.id ? (
                   <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 uppercase tracking-wider px-2 py-0.5 rounded-md border border-emerald-100 flex items-center gap-1">
                     <CheckCircle className="w-2.5 h-2.5" /> Profil Lengkap
                   </span>
@@ -1289,7 +1289,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
             <div className="min-w-0">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">NIK KTP</span>
               <span className="text-xs font-bold text-slate-700 block truncate font-mono">
-                {profile.nik || "Belum diisi"}
+                {profile.id || "Belum diisi"}
               </span>
             </div>
           </div>
@@ -1519,7 +1519,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                     {/* 2. NIK */}
                     <div className="space-y-0.5 pb-1.5 border-b border-slate-50 text-left">
                       <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">NIK KTP</span>
-                      <span className="text-xs font-bold text-slate-800 font-mono tracking-wide">{profile.nik || "-"}</span>
+                      <span className="text-xs font-bold text-slate-800 font-mono tracking-wide">{profile.id || "-"}</span>
                     </div>
 
                     {/* 3. Jenis Kelamin */}
@@ -1688,7 +1688,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                           type="text"
                           required
                           maxLength={16}
-                          value={profile.nik}
+                          value={profile.id}
                           onChange={e => setProfile(prev => ({ ...prev, nik: e.target.value.replace(/[^0-9]/g, "") }))}
                           className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
                           placeholder="16 digit KTP"
@@ -2260,7 +2260,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                               const sId = String(student?.id || student?.nama_lengkap || "");
                               const currentStatus = attendanceMap[sId] || "Hadir";
                               return (
-                                <tr key={`abs-st-${student?.id || student?.nik || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                                <tr key={`abs-st-${student?.id || idx}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
                                   <td className="py-3 px-4">
                                     <div className="flex items-center gap-3">
                                       <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-xs text-slate-600 dark:text-slate-300 uppercase shadow-inner">
@@ -2268,7 +2268,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                                       </div>
                                       <div>
                                         <p className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{student.nama_lengkap || "-"}</p>
-                                        <p className="text-[10px] text-slate-400 font-semibold">NIK: {student.nik || "-"}</p>
+                                        <p className="text-[10px] text-slate-400 font-semibold">NIK: {student.id || "-"}</p>
                                       </div>
                                     </div>
                                   </td>
@@ -2902,9 +2902,9 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                         }`}>
                           {guru.jenis_kelamin === "L" ? "Laki-laki" : "Perempuan"}
                         </span>
-                        {guru.nik && (
+                        {guru.id && (
                           <span className="text-[10px] font-mono text-slate-500 bg-white border border-slate-200 px-1.5 rounded">
-                            NIK: {guru.nik}
+                            NIK: {guru.id}
                           </span>
                         )}
                       </div>
@@ -3079,7 +3079,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                         type="text"
                         required
                         maxLength={16}
-                        value={profile.nik}
+                        value={profile.id}
                         onChange={e => setProfile(prev => ({ ...prev, nik: e.target.value.replace(/[^0-9]/g, "") }))}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                         placeholder="16 digit angka KTP"

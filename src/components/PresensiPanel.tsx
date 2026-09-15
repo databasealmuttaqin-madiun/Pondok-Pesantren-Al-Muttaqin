@@ -557,7 +557,7 @@ export default function PresensiPanel({
   ): string => {
     let msg = waTemplate;
     msg = msg.replace(/{nama}/g, student.nama_lengkap || "");
-    msg = msg.replace(/{panggilan}/g, student.nama_panggilan || student.nama_lengkap || "");
+    msg = msg.replace(/{panggilan}/g,  student.nama_lengkap || "");
     msg = msg.replace(/{sesi}/g, sessionLabel);
     msg = msg.replace(/{tipe}/g, sessionType.toUpperCase());
     msg = msg.replace(/{waktu}/g, time);
@@ -572,7 +572,7 @@ export default function PresensiPanel({
     status: string,
     isManualClick = false
   ) => {
-    const parentPhone = student.no_hp_ortu ? student.no_hp_ortu.trim() : "";
+    const parentPhone = "";
     if (!parentPhone) {
       if (isManualClick) {
         MySwal.fire({
@@ -1426,7 +1426,7 @@ export default function PresensiPanel({
     const term = searchQuery.toLowerCase();
     const matchSearch = 
       (s.nama_lengkap || "").toLowerCase().includes(term) ||
-      (s.nama_panggilan || "").toLowerCase().includes(term) ||
+      (s || "").toLowerCase().includes(term) ||
       (s.kamar || "").toLowerCase().includes(term);
 
     const matchCategory = categoryFilter === "All" || s.kategori === categoryFilter;
@@ -3337,7 +3337,7 @@ export default function PresensiPanel({
                 const studentObj = students.find(s => s.nama_lengkap === attendancePopup.studentName);
                 if (!studentObj) return null;
                 const status = attendancePopup.customMessage || "hadir";
-                const parentPhone = studentObj.no_hp_ortu ? studentObj.no_hp_ortu.trim() : "";
+                const parentPhone = "";
 
                 return (
                   <div className="mt-4 mb-5 border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2 text-left">
@@ -3677,10 +3677,10 @@ export default function PresensiPanel({
                   </h3>
                   <div className="flex items-center gap-3 text-xs text-indigo-200/90 font-medium mt-1 flex-wrap">
                     <span>Kamar: <strong>{selectedStudentForPrayerDetail.kamar || "Belum Set"}</strong></span>
-                    {selectedStudentForPrayerDetail.nisn && (
+                    {selectedStudentForPrayerDetail.nfc_id && (
                       <>
                         <span>•</span>
-                        <span>NISN: {selectedStudentForPrayerDetail.nisn}</span>
+                        <span>NFC: {selectedStudentForPrayerDetail.nfc_id}</span>
                       </>
                     )}
                   </div>

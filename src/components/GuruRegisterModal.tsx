@@ -6,15 +6,16 @@ import { supabase } from "../supabaseClient";
 interface GuruRegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccessLogin?: (user: { username: string; role: string; name: string; gender?: string }) => void;
+  onSuccessLogin?: (user: { username: string; role: string; peran_utama?: string; permissions?: string[]; name: string; gender?: string }) => void;
   isDarkMode?: boolean;
 }
 
 export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isDarkMode = false }: GuruRegisterModalProps) {
+  const [namaLengkap, setNamaLengkap] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<"pondok" | "SMA" | "SMP">("pondok");
+  const [selectedRole, setSelectedRole] = useState<"guru_pondok" | "guru_sekolah" | "pengurus" | "kantin" | "admin" | "super_admin">("guru_pondok");
   
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -22,9 +23,10 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
 
   useEffect(() => {
     if (isOpen) {
+      setNamaLengkap("");
       setUsername("");
       setPassword("");
-      setSelectedRole("pondok");
+      setSelectedRole("guru_pondok");
       setErrorMsg("");
       setSuccessMsg("");
       setShowPassword(false);
@@ -39,6 +41,10 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
     
     const cleanUsername = username.trim().toLowerCase();
     
+    if (!namaLengkap.trim()) {
+      setErrorMsg("Harap isi Nama Lengkap!");
+      return;
+    }
     if (!cleanUsername) {
       setErrorMsg("Harap isi Username ID!");
       return;
@@ -60,9 +66,10 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
 
     try {
       const dbPengguna = {
+        nama_lengkap: namaLengkap.trim(),
         username: cleanUsername,
         password: password,
-        role: selectedRole,
+        peran_utama: selectedRole,
         status_akun: "pending",
         tugas_tambahan: []
       };
@@ -175,6 +182,29 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
                 )}
 
                 <div className="space-y-4">
+                  {/* Nama Lengkap Field */}
+                  <div className="space-y-1.5">
+                    <label className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                      Nama Lengkap *
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <User className="w-4.5 h-4.5" />
+                      </div>
+                      <input
+                        type="text"
+                        value={namaLengkap}
+                        onChange={(e) => setNamaLengkap(e.target.value)}
+                        className={`w-full pl-10 pr-4 py-3 rounded-2xl border text-sm font-semibold transition-all focus:ring-2 focus:ring-blue-500/50 outline-none ${
+                          isDarkMode 
+                            ? "bg-[#0a0c16] border-[#1d2138] focus:border-blue-500 text-white placeholder-slate-600" 
+                            : "bg-slate-50 border-slate-200 focus:border-blue-500 text-slate-800 placeholder-slate-400"
+                        }`}
+                        placeholder="Masukkan nama lengkap Anda"
+                      />
+                    </div>
+                  </div>
+
                   {/* Username Field */}
                   <div className="space-y-1.5">
                     <label className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
@@ -231,7 +261,7 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
                   {/* Role Selection */}
                   <div className="space-y-1.5">
                     <label className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                      Role / Hak Akses *
+                      Peran Utama *
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -246,9 +276,12 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
                             : "bg-slate-50 border-slate-200 focus:border-blue-500 text-slate-800"
                         }`}
                       >
-                        <option value="pondok">Pondok</option>
-                        <option value="SMA">SMA</option>
-                        <option value="SMP">SMP</option>
+                        <option value="guru_pondok">Guru Pondok</option>
+                        <option value="guru_sekolah">Guru Sekolah</option>
+                        <option value="pengurus">Pengurus</option>
+                        <option value="kantin">Kantin</option>
+                        <option value="admin">Admin</option>
+                        <option value="super_admin">Super Admin</option>
                       </select>
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

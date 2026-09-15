@@ -7,7 +7,10 @@ interface PenggunaData {
   id: string;
   username: string;
   nama: string;
+  nama_lengkap?: string;
   role: string;
+  peran_utama?: string;
+  permissions?: string[];
   status_akun?: string;
   tugas_tambahan?: string[];
   gender?: string;
@@ -42,15 +45,34 @@ export default function ManajemenPenggunaPanel() {
   
   // Approval State
   const [approvalUser, setApprovalUser] = useState<PenggunaData | null>(null);
-  const [approvalMainRoles, setApprovalMainRoles] = useState<string[]>([]);
-  const [approvalSubRoles, setApprovalSubRoles] = useState<Record<string, string[]>>({});
+  const [approvalPeranUtama, setApprovalPeranUtama] = useState<string>("guru_pondok");
+  const [approvalPermissions, setApprovalPermissions] = useState<string[]>([]);
   const [tugasTambahanDb, setTugasTambahanDb] = useState<{id: number, nama: string, jenis_tugas_tambahan: string}[]>([]);
   
-  const TUGAS_TAMBAHAN_OPTIONS: Record<string, string[]> = {
-    pondok: ["guru", "kantin", "HP SB", "pamong"],
-    "guru pondok": ["guru", "kantin", "HP SB", "pamong"],
-    SMA: ["kepala sekolah", "wakil kepala sekolah", "kesiswaan", "wali kelas", "guru mata pelajaran", "perpustakaan"],
-    SMP: ["kepala sekolah", "wakil kepala sekolah", "kesiswaan", "wali kelas", "guru mata pelajaran", "perpustakaan"]
+  const PERMISSIONS_LIST = [
+    { id: "dasbor", label: "Dasbor" },
+    { id: "absensi_siswa", label: "Absensi Siswa" },
+    { id: "perizinan", label: "Perizinan" },
+    { id: "rekap_sholat", label: "Rekap Sholat" },
+    { id: "pelanggaran", label: "Pelanggaran" },
+    { id: "plotting_pondok", label: "Plotting Pondok/Sesi" },
+    { id: "pengajian", label: "Seluruh Modul Pengajian" },
+    { id: "guru_sekolah", label: "Guru Sekolah & Jurnal" },
+    { id: "rekap_sekolah", label: "Rekap Sekolah" },
+    { id: "plotting_sekolah", label: "Plotting Sekolah" },
+    { id: "registrasi_nfc", label: "Registrasi NFC" },
+    { id: "data_warga", label: "Data Warga (Read-Only)" },
+    { id: "kas_kantin", label: "Input Kas Kantin" },
+    { id: "rekap_pembukuan", label: "Rekap Pembukuan Kantin" }
+  ];
+
+  const PERMISSION_PRESETS: Record<string, string[]> = {
+    "guru_pondok": ["dasbor", "absensi_siswa", "perizinan", "rekap_sholat", "pelanggaran", "plotting_pondok", "pengajian"],
+    "guru_sekolah": ["dasbor", "absensi_siswa", "guru_sekolah", "rekap_sekolah", "plotting_sekolah"],
+    "pengurus": ["dasbor", "absensi_siswa", "perizinan", "rekap_sholat", "registrasi_nfc", "data_warga", "pelanggaran"],
+    "kantin": ["dasbor", "kas_kantin", "rekap_pembukuan"],
+    "admin": PERMISSIONS_LIST.map(p => p.id),
+    "super_admin": PERMISSIONS_LIST.map(p => p.id)
   };
 
   // Custom multi-select component states
@@ -393,32 +415,20 @@ export default function ManajemenPenggunaPanel() {
     if (!approvalUser) return;
     
     setIsLoading(true);
-    let finalTugasTambahan: string[] = [];
-    
-    if (approvalUser.role === 'pondok' || approvalUser.role === 'guru pondok') {
-      if (approvalMainRoles.includes("guru")) finalTugasTambahan.push("guru");
-      if (approvalMainRoles.includes("kantin")) finalTugasTambahan.push(...(approvalSubRoles['kantin'] || []));
-      if (approvalMainRoles.includes("pamong")) finalTugasTambahan.push(...(approvalSubRoles['pamong'] || []));
-      if (approvalMainRoles.includes("HP SB")) finalTugasTambahan.push(...(approvalSubRoles['HP SB'] || []));
-    } else {
-      finalTugasTambahan = [...approvalMainRoles];
-    }
-    
-    // Deduplicate array
-    finalTugasTambahan = Array.from(new Set(finalTugasTambahan));
 
     try {
       const { error } = await supabase
         .from('pengguna')
         .update({
           status_akun: 'approved',
-          tugas_tambahan: finalTugasTambahan
+          peran_utama: approvalPeranUtama,
+          permissions: approvalPermissions
         })
         .eq('id', approvalUser.id);
         
       if (error) throw error;
       
-      alert("Akun berhasil disetujui!");
+      alert(`Akun berhasil disetujui dan data otomatis ditambahkan ke Master Data ${approvalPeranUtama === 'pengurus' ? 'Pengurus' : 'Guru'}!`);
       setApprovalUser(null);
       await fetchUsers();
     } catch (error: any) {
@@ -867,7 +877,14 @@ export default function ManajemenPenggunaPanel() {
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     {user.status_akun === 'pending' && (
-                      <button onClick={() => { setApprovalUser(user); setApprovalMainRoles([]); setApprovalSubRoles({}); }} className="p-1.5 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white rounded-lg transition-colors" title="Approve Akun">
+                      <button onClick={() => { 
+                        setApprovalUser(user); 
+                        const peran = user.peran_utama || user.role || 'guru_pondok';
+                        // Convert old roles to new peran_utama if needed
+                        const mappedPeran = peran === 'pondok' ? 'guru_pondok' : peran === 'SMP' || peran === 'SMA' ? 'guru_sekolah' : peran;
+                        setApprovalPeranUtama(mappedPeran); 
+                        setApprovalPermissions(PERMISSION_PRESETS[mappedPeran] || []); 
+                      }} className="p-1.5 bg-orange-100 hover:bg-orange-500 text-orange-600 hover:text-white rounded-lg transition-colors" title="Approve Akun">
                         <Check className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -980,84 +997,92 @@ export default function ManajemenPenggunaPanel() {
           <div className="min-h-screen px-4 py-12 flex items-center justify-center">
             <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 relative">
               <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="font-extrabold text-slate-800 dark:text-white">Approve Akun: {approvalUser.nama}</h3>
+              <h3 className="font-extrabold text-slate-800 dark:text-white">Approve Akun: {approvalUser.nama_lengkap || approvalUser.nama || approvalUser.username}</h3>
               <button onClick={() => setApprovalUser(null)} className="p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="space-y-3">
+            <div className="p-5 space-y-6">
+              <div className="space-y-4">
                 
-                {approvalUser.role === 'pondok' || approvalUser.role === 'guru pondok' ? (
-                  <>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tugas Pokok (Bisa lebih dari satu)</label>
-                      <MultiSelectTagInput 
-                        options={TUGAS_TAMBAHAN_OPTIONS[approvalUser.role] || TUGAS_TAMBAHAN_OPTIONS['pondok']}
-                        selectedValues={approvalMainRoles}
-                        onChange={(vals) => setApprovalMainRoles(vals)}
-                        placeholder="Pilih tugas pokok..."
-                      />
-                    </div>
+                {/* Peran Utama */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Peran Utama
+                  </label>
+                  <select
+                    value={approvalPeranUtama}
+                    onChange={(e) => {
+                      const newPeran = e.target.value;
+                      setApprovalPeranUtama(newPeran);
+                      setApprovalPermissions(PERMISSION_PRESETS[newPeran] || []);
+                    }}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 text-sm font-semibold transition-all focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="guru_pondok">Guru Pondok</option>
+                    <option value="guru_sekolah">Guru Sekolah</option>
+                    <option value="pengurus">Pengurus</option>
+                    <option value="kantin">Kantin</option>
+                    <option value="admin">Admin / Super Admin</option>
+                  </select>
+                </div>
 
-                    {approvalMainRoles.includes("kantin") && (
-                      <div className="space-y-1.5 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/50 animate-in fade-in duration-200">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Pilih Kantin</label>
-                        <MultiSelectTagInput 
-                          options={tugasTambahanDb.filter(t => t.jenis_tugas_tambahan?.toLowerCase() === 'kantin').map(t => t.nama)}
-                          selectedValues={approvalSubRoles['kantin'] || []}
-                          onChange={(vals) => setApprovalSubRoles(prev => ({ ...prev, kantin: vals }))}
-                          placeholder="Pilih kantin..."
-                        />
-                      </div>
-                    )}
-
-                    {approvalMainRoles.includes("pamong") && (
-                      <div className="space-y-1.5 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-900/50 animate-in fade-in duration-200">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Pilih Pamong</label>
-                        <MultiSelectTagInput 
-                          options={tugasTambahanDb.filter(t => t.jenis_tugas_tambahan?.toLowerCase() === 'pamong').map(t => t.nama)}
-                          selectedValues={approvalSubRoles['pamong'] || []}
-                          onChange={(vals) => setApprovalSubRoles(prev => ({ ...prev, pamong: vals }))}
-                          placeholder="Pilih pamong..."
-                        />
-                      </div>
-                    )}
-
-                    {approvalMainRoles.includes("HP SB") && (
-                      <div className="space-y-1.5 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/50 animate-in fade-in duration-200">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Pilih HP SB</label>
-                        <MultiSelectTagInput 
-                          options={tugasTambahanDb.filter(t => t.jenis_tugas_tambahan?.toLowerCase() === 'hp sb').map(t => t.nama)}
-                          selectedValues={approvalSubRoles['HP SB'] || []}
-                          onChange={(vals) => setApprovalSubRoles(prev => ({ ...prev, 'HP SB': vals }))}
-                          placeholder="Pilih HP SB..."
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tugas Tambahan ({approvalUser.role})</label>
-                    <MultiSelectTagInput 
-                      options={TUGAS_TAMBAHAN_OPTIONS[approvalUser.role] || TUGAS_TAMBAHAN_OPTIONS['SMA']}
-                      selectedValues={approvalMainRoles}
-                      onChange={(vals) => setApprovalMainRoles(vals)}
-                      placeholder={`Pilih tugas untuk ${approvalUser.role}...`}
-                    />
+                {/* Permissions */}
+                <div className="space-y-2 pt-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                    <span>Akses Menu (Otomatis menyesuaikan peran)</span>
+                    <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 px-2 py-0.5 rounded-full text-[9px]">
+                      {approvalPermissions.length} Akses
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-64 overflow-y-auto pr-2 pb-2">
+                    {PERMISSIONS_LIST.map((perm) => {
+                      const isChecked = approvalPermissions.includes(perm.id);
+                      return (
+                        <label 
+                          key={perm.id} 
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                            isChecked 
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' 
+                              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <input 
+                            type="checkbox" 
+                            className="hidden"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setApprovalPermissions(prev => [...prev, perm.id]);
+                              } else {
+                                setApprovalPermissions(prev => prev.filter(p => p !== perm.id));
+                              }
+                            }}
+                          />
+                          <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                            isChecked ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300 dark:border-slate-600 bg-transparent'
+                          }`}>
+                            {isChecked && <Check className="w-3 h-3" />}
+                          </div>
+                          <span className="text-[10px] font-bold leading-tight select-none">
+                            {perm.label}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
                 
               </div>
             </div>
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
-              <button onClick={() => setApprovalUser(null)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl">Batal</button>
+              <button onClick={() => setApprovalUser(null)} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition-colors">Batal</button>
               <button 
                 onClick={handleApprove} 
                 disabled={isLoading}
-                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center gap-2 shadow-sm disabled:opacity-50"
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center gap-2 shadow-sm disabled:opacity-50 transition-colors"
               >
-                <Check className="w-4 h-4" /> Approve Akun
+                <Check className="w-4 h-4" /> Setujui Akun
               </button>
             </div>
           </div>

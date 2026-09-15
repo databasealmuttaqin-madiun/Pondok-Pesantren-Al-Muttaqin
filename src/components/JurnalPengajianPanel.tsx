@@ -516,13 +516,13 @@ export default function JurnalPengajianPanel({
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[600px] overflow-y-auto">
                   {santriList.map((santri) => {
-                    if (!santri.id) return null;
-                    const absensi = absensiMap[santri.id] || { status: 'hadir', keterangan: '' };
+                    if (!String(String(santri.id || ""))) return null;
+                    const absensi = absensiMap[santri.id || 0] || { status: 'hadir', keterangan: '' };
                     return (
-                      <div key={santri.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <div key={santri.id || santri.nama_lengkap} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                         <div>
                           <p className="font-medium text-slate-800 dark:text-slate-200">{santri.nama_lengkap}</p>
-                          <p className="text-xs text-slate-500">{santri.nisn || santri.nik}</p>
+                          {santri.id && <p className="text-xs text-slate-500">ID: {santri.id}</p>}
                         </div>
                         
                         <div className="flex items-center gap-1.5 shrink-0 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
@@ -535,7 +535,7 @@ export default function JurnalPengajianPanel({
                           ].map(opt => (
                             <button
                               key={opt.value}
-                              onClick={() => handleStatusChange(santri.id!, opt.value)}
+                              onClick={() => handleStatusChange(Number(santri.id) || 0, opt.value)}
                               className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold transition-all border ${
                                 absensi.status === opt.value 
                                   ? opt.color + " shadow-sm scale-110 z-10" 

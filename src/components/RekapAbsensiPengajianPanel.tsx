@@ -65,7 +65,7 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
             key,
             tanggal: j.tanggal,
             sesi_id: j.sesi_id,
-            nama_sesi: j.sesi_mengaji?.nama_sesi || "-",
+            nama_sesi: (Array.isArray(j.sesi_mengaji) ? (j.sesi_mengaji[0] as any)?.nama_sesi : (j.sesi_mengaji as any)?.nama_sesi) || "-",
             jurnal_ids: []
           });
           uniqueSessions.push(sessionMap.get(key));
@@ -255,14 +255,14 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
                     let alpaCount = 0;
                     
                     return (
-                      <tr key={santri.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <tr key={santri.id || index} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <td className="px-4 py-3 sticky left-0 bg-white dark:bg-slate-900 z-10 border-r border-slate-100 dark:border-slate-800">{index + 1}</td>
                         <td className="px-4 py-3 sticky left-12 bg-white dark:bg-slate-900 z-10 border-r border-slate-100 dark:border-slate-800 font-medium">
                           {santri.nama_lengkap}
                         </td>
                         
                         {jurnals.map((j) => {
-                          const status = santri.id && absensiMap[santri.id] ? absensiMap[santri.id][j.key] : null;
+                          const status = santri.id && absensiMap[String(santri.id)] ? absensiMap[String(santri.id)][j.key] : null;
                           if (status === 'hadir') hadirCount++;
                           if (status === 'alpa') alpaCount++;
                           

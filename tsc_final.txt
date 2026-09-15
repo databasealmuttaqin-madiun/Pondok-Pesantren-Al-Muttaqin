@@ -1,0 +1,110 @@
+src/App.tsx(14,8): error TS2300: Duplicate identifier 'ManajemenSesiPanel'.
+src/App.tsx(17,8): error TS2300: Duplicate identifier 'ManajemenSesiPanel'.
+src/App.tsx(206,44): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(242,15): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(254,49): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(734,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(744,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(776,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(786,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(907,52): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(917,88): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(969,8): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(969,31): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1056,25): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1064,13): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1064,31): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(1064,50): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(1064,66): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1077,11): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1080,26): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1128,13): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1132,24): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1183,43): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(1183,56): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(1241,13): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(1241,46): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/App.tsx(1242,13): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/App.tsx(1242,48): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/App.tsx(2623,19): error TS2322: Type '{ onSubmit: (data: SantriData) => Promise<{ success: boolean; error?: string; }>; isSubmitting: boolean; initialData: SantriData; rooms: string[]; recitationClasses: string[]; schoolClasses: string[]; students: SantriData[]; onCancel: () => void; }' is not assignable to type 'IntrinsicAttributes & RegistrationFormProps'.
+  Property 'rooms' does not exist on type 'IntrinsicAttributes & RegistrationFormProps'.
+src/App.tsx(2791,14): error TS2367: This comparison appears to be unintentional because the types '"perizinan" | "form" | "list" | "absensi" | "dashboard" | "absensi_guru" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "rekap_sholat" | ... 19 more ... | "management"' and '"rekap_jurnal"' have no overlap.
+src/App.tsx(2799,14): error TS2367: This comparison appears to be unintentional because the types '"perizinan" | "form" | "list" | "absensi" | "dashboard" | "absensi_guru" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "rekap_sholat" | ... 19 more ... | "management"' and '"rekap_absensi"' have no overlap.
+src/App.tsx(2807,14): error TS2367: This comparison appears to be unintentional because the types '"perizinan" | "form" | "list" | "absensi" | "dashboard" | "absensi_guru" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "rekap_sholat" | ... 19 more ... | "management"' and '"jurnal_pengajian"' have no overlap.
+src/components/AbsensiGuruPanel.tsx(980,35): error TS2339: Property 'length' does not exist on type 'number'.
+src/components/AbsensiGuruPanel.tsx(980,66): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/components/JurnalPengajianPanel.tsx(525,73): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/JurnalPengajianPanel.tsx(525,88): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(109,44): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(291,28): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(649,68): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(652,42): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(654,54): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(753,44): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManagementPanel.tsx(764,50): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManajemenSekolahPanel.tsx(518,42): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManajemenSekolahPanel.tsx(662,70): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManajemenSekolahPanel.tsx(665,57): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManajemenSekolahPanel.tsx(667,56): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManajemenSekolahPanel.tsx(750,63): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/ManajemenSekolahPanel.tsx(758,52): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(49,21): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(76,46): error TS2339: Property 'trim' does not exist on type 'number'.
+src/components/NfcRegisterPanel.tsx(89,39): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(89,82): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(297,105): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/NfcRegisterPanel.tsx(337,12): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(338,22): error TS2339: Property 'toLowerCase' does not exist on type 'number | ""'.
+  Property 'toLowerCase' does not exist on type 'number'.
+src/components/NfcRegisterPanel.tsx(387,9): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(905,110): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(163,19): error TS2339: Property 'no_hp_ortu' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(164,29): error TS2339: Property 'no_hp_ortu' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(166,19): error TS2339: Property 'nama_ayah' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(168,34): error TS2339: Property 'nama_ayah' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(169,26): error TS2339: Property 'nama_ibu' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(171,34): error TS2339: Property 'nama_ibu' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(215,22): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/PerizinanPanel.tsx(216,16): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(216,26): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(466,13): error TS2339: Property 'daerah' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(466,31): error TS2339: Property 'daerah' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(567,34): error TS2339: Property 'daerah' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(1171,10): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(1173,20): error TS2339: Property 'includes' does not exist on type 'number | ""'.
+  Property 'includes' does not exist on type 'number'.
+src/components/PerizinanPanel.tsx(1174,10): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/PresensiPanel.tsx(560,47): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/PresensiPanel.tsx(575,25): error TS2873: This kind of expression is always falsy.
+src/components/PresensiPanel.tsx(3340,48): error TS2339: Property 'no_hp_ortu' does not exist on type 'SantriData'.
+src/components/PresensiPanel.tsx(3340,72): error TS2339: Property 'no_hp_ortu' does not exist on type 'SantriData'.
+src/components/RekapAbsensiPengajianPanel.tsx(68,40): error TS2339: Property 'nama_sesi' does not exist on type '{ nama_sesi: any; }[]'.
+src/components/SantriList.tsx(209,9): error TS2339: Property 'nama_panggilan' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(210,9): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(211,10): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(211,20): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(212,10): error TS2339: Property 'npsn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(212,20): error TS2339: Property 'npsn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(215,55): error TS2339: Property 'daerah' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(243,65): error TS2339: Property 'daerah' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(938,55): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(938,79): error TS2339: Property 'npsn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(1073,93): error TS2339: Property 'npsn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(1073,116): error TS2339: Property 'nisn' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(1085,122): error TS2339: Property 'daerah' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(1091,94): error TS2339: Property 'kelompok_sambung' does not exist on type 'SantriData'.
+src/components/SantriList.tsx(1091,131): error TS2339: Property 'desa_sambung' does not exist on type 'SantriData'.
+src/components/SiswaLulusMutasiPanel.tsx(283,65): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/SiswaLulusMutasiPanel.tsx(487,14): error TS2339: Property 'nisn' does not exist on type 'SiswaLulus'.
+src/components/SiswaLulusMutasiPanel.tsx(501,14): error TS2339: Property 'nisn' does not exist on type 'SiswaMutasi'.
+src/components/SiswaLulusMutasiPanel.tsx(531,13): error TS2339: Property 'nisn' does not exist on type 'SiswaLulus'.
+src/components/SiswaLulusMutasiPanel.tsx(531,26): error TS2339: Property 'nisn' does not exist on type 'SiswaLulus'.
+src/components/SiswaLulusMutasiPanel.tsx(547,13): error TS2339: Property 'nisn' does not exist on type 'SiswaMutasi'.
+src/components/SiswaLulusMutasiPanel.tsx(547,26): error TS2339: Property 'nisn' does not exist on type 'SiswaMutasi'.
+src/components/SiswaLulusMutasiPanel.tsx(803,31): error TS2339: Property 'nisn' does not exist on type 'SiswaLulus'.
+src/components/SiswaLulusMutasiPanel.tsx(803,105): error TS2339: Property 'nisn' does not exist on type 'SiswaLulus'.
+src/components/SiswaLulusMutasiPanel.tsx(895,31): error TS2339: Property 'nisn' does not exist on type 'SiswaMutasi'.
+src/components/SiswaLulusMutasiPanel.tsx(895,105): error TS2339: Property 'nisn' does not exist on type 'SiswaMutasi'.
+src/components/SiswaLulusMutasiPanel.tsx(1054,119): error TS2339: Property 'nik' does not exist on type 'SantriData'.
+src/components/SiswaLulusMutasiPanel.tsx(1207,91): error TS2339: Property 'nik' does not exist on type 'SiswaLulus | SiswaMutasi'.
+  Property 'nik' does not exist on type 'SiswaLulus'.

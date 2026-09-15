@@ -1,0 +1,81 @@
+src/App.tsx(14,8): error TS2300: Duplicate identifier 'ManajemenSesiPanel'.
+src/App.tsx(17,8): error TS2300: Duplicate identifier 'ManajemenSesiPanel'.
+src/App.tsx(206,42): error TS2538: Type 'SantriData' cannot be used as an index type.
+src/App.tsx(242,13): error TS2367: This comparison appears to be unintentional because the types 'SantriData' and 'string' have no overlap.
+src/App.tsx(244,13): error TS2698: Spread types may only be created from object types.
+src/App.tsx(254,47): error TS2367: This comparison appears to be unintentional because the types 'SantriData' and 'string' have no overlap.
+src/App.tsx(256,40): error TS2339: Property 'nama_lengkap' does not exist on type 'never'.
+src/App.tsx(734,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(744,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(776,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(786,23): error TS2339: Property 'no_hp_ortu' does not exist on type '{ id?: number; created_at?: string; kategori?: "SMP" | "SMA" | "Reguler"; nama_lengkap?: string; jenis_kelamin?: "L" | "P"; kamar?: string; kelas_pengajian?: string; kelas_sekolah?: string; status?: "Aktif" | ... 2 more ... | "Haid"; nfc_id?: string; foto?: string; }'.
+src/App.tsx(907,50): error TS2367: This comparison appears to be unintentional because the types 'SantriData' and 'string | number' have no overlap.
+src/App.tsx(917,86): error TS2367: This comparison appears to be unintentional because the types 'SantriData' and 'string | number' have no overlap.
+src/App.tsx(969,8): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(969,27): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1056,25): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1064,13): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1064,58): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1077,11): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1080,26): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1128,13): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(1132,24): error TS2304: Cannot find name 'targetNik'.
+src/App.tsx(2623,19): error TS2322: Type '{ onSubmit: (data: SantriData) => Promise<{ success: boolean; error?: string; }>; isSubmitting: boolean; initialData: SantriData; rooms: string[]; recitationClasses: string[]; schoolClasses: string[]; students: SantriData[]; onCancel: () => void; }' is not assignable to type 'IntrinsicAttributes & RegistrationFormProps'.
+  Property 'rooms' does not exist on type 'IntrinsicAttributes & RegistrationFormProps'.
+src/components/AbsensiGuruPanel.tsx(980,47): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/components/JurnalPengajianPanel.tsx(538,65): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/components/ManagementPanel.tsx(109,42): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/ManagementPanel.tsx(291,26): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/components/ManagementPanel.tsx(387,38): error TS2345: Argument of type '{ nik: string; name: string; currentVal: string; }' is not assignable to parameter of type 'string'.
+src/components/ManagementPanel.tsx(649,44): error TS2367: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap.
+src/components/ManagementPanel.tsx(654,46): error TS2345: Argument of type 'number' is not assignable to parameter of type 'SetStateAction<string>'.
+src/components/ManagementPanel.tsx(753,33): error TS2322: Type 'SantriData' is not assignable to type 'Key'.
+src/components/ManagementPanel.tsx(764,39): error TS2322: Type 'SantriData' is not assignable to type 'string'.
+src/components/ManajemenSekolahPanel.tsx(518,40): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/ManajemenSekolahPanel.tsx(531,22): error TS2345: Argument of type '{ nik: string; name: string; currentVal: string; }' is not assignable to parameter of type 'string'.
+src/components/ManajemenSekolahPanel.tsx(662,46): error TS2367: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap.
+src/components/ManajemenSekolahPanel.tsx(667,48): error TS2345: Argument of type 'number' is not assignable to parameter of type 'SetStateAction<string>'.
+src/components/ManajemenSekolahPanel.tsx(758,41): error TS2322: Type 'SantriData' is not assignable to type 'string'.
+src/components/NfcRegisterPanel.tsx(49,21): error TS2339: Property 'trim' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(76,46): error TS2339: Property 'trim' does not exist on type 'number'.
+src/components/NfcRegisterPanel.tsx(295,105): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/NfcRegisterPanel.tsx(335,19): error TS2339: Property 'toLowerCase' does not exist on type 'SantriData | ""'.
+  Property 'toLowerCase' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(336,22): error TS2339: Property 'toLowerCase' does not exist on type 'number | ""'.
+  Property 'toLowerCase' does not exist on type 'number'.
+src/components/NfcRegisterPanel.tsx(385,9): error TS2339: Property 'toLowerCase' does not exist on type 'SantriData'.
+src/components/NfcRegisterPanel.tsx(903,107): error TS2322: Type 'SantriData' is not assignable to type 'ReactNode'.
+src/components/PerizinanPanel.tsx(164,21): error TS2345: Argument of type 'SantriData' is not assignable to parameter of type 'SetStateAction<string>'.
+src/components/PerizinanPanel.tsx(168,26): error TS2345: Argument of type 'SantriData' is not assignable to parameter of type 'SetStateAction<string>'.
+src/components/PerizinanPanel.tsx(171,26): error TS2345: Argument of type 'SantriData' is not assignable to parameter of type 'SetStateAction<string>'.
+src/components/PerizinanPanel.tsx(215,22): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/PerizinanPanel.tsx(216,14): error TS2873: This kind of expression is always falsy.
+src/components/PerizinanPanel.tsx(466,11): error TS2873: This kind of expression is always falsy.
+src/components/PerizinanPanel.tsx(567,41): error TS2339: Property 'trim' does not exist on type 'SantriData | ""'.
+  Property 'trim' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(1171,17): error TS2339: Property 'toLowerCase' does not exist on type 'SantriData | ""'.
+  Property 'toLowerCase' does not exist on type 'SantriData'.
+src/components/PerizinanPanel.tsx(1173,20): error TS2339: Property 'includes' does not exist on type 'number | ""'.
+  Property 'includes' does not exist on type 'number'.
+src/components/PerizinanPanel.tsx(1174,8): error TS2873: This kind of expression is always falsy.
+src/components/PresensiPanel.tsx(575,25): error TS2873: This kind of expression is always falsy.
+src/components/PresensiPanel.tsx(3340,61): error TS2339: Property 'trim' does not exist on type 'SantriData'.
+src/components/RekapAbsensiPengajianPanel.tsx(68,40): error TS2339: Property 'nama_sesi' does not exist on type '{ nama_sesi: any; }[]'.
+src/components/SantriList.tsx(212,8): error TS2873: This kind of expression is always falsy.
+src/components/SantriList.tsx(215,27): error TS2367: This comparison appears to be unintentional because the types 'boolean' and 'string' have no overlap.
+src/components/SantriList.tsx(938,39): error TS2873: This kind of expression is always falsy.
+src/components/SiswaLulusMutasiPanel.tsx(483,7): error TS2322: Type '(string | SiswaLulus)[][]' is not assignable to type 'string[][]'.
+  Type '(string | SiswaLulus)[]' is not assignable to type 'string[]'.
+    Type 'string | SiswaLulus' is not assignable to type 'string'.
+      Type 'SiswaLulus' is not assignable to type 'string'.
+src/components/SiswaLulusMutasiPanel.tsx(497,7): error TS2322: Type '(string | SiswaMutasi)[][]' is not assignable to type 'string[][]'.
+  Type '(string | SiswaMutasi)[]' is not assignable to type 'string[]'.
+    Type 'string | SiswaMutasi' is not assignable to type 'string'.
+      Type 'SiswaMutasi' is not assignable to type 'string'.
+src/components/SiswaLulusMutasiPanel.tsx(531,21): error TS2339: Property 'includes' does not exist on type 'SiswaLulus'.
+src/components/SiswaLulusMutasiPanel.tsx(547,21): error TS2339: Property 'includes' does not exist on type 'SiswaMutasi'.
+src/components/SiswaLulusMutasiPanel.tsx(803,94): error TS2322: Type 'SiswaLulus' is not assignable to type 'ReactNode'.
+src/components/SiswaLulusMutasiPanel.tsx(895,94): error TS2322: Type 'SiswaMutasi' is not assignable to type 'ReactNode'.
+src/components/SiswaLulusMutasiPanel.tsx(1054,102): error TS2322: Type 'SantriData' is not assignable to type 'ReactNode'.
+src/components/SiswaLulusMutasiPanel.tsx(1207,78): error TS2322: Type 'SiswaLulus | SiswaMutasi' is not assignable to type 'ReactNode'.
+  Type 'SiswaLulus' is not assignable to type 'ReactNode'.
