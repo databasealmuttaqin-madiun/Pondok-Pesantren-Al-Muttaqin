@@ -130,9 +130,31 @@ export default function KantinPanel({
 
   const fetchMasterKantin = async () => {
     try {
-      const names: string[] = [...DEFAULT_KANTIN_LIST];
+      const names: string[] = [];
       
-      // 1. Fetch from tugas_tambahan
+      // 1. Fetch from 'plotting' table (jenis = 'kantin')
+      try {
+        const { data: plotData } = await supabase
+          .from("plotting")
+          .select("nama")
+          .eq("jenis", "kantin");
+        if (plotData) {
+          plotData.forEach((p: any) => {
+            if (p.nama && !names.some(n => n.toLowerCase() === p.nama.toLowerCase())) {
+              names.push(p.nama);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("Error fetching kantin from plotting:", err);
+      }
+
+      // 2. Fallback to DEFAULT_KANTIN_LIST if empty
+      if (names.length === 0) {
+        DEFAULT_KANTIN_LIST.forEach(d => names.push(d));
+      }
+
+      // 3. Fetch from tugas_tambahan
       const { data: tugasData } = await supabase
         .from("tugas_tambahan")
         .select("nama, jenis_tugas_tambahan");
@@ -146,7 +168,7 @@ export default function KantinPanel({
           });
       }
 
-      // 2. Fetch distinct from pembukuan_kantin
+      // 4. Fetch distinct from pembukuan_kantin
       const { data: pbData } = await supabase
         .from("pembukuan_kantin")
         .select("kantin");

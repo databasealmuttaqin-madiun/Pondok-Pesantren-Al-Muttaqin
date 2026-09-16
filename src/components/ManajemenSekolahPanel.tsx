@@ -16,6 +16,7 @@ import {
   BookMarked
 } from "lucide-react";
 import { supabase, SantriData } from "../supabaseClient";
+import PageHeader from "./PageHeader";
 
 interface ManajemenSekolahPanelProps {
   students: SantriData[];
@@ -23,6 +24,7 @@ interface ManajemenSekolahPanelProps {
   setSchoolClasses: (classes: string[]) => void;
   metadataMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>;
   onAssignMetadata: (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => void;
+  initialSubTab?: "plotting" | "buat_kelas" | "jam_pelajaran" | "jadwal_pelajaran" | "pengumuman";
 }
 
 // Interfaces for our custom features
@@ -56,12 +58,10 @@ export default function ManajemenSekolahPanel({
   schoolClasses,
   setSchoolClasses,
   metadataMap,
-  onAssignMetadata
+  onAssignMetadata,
+  initialSubTab = "plotting"
 }: ManajemenSekolahPanelProps) {
-  // Navigation tabs for Manajemen Sekolah
-  const [activeSubTab, setActiveSubTab] = useState<
-    "plotting" | "buat_kelas" | "jam_pelajaran" | "jadwal_pelajaran" | "pengumuman"
-  >("plotting");
+  const activeSubTab = initialSubTab;
 
   const [teachers, setTeachers] = useState<{ username: string; nama: string }[]>([]);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -545,74 +545,20 @@ export default function ManajemenSekolahPanel({
 
   const daysList = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
 
+  const getSubTitle = () => {
+    switch (activeSubTab) {
+      case "plotting": return "Plotting Kelas";
+      case "buat_kelas": return "Buat Kelas Sekolah";
+      case "jam_pelajaran": return "Jam Pelajaran";
+      case "jadwal_pelajaran": return "Jadwal Pelajaran";
+      case "pengumuman": return "Pengumuman Sekolah";
+      default: return "Plotting Kelas";
+    }
+  };
+
   return (
     <div className="space-y-6" id="manajemen_sekolah_module">
-      {/* Title block */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm">
-        <div className="space-y-1">
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-50 tracking-tight uppercase flex items-center gap-2">
-            <BookMarked className="w-6 h-6 text-indigo-600" />
-            Manajemen Sekolah Reguler
-          </h2>
-          <p className="text-slate-500 dark:text-slate-400 text-xs font-semibold leading-relaxed max-w-2xl">
-            Pusat pengelolaan kegiatan belajar formal sekolah, penentuan kelas santri, pembuatan master kelas, pemetaan jam pelajaran, pembuatan jadwal pelajaran, dan media pengumuman guru.
-          </p>
-        </div>
-      </div>
-
-      {/* Main Tab bar */}
-      <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 dark:bg-slate-950 p-1 border border-slate-200 dark:border-slate-850 rounded-2xl shadow-inner max-w-5xl">
-        <button
-          onClick={() => setActiveSubTab("plotting")}
-          className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
-            activeSubTab === "plotting"
-              ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-          }`}
-        >
-          <Users className="w-4 h-4" /> Plotting Kelas
-        </button>
-        <button
-          onClick={() => setActiveSubTab("buat_kelas")}
-          className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
-            activeSubTab === "buat_kelas"
-              ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-          }`}
-        >
-          <Plus className="w-4 h-4" /> Buat Kelas Sekolah
-        </button>
-        <button
-          onClick={() => setActiveSubTab("jam_pelajaran")}
-          className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
-            activeSubTab === "jam_pelajaran"
-              ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-          }`}
-        >
-          <Clock className="w-4 h-4" /> Jam Pelajaran
-        </button>
-        <button
-          onClick={() => setActiveSubTab("jadwal_pelajaran")}
-          className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
-            activeSubTab === "jadwal_pelajaran"
-              ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-          }`}
-        >
-          <Calendar className="w-4 h-4" /> Jadwal Pelajaran & Mengajar
-        </button>
-        <button
-          onClick={() => setActiveSubTab("pengumuman")}
-          className={`px-4 py-2.5 text-xs font-black rounded-xl text-center cursor-pointer transition-all flex items-center gap-2 ${
-            activeSubTab === "pengumuman"
-              ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm"
-              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-          }`}
-        >
-          <Megaphone className="w-4 h-4" /> Pengumuman Guru
-        </button>
-      </div>
+      <PageHeader category="Plotting Sekolah" title={getSubTitle()} />
 
       {/* Floating feedback */}
       {feedback && (

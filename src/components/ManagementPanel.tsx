@@ -15,6 +15,7 @@ interface ManagementPanelProps {
   
   metadataMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: any}>;
   onAssignMetadata: (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => void;
+  initialMode?: "kamar" | "pengajian" | "sekolah";
 }
 
 export default function ManagementPanel({ 
@@ -26,13 +27,11 @@ export default function ManagementPanel({
   schoolClasses, 
   setSchoolClasses,
   metadataMap,
-  onAssignMetadata
+  onAssignMetadata,
+  initialMode
 }: ManagementPanelProps) {
   // Current plotting mode: "kamar", "pengajian", "sekolah"
-  const [activeMode, setActiveMode] = useState<"kamar" | "pengajian" | "sekolah">("kamar");
-
-  // State for hiding the banner
-  const [showBanner, setShowBanner] = useState(true);
+  const [activeMode, setActiveMode] = useState<"kamar" | "pengajian" | "sekolah">(initialMode || "kamar");
 
   // State for quick creation modal popups/forms
   const [showAddRoom, setShowAddRoom] = useState(false);
@@ -304,33 +303,6 @@ export default function ManagementPanel({
   return (
     <div className="space-y-6" id="plotting_siswa_panel_module">
       
-      {/* HEADER BAR AND QUICK ACTION BUTTONS */}
-      {showBanner && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-start justify-between gap-4 relative animate-fade-in group">
-          <div className="space-y-1">
-            <span className="bg-slate-100 text-slate-800 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border border-slate-200 w-fit block">
-              Pusat Pemetaan
-            </span>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
-              Plotting Siswa
-            </h2>
-            <p className="text-slate-550 text-xs leading-relaxed max-w-2xl font-medium">
-              Atur dan petakan penempatan asrama kamar tidur santri, pengelompokan kelas pengajian Al-Quran, serta pencatatan kelas sekolah reguler formal dalam satu dasbor terpadu.
-            </p>
-          </div>
-          
-          <button
-            onClick={() => setShowBanner(false)}
-            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
-            title="Sembunyikan panel ini"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-            </svg>
-          </button>
-        </div>
-      )}
-
       {feedback && (
         <div className="p-3.5 bg-emerald-50 border border-emerald-250 text-emerald-900 text-xs font-bold rounded-xl animate-fade-in text-center shadow-sm">
           Sistem Notifikasi: {feedback}
@@ -552,36 +524,42 @@ export default function ManagementPanel({
 
       {/* SELECT LABELS DAN QUICK ACTION BUTTON (Erat dengan menu yang diaktifkan agar tombol langsung terlihat) */}
       <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-white rounded-2xl border border-slate-200 p-4 shadow-sm" id="pilihan_menu_plotting_dan_tombol">
-        <div className="grid grid-cols-2 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner flex-1 max-w-sm">
-          <button
-            onClick={() => {
-              setActiveMode("kamar");
-              setSelectedNik("");
-              setSelectedTarget("");
-            }}
-            className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
-              activeMode === "kamar"
-                ? "bg-white text-indigo-705 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Kamar
-          </button>
-          <button
-            onClick={() => {
-              setActiveMode("pengajian");
-              setSelectedNik("");
-              setSelectedTarget("");
-            }}
-            className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
-              activeMode === "pengajian"
-                ? "bg-white text-indigo-705 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Kelas Pengajian
-          </button>
-        </div>
+        {!initialMode ? (
+          <div className="grid grid-cols-2 bg-slate-100/80 rounded-2xl p-1 border border-slate-200 shadow-inner flex-1 max-w-sm">
+            <button
+              onClick={() => {
+                setActiveMode("kamar");
+                setSelectedNik("");
+                setSelectedTarget("");
+              }}
+              className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+                activeMode === "kamar"
+                  ? "bg-white text-indigo-705 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Kamar
+            </button>
+            <button
+              onClick={() => {
+                setActiveMode("pengajian");
+                setSelectedNik("");
+                setSelectedTarget("");
+              }}
+              className={`py-3 text-[11px] sm:text-xs font-black rounded-xl text-center cursor-pointer transition-all ${
+                activeMode === "pengajian"
+                  ? "bg-white text-indigo-705 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Kelas Pengajian
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs font-bold text-slate-700 uppercase tracking-wide px-2">
+            Daftar & Penataan {initialMode === "kamar" ? "Kamar Asrama" : "Kelas Pengajian"}
+          </div>
+        )}
 
         {/* TOMBOL BERGANTUNG PADA TAB YANG AKTIF */}
         <div className="shrink-0 flex justify-end" id="tombol_buat_dinamis_tab">

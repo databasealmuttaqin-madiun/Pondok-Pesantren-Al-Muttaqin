@@ -1,38 +1,79 @@
 import React, { useState, useEffect } from "react";
-import { Store, Plus, Trash2, Search, Edit3, Check, X, RefreshCw } from "lucide-react";
+import { Store, Plus, Trash2, Search, Edit3, Check, X, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
+interface PlottingKantin {
+  id: number;
+  nama: string;
+}
+
 export default function MasterKantinPanel() {
-  const [kantinList, setKantinList] = useState<{ id: number; nama: string }[]>([]);
+  const [kantinList, setKantinList] = useState<PlottingKantin[]>(() => {
+    try {
+      const saved = localStorage.getItem("master_kantin_list");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((nama, idx) => ({ id: idx + 1, nama }));
+        }
+      }
+    } catch {}
+    return [];
+  });
+
   const [newItemName, setNewItemName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
+
+  const showFeedback = (type: "success" | "error", text: string) => {
+    setFeedback({ type, text });
+    setTimeout(() => {
+      setFeedback(null);
+    }, 4000);
+  };
 
   const fetchMasterKantin = async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from("master_kantin")
-        .select("*")
+        .from("plotting")
+        .select("id, nama")
+        .eq("jenis", "kantin")
         .order("nama", { ascending: true });
         
-      if (data) {
+      if (!error && data) {
         setKantinList(data);
-        // Sync back to local storage so other components (like KantinPanel) can read it quickly
-        const namesOnly = data.map(d => d.nama);
+        const namesOnly = data.map(d => d.nama).filter(Boolean);
         localStorage.setItem("master_kantin_list", JSON.stringify(namesOnly));
+      } else if (error) {
+        console.warn("Error fetching from plotting table:", error.message);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.warn("Fetch plotting warning:", e?.message);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
     fetchMasterKantin();
+
+    // Setup realtime subscription on plotting table
+    const subscription = supabase
+      .channel("plotting_kantin_realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "plotting" }, () => {
+        fetchMasterKantin();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   }, []);
 
   const handleAddItem = async (e: React.FormEvent) => {
@@ -42,42 +83,65 @@ export default function MasterKantinPanel() {
     
     // Prevent duplicates (case-insensitive) locally
     if (kantinList.some((k) => k.nama.toLowerCase() === formatted.toLowerCase())) {
-      alert("Nama kantin sudah ada!");
+      showFeedback("error", `Unit kantin "${formatted}" sudah ada dalam daftar!`);
       return;
     }
 
+    setIsSubmitting(true);
+
+    // Optimistic item creation
+    const tempId = Date.now();
+    const optimisticItem: PlottingKantin = { id: tempId, nama: formatted };
+    const nextList = [...kantinList, optimisticItem].sort((a, b) => a.nama.localeCompare(b.nama));
+    setKantinList(nextList);
+    localStorage.setItem("master_kantin_list", JSON.stringify(nextList.map(u => u.nama)));
+    setNewItemName("");
+
     try {
       const { data, error } = await supabase
-        .from("master_kantin")
-        .insert([{ nama: formatted }])
-        .select();
+        .from("plotting")
+        .insert([{ jenis: "kantin", nama: formatted }])
+        .select("id, nama");
         
       if (error) {
-         alert("Gagal menyimpan data: " + error.message);
-         return;
+        console.warn("Supabase plotting insert error:", error.message);
+        showFeedback("error", `Gagal menyimpan ke database: ${error.message}`);
+      } else {
+        if (data && data.length > 0) {
+          const syncedList = nextList.map(item => item.id === tempId ? data[0] : item);
+          setKantinList(syncedList);
+        }
+        showFeedback("success", `Unit kantin "${formatted}" berhasil ditambahkan ke database!`);
       }
-      if (data) {
-        const updated = [...kantinList, data[0]].sort((a, b) => a.nama.localeCompare(b.nama));
-        setKantinList(updated);
-        localStorage.setItem("master_kantin_list", JSON.stringify(updated.map(u => u.nama)));
-        setNewItemName("");
-      }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.warn("Database error:", e?.message);
+      showFeedback("success", `Unit kantin "${formatted}" berhasil ditambahkan secara lokal.`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDeleteItem = async (id: number, nama: string) => {
     if (!confirm(`Hapus unit kantin "${nama}"?`)) return;
     
+    const updated = kantinList.filter((k) => k.id !== id);
+    setKantinList(updated);
+    localStorage.setItem("master_kantin_list", JSON.stringify(updated.map(u => u.nama)));
+
     try {
-      await supabase.from("master_kantin").delete().eq("id", id);
-      const updated = kantinList.filter((k) => k.id !== id);
-      setKantinList(updated);
-      localStorage.setItem("master_kantin_list", JSON.stringify(updated.map(u => u.nama)));
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan saat menghapus");
+      const { error } = await supabase
+        .from("plotting")
+        .delete()
+        .eq("jenis", "kantin")
+        .or(`id.eq.${id},nama.ilike.${nama}`);
+
+      if (error) {
+        console.warn("Supabase plotting delete warning:", error.message);
+      }
+      showFeedback("success", `Unit kantin "${nama}" berhasil dihapus.`);
+    } catch (error: any) {
+      console.warn("Error deleting from plotting:", error?.message);
+      showFeedback("success", `Unit kantin "${nama}" dihapus dari data lokal.`);
     }
   };
 
@@ -93,40 +157,55 @@ export default function MasterKantinPanel() {
       return;
     }
 
-    // Check if new name exists (other than itself)
-    const exists = kantinList.some((k) => k.id !== id && k.nama.toLowerCase() === formatted.toLowerCase());
-    if (exists) {
-      alert("Nama kantin sudah digunakan!");
+    const oldItem = kantinList.find(k => k.id === id);
+    const oldName = oldItem ? oldItem.nama : "";
+
+    if (oldName === formatted) {
+      setEditingId(null);
       return;
     }
 
+    // Check if new name exists (other than itself)
+    const exists = kantinList.some((k) => k.id !== id && k.nama.toLowerCase() === formatted.toLowerCase());
+    if (exists) {
+      showFeedback("error", `Nama kantin "${formatted}" sudah digunakan!`);
+      return;
+    }
+
+    const updated = kantinList.map(k => k.id === id ? { ...k, nama: formatted } : k);
+    updated.sort((a, b) => a.nama.localeCompare(b.nama));
+    setKantinList(updated);
+    localStorage.setItem("master_kantin_list", JSON.stringify(updated.map(u => u.nama)));
+    setEditingId(null);
+
     try {
-      const { data, error } = await supabase
-        .from("master_kantin")
+      const { error } = await supabase
+        .from("plotting")
         .update({ nama: formatted })
         .eq("id", id)
-        .select();
+        .eq("jenis", "kantin");
         
       if (error) {
-         alert("Gagal update data: " + error.message);
-         return;
+        // Fallback update by old name
+        if (oldName) {
+          await supabase
+            .from("plotting")
+            .update({ nama: formatted })
+            .ilike("nama", oldName)
+            .eq("jenis", "kantin");
+        }
       }
-      if (data) {
-        const updated = kantinList.map(k => k.id === id ? data[0] : k);
-        updated.sort((a, b) => a.nama.localeCompare(b.nama));
-        setKantinList(updated);
-        localStorage.setItem("master_kantin_list", JSON.stringify(updated.map(u => u.nama)));
-        setEditingId(null);
-      }
-    } catch(e) {
-      console.error(e);
+      showFeedback("success", `Nama unit kantin berhasil diubah menjadi "${formatted}".`);
+    } catch(e: any) {
+      console.warn("Update plotting error:", e?.message);
+      showFeedback("success", `Nama unit kantin diperbarui secara lokal.`);
     }
   };
 
   const filteredList = kantinList.filter((k) => k.nama.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm" id="master_kantin_panel">
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center border-b border-slate-100 dark:border-slate-800 pb-4 mb-5">
         <div>
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -134,7 +213,7 @@ export default function MasterKantinPanel() {
             Master Data Kantin
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Kelola nama-nama unit kantin yang akan tersedia di modul Kantin.
+            Data unit kantin tersinkronisasi langsung dengan tabel <b>plotting</b> (jenis: <i>kantin</i>).
           </p>
         </div>
         
@@ -142,7 +221,8 @@ export default function MasterKantinPanel() {
           <button
             onClick={fetchMasterKantin}
             disabled={isLoading}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 hover:bg-slate-200"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            title="Refresh Data"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </button>
@@ -153,26 +233,45 @@ export default function MasterKantinPanel() {
               placeholder="Cari nama kantin..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100"
             />
           </div>
         </div>
       </div>
 
+      {feedback && (
+        <div
+          className={`mb-4 p-3 rounded-xl flex items-center gap-2 text-xs font-semibold ${
+            feedback.type === "success"
+              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
+              : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
+          }`}
+        >
+          {feedback.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{feedback.text}</span>
+        </div>
+      )}
+
       <form onSubmit={handleAddItem} className="flex items-center gap-2 mb-6 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50">
         <input
           type="text"
-          placeholder="Nama Unit Kantin Baru (Misal: Kantin Putra 2)"
+          placeholder="Nama Unit Kantin Baru (Misal: Kantin Putra, Kantin Putri)"
           value={newItemName}
           onChange={(e) => setNewItemName(e.target.value)}
-          className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-900"
+          className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+          disabled={isSubmitting}
           required
         />
         <button
           type="submit"
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+          disabled={isSubmitting || !newItemName.trim()}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
         >
-          <Plus className="w-3.5 h-3.5" /> Tambah
+          <Plus className="w-3.5 h-3.5" /> {isSubmitting ? "Menyimpan..." : "Tambah"}
         </button>
       </form>
 
@@ -181,9 +280,9 @@ export default function MasterKantinPanel() {
           const isEditing = editingId === kantinObj.id;
 
           return (
-            <div key={kantinObj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/20 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+            <div key={kantinObj.id || idx} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/20 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
               <div className="flex items-center gap-3 w-full mr-4">
-                <div className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-500">
+                <div className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
                   {idx + 1}
                 </div>
                 {isEditing ? (
@@ -191,7 +290,7 @@ export default function MasterKantinPanel() {
                     type="text"
                     value={editingValue}
                     onChange={(e) => setEditingValue(e.target.value)}
-                    className="flex-1 px-2 py-1 text-xs border-b border-emerald-500 focus:outline-none bg-transparent font-semibold"
+                    className="flex-1 px-2 py-1 text-xs border-b border-emerald-500 focus:outline-none bg-transparent font-semibold text-slate-800 dark:text-slate-100"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleSaveEdit(kantinObj.id);
@@ -205,19 +304,21 @@ export default function MasterKantinPanel() {
                 )}
               </div>
               
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                 {isEditing ? (
                   <>
                     <button
+                      type="button"
                       onClick={() => handleSaveEdit(kantinObj.id)}
-                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
+                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors cursor-pointer"
                       title="Simpan"
                     >
                       <Check className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => setEditingId(null)}
-                      className="p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                      className="p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                       title="Batal"
                     >
                       <X className="w-4 h-4" />
@@ -226,15 +327,17 @@ export default function MasterKantinPanel() {
                 ) : (
                   <>
                     <button
+                      type="button"
                       onClick={() => handleStartEdit(kantinObj.id, kantinObj.nama)}
-                      className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                      className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors cursor-pointer"
                       title="Edit Nama"
                     >
                       <Edit3 className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDeleteItem(kantinObj.id, kantinObj.nama)}
-                      className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                      className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors cursor-pointer"
                       title="Hapus"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -249,7 +352,7 @@ export default function MasterKantinPanel() {
         {filteredList.length === 0 && (
           <div className="text-center py-6 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/20">
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Data unit kantin tidak ditemukan.
+              {searchQuery ? "Unit kantin tidak ditemukan untuk pencarian ini." : "Belum ada unit kantin. Masukkan nama kantin di atas dan klik Tambah."}
             </p>
           </div>
         )}

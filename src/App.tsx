@@ -27,7 +27,12 @@ import DaftarWargaPanel from "./components/DaftarWargaPanel";
 import SiswaLulusMutasiPanel from "./components/SiswaLulusMutasiPanel";
 import PelanggaranPanel from "./components/PelanggaranPanel";
 import KantinPanel from "./components/KantinPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target } from "lucide-react";
+import PlottingWaliKamarPanel from "./components/PlottingWaliKamarPanel";
+import PlottingGuruPondokPanel from "./components/PlottingGuruPondokPanel";
+import PlottingWaliKelasPanel from "./components/PlottingWaliKelasPanel";
+import MasterMataPelajaranPanel from "./components/MasterMataPelajaranPanel";
+import PlottingGuruMapelPanel from "./components/PlottingGuruMapelPanel";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone } from "lucide-react";
 
 const DEMO_SANTRI: SantriData[] = [];
 
@@ -93,7 +98,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -117,9 +122,10 @@ export default function App() {
   const [isDataWargaExpanded, setIsDataWargaExpanded] = useState(true);
   const [isPelanggaranExpanded, setIsPelanggaranExpanded] = useState(false);
   const [isKantinExpanded, setIsKantinExpanded] = useState(true);
-  const [isManajemenExpanded, setIsManajemenExpanded] = useState(false);
+  const [isManajemenPondokExpanded, setIsManajemenPondokExpanded] = useState(false);
+  const [isManajemenSekolahExpanded, setIsManajemenSekolahExpanded] = useState(false);
   const [isPengajianExpanded, setIsPengajianExpanded] = useState(false);
-  const [hoveredFlyout, setHoveredFlyout] = useState<"rekap" | "data_warga" | "pelanggaran" | "manajemen" | "pengajian" | "nfc" | "kantin" | "perizinan" | "sekolah" | null>(null);
+  const [hoveredFlyout, setHoveredFlyout] = useState<"rekap" | "data_warga" | "pelanggaran" | "manajemen_pondok" | "manajemen_sekolah" | "pengajian" | "nfc" | "kantin" | "perizinan" | "sekolah" | null>(null);
   const [mobileSekolahOpen, setMobileSekolahOpen] = useState(true);
   const [mobilePerizinanOpen, setMobilePerizinanOpen] = useState(true);
   const [mobileRekapOpen, setMobileRekapOpen] = useState(true);
@@ -127,7 +133,8 @@ export default function App() {
   const [mobileDataWargaOpen, setMobileDataWargaOpen] = useState(true);
   const [mobilePelanggaranOpen, setMobilePelanggaranOpen] = useState(false);
   const [mobileKantinOpen, setMobileKantinOpen] = useState(true);
-  const [mobileManajemenOpen, setMobileManajemenOpen] = useState(false);
+  const [mobileManajemenPondokOpen, setMobileManajemenPondokOpen] = useState(false);
+  const [mobileManajemenSekolahOpen, setMobileManajemenSekolahOpen] = useState(false);
   const [mobilePengajianOpen, setMobilePengajianOpen] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const [listFilters, setListFilters] = useState<{ category?: string; status?: string; class?: string }>({});
@@ -556,6 +563,21 @@ export default function App() {
           }
         } catch (err) {
           console.warn("Gagal memuat master kelas sekolah dari plotting:", err);
+        }
+
+        // 6b. Load master list of kantin from 'plotting' table
+        try {
+          const { data: plotKantin } = await supabase
+            .from("plotting")
+            .select("nama")
+            .eq("jenis", "kantin");
+
+          if (plotKantin && plotKantin.length > 0) {
+            const dbKantinList = plotKantin.map((k) => k.nama).filter(Boolean);
+            localStorage.setItem("master_kantin_list", JSON.stringify(dbKantinList));
+          }
+        } catch (err) {
+          console.warn("Gagal memuat master kantin dari plotting:", err);
         }
 
         // 7. Load NFC card mapping from 'nfc' table
@@ -1275,11 +1297,24 @@ export default function App() {
     { id: "kantin_input", group: "KANTIN", isSubmenu: true, subLabel: "Input Kas", label: "Input Kas Kantin", shortLabel: "Input Kas", icon: Receipt, roles: ["super admin", "admin", "kantin", "guru pondok", "pondok"] },
     { id: "kantin_rekap", group: "KANTIN", isSubmenu: true, subLabel: "Rekap Pembukuan", label: "Rekap Pembukuan", shortLabel: "Rekap Kas", icon: Store, roles: ["super admin", "admin", "kantin", "guru pondok", "pondok"] },
 
-    // PLOTTING / MANAJEMEN AKADEMIK
-    { id: "manajemen_pondok", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Pondok", label: "Manajemen Pondok", shortLabel: "Pondok", icon: Building2, roles: ["super admin", "admin"] },
-    { id: "manajemen_sesi", group: "PLOTTING", isSubmenu: true, subLabel: "Sesi Mengaji", label: "Manajemen Sesi Mengaji", shortLabel: "Sesi", icon: Clock, roles: ["super admin", "admin"] },
-    { id: "manajemen_sekolah", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Sekolah", label: "Manajemen Sekolah", shortLabel: "Sekolah", icon: BookMarked, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "pengguna", group: "PLOTTING", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
+    // MANAJEMEN PONDOK GROUP WITH SUBMENUS
+    { id: "pondok_sesi", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Sesi Mengaji", label: "Manajemen Sesi Mengaji", shortLabel: "Sesi", icon: Clock, roles: ["super admin", "admin"] },
+    { id: "pondok_kamar", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Plotting Kamar", label: "Plotting Kamar Asrama", shortLabel: "Kamar", icon: Home, roles: ["super admin", "admin"] },
+    { id: "pondok_pengajian_plotting", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Kelas Pengajian", label: "Plotting Kelas Pengajian", shortLabel: "Pengajian", icon: BookOpen, roles: ["super admin", "admin"] },
+    { id: "pondok_wali_kamar", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Wali Kamar", label: "Plotting Wali Kamar", shortLabel: "Wali Kamar", icon: UserCheck, roles: ["super admin", "admin"] },
+    { id: "pondok_guru", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Guru Pondok", label: "Plotting Guru Pondok", shortLabel: "Guru Pondok", icon: GraduationCap, roles: ["super admin", "admin"] },
+    { id: "pondok_kantin", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Master Kantin", label: "Master Kantin", shortLabel: "Kantin", icon: Store, roles: ["super admin", "admin"] },
+    { id: "pengguna", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
+
+    // MANAJEMEN SEKOLAH GROUP WITH SUBMENUS
+    { id: "sekolah_plotting", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Plotting Kelas", label: "Plotting Kelas Sekolah", shortLabel: "Plotting", icon: Sliders, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_wali_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Wali Kelas", label: "Plotting Wali Kelas", shortLabel: "Wali Kelas", icon: UserCheck, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Mata Pelajaran", label: "Master Mata Pelajaran", shortLabel: "Mapel", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_guru_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Mata Pelajaran", label: "Plotting Guru Mapel", shortLabel: "Guru Mapel", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_buat_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Buat Kelas", label: "Buat Kelas Sekolah", shortLabel: "Kelas", icon: Plus, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_jam", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Jam Pelajaran", label: "Jam Pelajaran Sekolah", shortLabel: "Jam", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_jadwal", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Jadwal Pelajaran", label: "Jadwal Pelajaran Sekolah", shortLabel: "Jadwal", icon: Calendar, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_pengumuman", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Pengumuman", label: "Pengumuman Sekolah", shortLabel: "Pengumuman", icon: Megaphone, roles: ["super admin", "admin", "guru SMP"] },
 
     // PENGAJIAN
     { id: "manajemen_materi", group: "PENGAJIAN", isSubmenu: true, subLabel: "Master Materi", label: "Master Materi Pengajian", shortLabel: "Materi", icon: BookOpen, roles: ["super admin", "admin"] },
@@ -1304,8 +1339,8 @@ export default function App() {
     if (tabId.startsWith("perizinan_")) return "perizinan";
     if (tabId === "rekap_sholat") return "rekap_sholat";
     if (tabId.startsWith("pelanggaran_")) return "pelanggaran";
-    if (tabId === "manajemen_pondok" || tabId === "manajemen_sesi") return "plotting_pondok";
-    if (tabId === "manajemen_sekolah") return "plotting_sekolah";
+    if (tabId.startsWith("pondok_") || tabId === "manajemen_sesi" || tabId === "manajemen_pondok") return "plotting_pondok";
+    if (tabId.startsWith("sekolah_") || tabId === "manajemen_sekolah") return "plotting_sekolah";
     if (tabId.startsWith("nfc_")) return "registrasi_nfc";
     if (tabId === "list" || tabId.startsWith("warga_")) return "data_warga";
     if (tabId === "kantin_input") return "kas_kantin";
@@ -2293,20 +2328,20 @@ export default function App() {
               </div>
             )}
 
-            {/* 4. PLOTTING / MANAJEMEN GROUP (ACCORDION) */}
-            {accessibleTabs.some(t => t.group === "PLOTTING") && (!sidebarSearchQuery || "plotting manajemen pondok sekolah akun pengguna sesi".includes(sidebarSearchQuery.toLowerCase())) && (
+            {/* 4A. PLOTTING PONDOK GROUP (ACCORDION) */}
+            {accessibleTabs.some(t => t.group === "MANAJEMEN_PONDOK") && (!sidebarSearchQuery || "plotting pondok sesi kamar ngaji kantin akun pengguna".includes(sidebarSearchQuery.toLowerCase())) && (
               <div 
                 className="w-full pt-1.5 relative group/flyout"
-                onMouseEnter={() => setHoveredFlyout("manajemen")}
+                onMouseEnter={() => setHoveredFlyout("manajemen_pondok")}
                 onMouseLeave={() => setHoveredFlyout(null)}
               >
                 {!sidebarCollapsed ? (
                   <div
-                    onClick={() => setIsManajemenExpanded(!isManajemenExpanded)}
+                    onClick={() => setIsManajemenPondokExpanded(!isManajemenPondokExpanded)}
                     className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
                   >
-                    <span>Plotting</span>
-                    {isManajemenExpanded ? (
+                    <span>Plotting Pondok</span>
+                    {isManajemenPondokExpanded ? (
                       <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
                     ) : (
                       <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -2315,13 +2350,13 @@ export default function App() {
                 ) : (
                   <div className="w-full flex justify-center py-1">
                     <button
-                      onClick={() => setIsManajemenExpanded(!isManajemenExpanded)}
+                      onClick={() => setIsManajemenPondokExpanded(!isManajemenPondokExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["manajemen_pondok", "manajemen_sekolah", "pengguna"].includes(activeTab)
+                        ["pondok_sesi", "pondok_kamar", "pondok_pengajian_plotting", "pondok_wali_kamar", "pondok_guru", "pondok_kantin", "pengguna"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
-                      title="Plotting"
+                      title="Plotting Pondok"
                     >
                       <Building2 className="w-4.5 h-4.5" />
                     </button>
@@ -2329,9 +2364,9 @@ export default function App() {
                 )}
 
                 {/* Expanded Inline Submenu */}
-                {!sidebarCollapsed && isManajemenExpanded && (
+                {!sidebarCollapsed && isManajemenPondokExpanded && (
                   <div className="space-y-0.5 mt-0.5">
-                    {accessibleTabs.filter(t => t.group === "PLOTTING").map((sub) => {
+                    {accessibleTabs.filter(t => t.group === "MANAJEMEN_PONDOK").map((sub) => {
                       const SubIcon = sub.icon;
                       const isSubActive = activeTab === sub.id;
                       return (
@@ -2353,26 +2388,114 @@ export default function App() {
                 )}
 
                 {/* Collapsed Flyout Popover */}
-                {sidebarCollapsed && hoveredFlyout === "manajemen" && (
-                  <div className="absolute left-full top-0 ml-2 z-50 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                {sidebarCollapsed && hoveredFlyout === "manajemen_pondok" && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
                     <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                      Plotting
+                      Plotting Pondok
                     </div>
-                    {accessibleTabs.filter(t => t.group === "PLOTTING").map((sub) => {
+                    {accessibleTabs.filter(t => t.group === "MANAJEMEN_PONDOK").map((sub) => {
                       const SubIcon = sub.icon;
                       const isSubActive = activeTab === sub.id;
                       return (
                         <button
                           key={sub.id}
                           onClick={() => setActiveTab(sub.id as any)}
-                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${
                             isSubActive
                               ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold"
                               : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                           }`}
                         >
-                          <SubIcon className="w-4 h-4 text-slate-400" />
-                          <span>{sub.label}</span>
+                          <SubIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="truncate">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4B. PLOTTING SEKOLAH GROUP (ACCORDION) */}
+            {accessibleTabs.some(t => t.group === "MANAJEMEN_SEKOLAH") && (!sidebarSearchQuery || "plotting sekolah plotting kelas buat jam jadwal pengumuman".includes(sidebarSearchQuery.toLowerCase())) && (
+              <div 
+                className="w-full pt-1.5 relative group/flyout"
+                onMouseEnter={() => setHoveredFlyout("manajemen_sekolah")}
+                onMouseLeave={() => setHoveredFlyout(null)}
+              >
+                {!sidebarCollapsed ? (
+                  <div
+                    onClick={() => setIsManajemenSekolahExpanded(!isManajemenSekolahExpanded)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Plotting Sekolah</span>
+                    {isManajemenSekolahExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full flex justify-center py-1">
+                    <button
+                      onClick={() => setIsManajemenSekolahExpanded(!isManajemenSekolahExpanded)}
+                      className={`p-2 rounded-xl transition-colors ${
+                        ["sekolah_plotting", "sekolah_wali_kelas", "sekolah_mapel", "sekolah_guru_mapel", "sekolah_buat_kelas", "sekolah_jam", "sekolah_jadwal", "sekolah_pengumuman"].includes(activeTab)
+                          ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                          : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                      }`}
+                      title="Plotting Sekolah"
+                    >
+                      <BookMarked className="w-4.5 h-4.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Expanded Inline Submenu */}
+                {!sidebarCollapsed && isManajemenSekolahExpanded && (
+                  <div className="space-y-0.5 mt-0.5">
+                    {accessibleTabs.filter(t => t.group === "MANAJEMEN_SEKOLAH").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center justify-start px-3 py-2 gap-3 rounded-xl transition-all text-xs ${
+                            isSubActive
+                              ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                          }`}
+                        >
+                          <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                          <span className="truncate">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Collapsed Flyout Popover */}
+                {sidebarCollapsed && hoveredFlyout === "manajemen_sekolah" && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                    <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      Manajemen Sekolah
+                    </div>
+                    {accessibleTabs.filter(t => t.group === "MANAJEMEN_SEKOLAH").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                            isSubActive
+                              ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <SubIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="truncate">{sub.label}</span>
                         </button>
                       );
                     })}
@@ -2876,9 +2999,10 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "manajemen_pondok" && (
+            {(activeTab === "pondok_sesi" || activeTab === "manajemen_sesi") && (
               <div className="w-full">
                 <ManajemenPondokPanel
+                  initialSubTab="sesi"
                   students={displayedStudents}
                   rooms={rooms}
                   setRooms={setRooms}
@@ -2892,9 +3016,143 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "manajemen_sekolah" && (
+            {(activeTab === "pondok_kamar" || activeTab === "manajemen_pondok") && (
+              <div className="w-full">
+                <ManajemenPondokPanel
+                  initialSubTab="kamar"
+                  students={displayedStudents}
+                  rooms={rooms}
+                  setRooms={setRooms}
+                  recitationClasses={recitationClasses}
+                  setRecitationClasses={setRecitationClasses}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "pondok_pengajian_plotting" && (
+              <div className="w-full">
+                <ManajemenPondokPanel
+                  initialSubTab="pengajian"
+                  students={displayedStudents}
+                  rooms={rooms}
+                  setRooms={setRooms}
+                  recitationClasses={recitationClasses}
+                  setRecitationClasses={setRecitationClasses}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "pondok_wali_kamar" && (
+              <div className="w-full">
+                <PlottingWaliKamarPanel rooms={rooms} />
+              </div>
+            )}
+
+            {activeTab === "pondok_guru" && (
+              <div className="w-full">
+                <PlottingGuruPondokPanel />
+              </div>
+            )}
+
+            {activeTab === "pondok_kantin" && (
+              <div className="w-full">
+                <ManajemenPondokPanel
+                  initialSubTab="kantin"
+                  students={displayedStudents}
+                  rooms={rooms}
+                  setRooms={setRooms}
+                  recitationClasses={recitationClasses}
+                  setRecitationClasses={setRecitationClasses}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {(activeTab === "sekolah_plotting" || activeTab === "manajemen_sekolah") && (
               <div className="w-full">
                 <ManajemenSekolahPanel
+                  initialSubTab="plotting"
+                  students={displayedStudents}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "sekolah_wali_kelas" && (
+              <div className="w-full">
+                <PlottingWaliKelasPanel schoolClasses={schoolClasses} />
+              </div>
+            )}
+
+            {activeTab === "sekolah_mapel" && (
+              <div className="w-full">
+                <MasterMataPelajaranPanel />
+              </div>
+            )}
+
+            {activeTab === "sekolah_guru_mapel" && (
+              <div className="w-full">
+                <PlottingGuruMapelPanel schoolClasses={schoolClasses} />
+              </div>
+            )}
+
+            {activeTab === "sekolah_buat_kelas" && (
+              <div className="w-full">
+                <ManajemenSekolahPanel
+                  initialSubTab="buat_kelas"
+                  students={displayedStudents}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "sekolah_jam" && (
+              <div className="w-full">
+                <ManajemenSekolahPanel
+                  initialSubTab="jam_pelajaran"
+                  students={displayedStudents}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "sekolah_jadwal" && (
+              <div className="w-full">
+                <ManajemenSekolahPanel
+                  initialSubTab="jadwal_pelajaran"
+                  students={displayedStudents}
+                  schoolClasses={schoolClasses}
+                  setSchoolClasses={setSchoolClasses}
+                  metadataMap={metadataMap}
+                  onAssignMetadata={handleAssignMetadata}
+                />
+              </div>
+            )}
+
+            {activeTab === "sekolah_pengumuman" && (
+              <div className="w-full">
+                <ManajemenSekolahPanel
+                  initialSubTab="pengumuman"
                   students={displayedStudents}
                   schoolClasses={schoolClasses}
                   setSchoolClasses={setSchoolClasses}
@@ -3384,24 +3642,67 @@ export default function App() {
                 </div>
               )}
 
-              {/* PLOTTING GROUP */}
-              {accessibleTabs.some(t => t.group === "PLOTTING") && (
+              {/* PLOTTING PONDOK GROUP */}
+              {accessibleTabs.some(t => t.group === "MANAJEMEN_PONDOK") && (
                 <div className="pt-1.5">
                   <div
-                    onClick={() => setIsManajemenExpanded(!isManajemenExpanded)}
+                    onClick={() => setIsManajemenPondokExpanded(!isManajemenPondokExpanded)}
                     className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
                   >
-                    <span>Plotting</span>
-                    {isManajemenExpanded ? (
+                    <span>Plotting Pondok</span>
+                    {isManajemenPondokExpanded ? (
                       <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
                     ) : (
                       <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                     )}
                   </div>
 
-                  {isManajemenExpanded && (
+                  {isManajemenPondokExpanded && (
                     <div className="space-y-0.5 mt-0.5">
-                      {accessibleTabs.filter(t => t.group === "PLOTTING").map((sub) => {
+                      {accessibleTabs.filter(t => t.group === "MANAJEMEN_PONDOK").map((sub) => {
+                        const SubIcon = sub.icon;
+                        const isSubActive = activeTab === sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            onClick={() => {
+                              setActiveTab(sub.id as any);
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs ${
+                              isSubActive
+                                ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                                : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                            <span className="truncate">{sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PLOTTING SEKOLAH GROUP */}
+              {accessibleTabs.some(t => t.group === "MANAJEMEN_SEKOLAH") && (
+                <div className="pt-1.5">
+                  <div
+                    onClick={() => setIsManajemenSekolahExpanded(!isManajemenSekolahExpanded)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Plotting Sekolah</span>
+                    {isManajemenSekolahExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+
+                  {isManajemenSekolahExpanded && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {accessibleTabs.filter(t => t.group === "MANAJEMEN_SEKOLAH").map((sub) => {
                         const SubIcon = sub.icon;
                         const isSubActive = activeTab === sub.id;
                         return (
