@@ -64,18 +64,65 @@ export default function JurnalPengajianPanel({
       const { data: materiData } = await supabase.from("materi_pengajian").select("*").order("urutan", { ascending: true });
       if (materiData) setMateriList(materiData);
 
-      // Fetch Ustaz (Pengguna with peran_utama/role/tugas_tambahan containing 'guru' or 'pengasuh')
-      const { data: penggunaData } = await supabase.from("pengguna").select("*");
-      if (penggunaData) {
-        const filteredUstaz = penggunaData.map(u => ({
-          ...u,
-          nama: u.nama_lengkap || u.nama || u.username
-        })).filter(u => {
-          const r = String(u.peran_utama || u.role || "").toLowerCase();
-          const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
-          return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
-        });
-        setUstazList(filteredUstaz);
+      // Fetch Ustaz (Plotted Guru Pondok joined with Guru & Pengguna)
+      try {
+        const { data: dbPlot } = await supabase.from("plotting_guru_pondok").select("*");
+        const { data: dbGuru } = await supabase.from("guru").select("*");
+        const { data: dbPengguna } = await supabase.from("pengguna").select("*");
+
+        if (dbPlot && dbGuru && dbPengguna) {
+          const mappedUstaz: any[] = [];
+          dbPlot.forEach(plot => {
+            const matchedGuru = dbGuru.find(g => String(g.id) === String(plot.guru_id));
+            if (matchedGuru) {
+              const matchedUser = dbPengguna.find(u => String(u.id) === String(matchedGuru.pengguna_id));
+              const resolvedName = matchedUser?.nama_lengkap || matchedGuru.nama_lengkap || matchedUser?.nama || "Guru Pondok";
+              const penggunaId = matchedUser?.id || matchedGuru.pengguna_id;
+              if (penggunaId) {
+                mappedUstaz.push({
+                  id: String(penggunaId),
+                  nama: resolvedName,
+                  username: matchedUser?.username || ""
+                });
+              }
+            }
+          });
+
+          // Sort alphabetically by name
+          mappedUstaz.sort((a, b) => a.nama.localeCompare(b.nama));
+          
+          if (mappedUstaz.length > 0) {
+            setUstazList(mappedUstaz);
+          } else {
+            // Fallback to pengguna if mapping is empty
+            const filteredUstaz = dbPengguna.filter(u => {
+              const r = String(u.peran_utama || u.role || "").toLowerCase();
+              const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
+              return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
+            }).map(u => ({
+              id: String(u.id),
+              nama: u.nama_lengkap || u.nama || u.username,
+              username: u.username
+            }));
+            filteredUstaz.sort((a, b) => a.nama.localeCompare(b.nama));
+            setUstazList(filteredUstaz);
+          }
+        } else if (dbPengguna) {
+          // Fallback if plot/guru tables aren't accessible or empty
+          const filteredUstaz = dbPengguna.filter(u => {
+            const r = String(u.peran_utama || u.role || "").toLowerCase();
+            const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
+            return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
+          }).map(u => ({
+            id: String(u.id),
+            nama: u.nama_lengkap || u.nama || u.username,
+            username: u.username
+          }));
+          filteredUstaz.sort((a, b) => a.nama.localeCompare(b.nama));
+          setUstazList(filteredUstaz);
+        }
+      } catch (err) {
+        console.warn("Error loading plotted ustaz list:", err);
       }
     };
     fetchData();
