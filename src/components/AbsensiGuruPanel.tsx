@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   MapPin, CheckCircle, XCircle, AlertTriangle, Crosshair, Save, Settings,
   User, Phone, Calendar, Camera, IdCard, Search, Edit, Plus, Clock, RefreshCw, Eye, Sparkles,
-  BookOpen, ClipboardList, Trash2, Printer, Check, FileText, Users, ChevronRight, Upload, Info
+  BookOpen, ClipboardList, Trash2, Printer, Check, FileText, Users, ChevronRight, Upload, Info,
+  GraduationCap, Database, Shield
 } from "lucide-react";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
@@ -36,26 +37,42 @@ function deg2rad(deg: number) {
 
 interface AbsensiGuruPanelProps {
   currentUser?: { username: string; role: string; name: string; gender?: string } | null;
+  initialSubTab?: "absensi" | "mengajar" | "semua_guru";
+  onSubTabChange?: (tab: "absensi" | "mengajar" | "semua_guru") => void;
 }
 
 interface GuruSekolahProfile {
-  id?: number;
-  username: string;
-  nama_lengkap: string;
-  nik: string;
-  jenis_kelamin: "L" | "P";
-  tempat_lahir: string;
-  tanggal_lahir: string;
-  alamat_pribadi: string;
-  nomor_seluler: string;
-  foto_diri: string;
+  id?: string; // uuid primary key dari tabel 'guru'
+  created_at?: string; // timestamptz
+  nama_lengkap: string; // text NOT NULL
+  jenis_kelamin: string; // text ('L' | 'P')
+  nik?: string;
+  tempat_lahir?: string;
+  tanggal_lahir?: string;
+  alamat_pribadi?: string;
+  nomor_seluler?: string;
+  nomor_hp?: string; // text
+  kategori_guru: string; // text
+  pengguna_id?: string; // uuid foreign key ke tabel 'pengguna'
+  username?: string;
+  foto_diri?: string;
   mata_pelajaran?: string;
-  created_at?: string;
 }
 
-export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps) {
+export default function AbsensiGuruPanel({ currentUser, initialSubTab = "absensi", onSubTabChange }: AbsensiGuruPanelProps) {
   // Navigation sub-tab
-  const [activeSubTab, setActiveSubTab] = useState<"absensi" | "mengajar" | "semua_guru">("absensi");
+  const [activeSubTab, setActiveSubTab] = useState<"absensi" | "mengajar" | "semua_guru">(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab && initialSubTab !== activeSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  const handleSelectSubTab = (tab: "absensi" | "mengajar" | "semua_guru") => {
+    setActiveSubTab(tab);
+    onSubTabChange?.(tab);
+  };
 
   // Location/Presence State
   const [location, setLocation] = useState<{lat: number, lng: number, accuracy: number} | null>(null);
@@ -70,16 +87,15 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   const [configLng, setConfigLng] = useState(schoolLocation.longitude.toString());
   const [configRadius, setConfigRadius] = useState(schoolLocation.radiusMeters.toString());
 
-  // Profile State
+  // Profile State (Menyesuaikan dengan tabel database 'guru')
   const [profile, setProfile] = useState<GuruSekolahProfile>({
-    username: currentUser?.username || "",
+    id: undefined,
     nama_lengkap: currentUser?.name || "",
-    nik: "",
-    jenis_kelamin: "L",
-    tempat_lahir: "",
-    tanggal_lahir: "",
-    alamat_pribadi: "",
-    nomor_seluler: "",
+    jenis_kelamin: currentUser?.gender === "P" ? "P" : "L",
+    nomor_hp: "",
+    kategori_guru: currentUser?.role === "guru pondok" ? "Guru Pondok" : "Guru SMP",
+    pengguna_id: undefined,
+    username: currentUser?.username || "",
     foto_diri: "",
     mata_pelajaran: ""
   });
@@ -659,26 +675,77 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   const fetchMyProfile = async () => {
     if (!currentUser?.username) return;
     try {
-      // Try table 'guru' first
-      const { data: guruData } = await supabase
-        .from("guru")
-        .select("*")
-        .eq("username", currentUser.username)
-        .maybeSingle();
+      // 1. Dapatkan data akun pengguna dari tabel 'pengguna' untuk mendapatkan pengguna_id (UUID)
+      let penggunaId: string | undefined = undefined;
+      let dbUser: any = null;
+
+      try {
+        const { data: userData } = await supabase
+          .from("pengguna")
+          .select("id, username, nama, nama_lengkap, gender, no_hp, peran_utama")
+          .eq("username", currentUser.username)
+          .maybeSingle();
+        if (userData) {
+          dbUser = userData;
+          penggunaId = userData.id;
+        }
+      } catch (e) {
+        console.warn("Notice checking pengguna table:", e);
+      }
+
+      if (!penggunaId && (currentUser as any)?.id) {
+        penggunaId = String((currentUser as any).id);
+      }
+
+      // 2. Cari data guru dari tabel 'guru' (Kolom: id, created_at, nama_lengkap, jenis_kelamin, nomor_hp, kategori_guru, pengguna_id)
+      let guruData: any = null;
+
+      // Cari berdasarkan pengguna_id
+      if (penggunaId) {
+        const { data } = await supabase
+          .from("guru")
+          .select("*")
+          .eq("pengguna_id", penggunaId)
+          .maybeSingle();
+        if (data) {
+          guruData = data;
+        }
+      }
+
+      // Jika belum ketemu, cari berdasarkan kesesuaian nama_lengkap
+      if (!guruData) {
+        const targetName = dbUser?.nama_lengkap || dbUser?.nama || currentUser.name;
+        if (targetName) {
+          const { data } = await supabase
+            .from("guru")
+            .select("*")
+            .ilike("nama_lengkap", targetName.trim())
+            .maybeSingle();
+          if (data) {
+            guruData = data;
+          }
+        }
+      }
+
+      const localProfileKey = `guru_profile_${currentUser.username}`;
+      const cached = localStorage.getItem(localProfileKey);
+      let localCachedObj: any = {};
+      if (cached) {
+        try { localCachedObj = JSON.parse(cached); } catch {}
+      }
 
       if (guruData) {
-        const localProfileKey = `guru_profile_${currentUser.username}`;
-        const cached = localStorage.getItem(localProfileKey);
-        let localMapel = "";
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            localMapel = parsed.mata_pelajaran || "";
-          } catch {}
-        }
-        const mergedData = {
-          ...guruData,
-          mata_pelajaran: guruData.mata_pelajaran || localMapel || ""
+        const mergedData: GuruSekolahProfile = {
+          id: guruData.id,
+          created_at: guruData.created_at,
+          nama_lengkap: guruData.nama_lengkap || currentUser.name || "",
+          jenis_kelamin: (guruData.jenis_kelamin === "P" || guruData.jenis_kelamin === "Perempuan") ? "P" : "L",
+          nomor_hp: guruData.nomor_hp || dbUser?.no_hp || localCachedObj.nomor_hp || "",
+          kategori_guru: guruData.kategori_guru || dbUser?.peran_utama || (currentUser.role === "guru pondok" ? "Guru Pondok" : "Guru SMP"),
+          pengguna_id: guruData.pengguna_id || penggunaId,
+          username: currentUser.username,
+          foto_diri: localCachedObj.foto_diri || "",
+          mata_pelajaran: localCachedObj.mata_pelajaran || ""
         };
         setProfile(mergedData);
         setProfileDbError(false);
@@ -686,119 +753,101 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         return;
       }
 
-      // Secondary fallback: 'guru SMP'
-      const { data, error } = await supabase
-        .from("guru SMP")
-        .select("*")
-        .eq("username", currentUser.username)
-        .maybeSingle();
-
-      if (error) {
-        if (error.code === "PGRST116" || error.message?.includes("relation \"guru_sekolah\" does not exist")) {
-          setProfileDbError(true);
-        } else {
-          console.warn("Error fetching profile:", error.message);
-        }
-      } else if (data) {
-        const localProfileKey = `guru_profile_${currentUser.username}`;
-        const cached = localStorage.getItem(localProfileKey);
-        let localMapel = "";
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            localMapel = parsed.mata_pelajaran || "";
-          } catch {}
-        }
-        const mergedData = {
-          ...data,
-          mata_pelajaran: data.mata_pelajaran || localMapel || ""
-        };
-        setProfile(mergedData);
-        setProfileDbError(false);
-        localStorage.setItem(localProfileKey, JSON.stringify(mergedData));
-      }
+      // Default jika belum ada baris di tabel 'guru'
+      const fallbackProfile: GuruSekolahProfile = {
+        id: undefined,
+        nama_lengkap: dbUser?.nama_lengkap || dbUser?.nama || currentUser.name || "",
+        jenis_kelamin: (dbUser?.gender === "P" || currentUser.gender === "P") ? "P" : "L",
+        nomor_hp: dbUser?.no_hp || localCachedObj.nomor_hp || "",
+        kategori_guru: dbUser?.peran_utama || (currentUser.role === "guru pondok" ? "Guru Pondok" : "Guru SMP"),
+        pengguna_id: penggunaId,
+        username: currentUser.username,
+        foto_diri: localCachedObj.foto_diri || "",
+        mata_pelajaran: localCachedObj.mata_pelajaran || ""
+      };
+      setProfile(fallbackProfile);
+      setProfileDbError(false);
     } catch (err: any) {
-      console.warn("Network error fetching profile:", err);
+      console.warn("Network error fetching guru profile:", err);
       setProfileDbError(true);
     }
   };
 
   const fetchAllProfiles = async () => {
     try {
-      let combinedMap = new Map<string, any>();
-
-      // 1. Fetch from 'guru' table
-      const { data: guruData } = await supabase
+      // 1. Ambil semua baris dari tabel 'guru' (id, created_at, nama_lengkap, jenis_kelamin, nomor_hp, kategori_guru, pengguna_id)
+      const { data: guruData, error: guruErr } = await supabase
         .from("guru")
         .select("*")
         .order("nama_lengkap", { ascending: true });
 
+      // 2. Ambil data akun pengguna dari tabel 'pengguna' untuk tautan profil
+      let penggunaData: any[] = [];
+      try {
+        const { data: pData } = await supabase
+          .from("pengguna")
+          .select("id, username, nama, nama_lengkap, gender, no_hp, peran_utama");
+        if (pData) penggunaData = pData;
+      } catch (e) {
+        console.warn("Notice fetching pengguna table:", e);
+      }
+
+      const pMap = new Map<string, any>();
+      penggunaData.forEach((p: any) => {
+        if (p.id) pMap.set(p.id, p);
+        if (p.username) pMap.set(p.username.toLowerCase(), p);
+      });
+
+      let combinedMap = new Map<string, GuruSekolahProfile>();
+
       if (guruData && guruData.length > 0) {
         guruData.forEach((g: any) => {
-          const key = (g.username || "").toLowerCase() || (g.pengguna_id ? `uid_${g.pengguna_id}` : `guru_${g.id}`);
+          const linkedPengguna = g.pengguna_id ? pMap.get(g.pengguna_id) : null;
+          const uname = linkedPengguna?.username || "";
+          const key = g.id || (g.pengguna_id ? `uid_${g.pengguna_id}` : (g.nama_lengkap || "").toLowerCase());
           combinedMap.set(key, {
-            ...g,
-            jenis_kelamin: g.jenis_kelamin || "L",
-            nomor_seluler: g.nomor_hp || g.nomor_seluler || g.no_hp || ""
+            id: g.id,
+            created_at: g.created_at,
+            nama_lengkap: g.nama_lengkap || linkedPengguna?.nama_lengkap || linkedPengguna?.nama || "-",
+            jenis_kelamin: (g.jenis_kelamin === "P" || g.jenis_kelamin === "Perempuan" || linkedPengguna?.gender === "P") ? "P" : "L",
+            nomor_hp: g.nomor_hp || linkedPengguna?.no_hp || "",
+            kategori_guru: g.kategori_guru || linkedPengguna?.peran_utama || "Guru SMP",
+            pengguna_id: g.pengguna_id,
+            username: uname,
+            foto_diri: "",
+            mata_pelajaran: ""
           });
         });
-      } else {
-        // Fallback to guru_sekolah if guru table empty
-        const { data: gsData } = await supabase
-          .from("guru SMP")
-          .select("*")
-          .order("nama_lengkap", { ascending: true });
-        if (gsData) {
-          gsData.forEach((g: any) => {
-            const key = (g.username || "").toLowerCase() || `gs_${g.id}`;
-            combinedMap.set(key, g);
-          });
-        }
       }
 
-      // 2. Fetch from 'pengguna' table for teachers
-      const { data: penggunaData } = await supabase
-        .from("pengguna")
-        .select("*");
+      // Tambahkan guru dari tabel pengguna yang belum memiliki entri di tabel guru
+      penggunaData.forEach((u: any) => {
+        const isTeacher =
+          u.peran_utama === "guru_pondok" ||
+          u.peran_utama === "guru_sekolah" ||
+          u.peran_utama === "guru SMP" ||
+          (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
 
-      if (penggunaData && penggunaData.length > 0) {
-        penggunaData.forEach((u: any) => {
-          const isTeacher =
-            u.peran_utama === "guru_pondok" ||
-            u.peran_utama === "guru_sekolah" ||
-            u.role === "guru pondok" ||
-            u.role === "guru SMP" ||
-            (u.jabatan && (u.jabatan.toLowerCase().includes("guru") || u.jabatan.toLowerCase().includes("ustadz")));
-
-          if (isTeacher && u.username) {
-            const key = u.username.toLowerCase();
-            const existing = combinedMap.get(key) || (u.id ? combinedMap.get(`uid_${u.id}`) : undefined);
-            if (existing) {
-              combinedMap.set(key, {
-                ...existing,
-                username: u.username,
-                nama_lengkap: existing.nama_lengkap || u.nama_lengkap || u.nama || u.username,
-                jenis_kelamin: existing.jenis_kelamin || u.gender || "L",
-                role: u.peran_utama || u.role || existing.role || "guru SMP",
-                bagian: u.bagian || existing.bagian || "sekolah",
-                jabatan: u.jabatan || existing.jabatan || "Guru Pengajar"
-              });
-            } else {
-              combinedMap.set(key, {
-                id: u.id,
-                username: u.username,
-                nama_lengkap: u.nama_lengkap || u.nama || u.username,
-                jenis_kelamin: u.gender || "L",
-                mata_pelajaran: u.tugas_mapel || "",
-                nomor_seluler: u.no_hp || "",
-                role: u.peran_utama || u.role || "guru SMP",
-                bagian: u.bagian || "sekolah",
-                jabatan: u.jabatan || "Guru Pengajar"
-              });
-            }
+        if (isTeacher) {
+          const alreadyExists = Array.from(combinedMap.values()).some(
+            c => c.pengguna_id === u.id || (u.username && c.username?.toLowerCase() === u.username.toLowerCase())
+          );
+          if (!alreadyExists) {
+            const key = `pengguna_${u.id}`;
+            combinedMap.set(key, {
+              id: undefined,
+              nama_lengkap: u.nama_lengkap || u.nama || u.username,
+              jenis_kelamin: u.gender === "P" ? "P" : "L",
+              nomor_hp: u.no_hp || "",
+              kategori_guru: u.peran_utama === "guru_pondok" ? "Guru Pondok" : "Guru SMP",
+              pengguna_id: u.id,
+              username: u.username,
+              foto_diri: "",
+              mata_pelajaran: ""
+            });
           }
-        });
-      }
+        }
+      });
 
       const listProfiles = Array.from(combinedMap.values());
       if (listProfiles.length > 0) {
@@ -977,142 +1026,178 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     fetchHistoryData();
   };
 
-  // Profile Save Handler
+  // Profile Save Handler (Menyesuaikan dengan tabel database 'guru')
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
 
-    const localProfileKey = `guru_profile_${currentUser?.username || "unknown"}`;
-
-    if (!profile.nama_lengkap) {
+    if (!profile.nama_lengkap || !profile.nama_lengkap.trim()) {
       MySwal.fire({
         icon: 'error',
         title: 'Validasi Gagal',
-        text: 'Nama Lengkap wajib diisi.'
+        text: 'Nama Lengkap pendidik wajib diisi.'
       });
       setIsSavingProfile(false);
       return;
     }
-
-    if (!profile.id || !/^\d+$/.test(String(profile.id))) {
-      MySwal.fire({
-        icon: 'warning',
-        title: 'Validasi NIK',
-        text: 'NIK harus tepat 16 digit angka.',
-      });
-      setIsSavingProfile(false);
-      return;
-    }
-
-    // Save locally
-    localStorage.setItem(localProfileKey, JSON.stringify(profile));
-
-    // Update all list local
-    const savedAllProfiles = localStorage.getItem("guru_sekolah_all_profiles");
-    let listProfiles: GuruSekolahProfile[] = [];
-    if (savedAllProfiles) {
-      try {
-        listProfiles = JSON.parse(savedAllProfiles);
-      } catch {}
-    }
-    const index = listProfiles.findIndex(p => p.username === profile.username);
-    if (index >= 0) {
-      listProfiles[index] = profile;
-    } else {
-      listProfiles.push(profile);
-    }
-    localStorage.setItem("guru_sekolah_all_profiles", JSON.stringify(listProfiles));
-    setAllProfiles(listProfiles);
 
     try {
-      const payload: any = {
-        username: profile.username,
-        nama_lengkap: profile.nama_lengkap,
-        nik: profile.id,
-        jenis_kelamin: profile.jenis_kelamin,
-        tempat_lahir: profile.tempat_lahir,
-        tanggal_lahir: profile.tanggal_lahir,
-        alamat_pribadi: profile.alamat_pribadi,
-        nomor_seluler: profile.nomor_seluler,
-        foto_diri: profile.foto_diri,
-        mata_pelajaran: profile.mata_pelajaran || ""
-      };
-
-      // Upsert to primary 'guru' table
-      const guruPayload = {
-        username: profile.username,
-        nama_lengkap: profile.nama_lengkap,
-        nik: profile.id,
-        jenis_kelamin: profile.jenis_kelamin,
-        tempat_lahir: profile.tempat_lahir,
-        tanggal_lahir: profile.tanggal_lahir,
-        alamat_pribadi: profile.alamat_pribadi,
-        nomor_seluler: profile.nomor_seluler,
-        foto_diri: profile.foto_diri
-      };
-      await supabase.from("guru").upsert([guruPayload], { onConflict: "username" });
-
-      let { error } = await supabase
-        .from("guru SMP")
-        .upsert([payload], { onConflict: "username" });
-
-      if (error && (error.message?.includes("column") || error.message?.includes("mata_pelajaran"))) {
-        console.warn("Retrying profile upsert without mata_pelajaran column...");
-        const fallbackPayload = { ...payload };
-        delete fallbackPayload.mata_pelajaran;
-        const retryResult = await supabase
-          .from("guru SMP")
-          .upsert([fallbackPayload], { onConflict: "username" });
-        error = retryResult.error;
+      // 1. Pastikan pengguna_id (UUID) terhubung jika ada akun login
+      let linkedPenggunaId = profile.pengguna_id;
+      if (!linkedPenggunaId && currentUser?.username) {
+        const { data: dbUser } = await supabase
+          .from("pengguna")
+          .select("id")
+          .eq("username", currentUser.username)
+          .maybeSingle();
+        if (dbUser?.id) {
+          linkedPenggunaId = dbUser.id;
+        } else if ((currentUser as any)?.id) {
+          linkedPenggunaId = String((currentUser as any).id);
+        }
       }
 
-      if (error) {
-        console.warn("Failed to sync profile to Supabase:", error.message);
-        if (error.message?.includes("relation \"guru_sekolah\" does not exist")) {
-          setProfileDbError(true);
-          MySwal.fire({
-            icon: 'success',
-            title: 'Tersimpan Lokal (Simulasi)',
-            text: 'Tabel guru_sekolah belum ada di Supabase. Profil berhasil disimpan sementara di browser Anda.',
-            confirmButtonColor: '#0c66e4'
-          });
-          setIsEditing(false);
-          setIsEditingProfileModal(false);
+      // 2. Siapkan payload sesuai kolom persis tabel 'guru':
+      // nama_lengkap, jenis_kelamin, nomor_hp, kategori_guru, pengguna_id
+      const guruPayload: {
+        nama_lengkap: string;
+        jenis_kelamin: string;
+        nomor_hp: string | null;
+        kategori_guru: string;
+        pengguna_id?: string | null;
+      } = {
+        nama_lengkap: profile.nama_lengkap.trim(),
+        jenis_kelamin: profile.jenis_kelamin || "L",
+        nomor_hp: profile.nomor_hp ? profile.nomor_hp.trim() : null,
+        kategori_guru: profile.kategori_guru ? profile.kategori_guru.trim() : "Guru SMP"
+      };
+
+      if (linkedPenggunaId) {
+        guruPayload.pengguna_id = linkedPenggunaId;
+      }
+
+      let savedGuruId = profile.id;
+      let saveError: any = null;
+
+      // 3. Simpan ke tabel 'guru' di Supabase
+      if (savedGuruId) {
+        // Update berdasarkan ID UUID yang sudah ada
+        const { error } = await supabase
+          .from("guru")
+          .update(guruPayload)
+          .eq("id", savedGuruId);
+        saveError = error;
+      } else if (linkedPenggunaId) {
+        // Cek apakah data guru dengan pengguna_id ini sudah ada di database
+        const { data: existingGuru } = await supabase
+          .from("guru")
+          .select("id")
+          .eq("pengguna_id", linkedPenggunaId)
+          .maybeSingle();
+
+        if (existingGuru?.id) {
+          savedGuruId = existingGuru.id;
+          const { error } = await supabase
+            .from("guru")
+            .update(guruPayload)
+            .eq("id", existingGuru.id);
+          saveError = error;
         } else {
-          MySwal.fire({
-            icon: 'error',
-            title: 'Gagal Sinkronisasi Cloud',
-            text: 'Data disimpan lokal namun gagal disimpan ke Supabase: ' + error.message,
-            confirmButtonColor: '#ef4444'
-          });
+          // Insert baris baru ke tabel guru
+          const { data: inserted, error } = await supabase
+            .from("guru")
+            .insert([guruPayload])
+            .select();
+          saveError = error;
+          if (inserted && inserted[0]?.id) {
+            savedGuruId = inserted[0].id;
+          }
         }
       } else {
+        // Insert data guru baru
+        const { data: inserted, error } = await supabase
+          .from("guru")
+          .insert([guruPayload])
+          .select();
+        saveError = error;
+        if (inserted && inserted[0]?.id) {
+          savedGuruId = inserted[0].id;
+        }
+      }
+
+      // Sinkronkan nama dan no_hp ke tabel pengguna jika akun login terhubung
+      if (linkedPenggunaId) {
+        try {
+          await supabase
+            .from("pengguna")
+            .update({
+              nama_lengkap: profile.nama_lengkap.trim(),
+              nama: profile.nama_lengkap.trim(),
+              gender: profile.jenis_kelamin,
+              no_hp: profile.nomor_hp || null
+            })
+            .eq("id", linkedPenggunaId);
+        } catch (syncErr) {
+          console.warn("Notice syncing to pengguna table:", syncErr);
+        }
+      }
+
+      if (saveError) {
+        console.error("Gagal simpan ke tabel guru:", saveError);
+        MySwal.fire({
+          icon: 'error',
+          title: 'Gagal Menyimpan ke Database',
+          text: saveError.message || 'Terjadi kesalahan saat menyimpan data profil ke tabel guru.',
+          confirmButtonColor: '#ef4444'
+        });
+      } else {
         setProfileDbError(false);
+        const updatedProfile: GuruSekolahProfile = {
+          ...profile,
+          id: savedGuruId,
+          pengguna_id: linkedPenggunaId
+        };
+        setProfile(updatedProfile);
+
+        const localProfileKey = `guru_profile_${currentUser?.username || "unknown"}`;
+        localStorage.setItem(localProfileKey, JSON.stringify(updatedProfile));
+
+        // Update list guru lokal
+        const savedAllProfiles = localStorage.getItem("guru_sekolah_all_profiles");
+        let listProfiles: GuruSekolahProfile[] = [];
+        if (savedAllProfiles) {
+          try { listProfiles = JSON.parse(savedAllProfiles); } catch {}
+        }
+        const index = listProfiles.findIndex(p => (savedGuruId && p.id === savedGuruId) || (p.username && p.username === profile.username));
+        if (index >= 0) {
+          listProfiles[index] = updatedProfile;
+        } else {
+          listProfiles.push(updatedProfile);
+        }
+        localStorage.setItem("guru_sekolah_all_profiles", JSON.stringify(listProfiles));
+        setAllProfiles(listProfiles);
+
         MySwal.fire({
           icon: 'success',
-          title: 'Profil Berhasil Diperbarui',
-          text: 'Data profil Anda telah disimpan ke server database.',
+          title: 'Profil Berhasil Disimpan',
+          text: 'Data profil guru berhasil disinkronisasi ke tabel database.',
           timer: 1500,
           showConfirmButton: false
         });
+
         setIsEditing(false);
         setIsEditingProfileModal(false);
         fetchMyProfile();
-        const isAdminUser = currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin' || currentUser?.role === 'pengurus';
-        if (isAdminUser) {
-          fetchAllProfiles();
-        }
+        fetchAllProfiles();
       }
     } catch (err: any) {
-      console.warn("Supabase upsert profile error:", err);
+      console.error("Supabase save profile error:", err);
       MySwal.fire({
-        icon: 'success',
-        title: 'Tersimpan Lokal',
-        text: 'Koneksi bermasalah. Profil berhasil disimpan lokal pada browser ini.',
-        confirmButtonColor: '#0c66e4'
+        icon: 'error',
+        title: 'Terjadi Gangguan Koneksi',
+        text: err.message || 'Gagal menyimpan profil ke server database.',
+        confirmButtonColor: '#ef4444'
       });
-      setIsEditing(false);
-      setIsEditingProfileModal(false);
     } finally {
       setIsSavingProfile(false);
     }
@@ -1199,7 +1284,8 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   // Filter profiles based on search
   const filteredProfiles = allProfiles.filter(p => 
     String(p.nama_lengkap || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(p.nik || "").includes(searchQuery) ||
+    String(p.nomor_hp || "").includes(searchQuery) ||
+    String(p.kategori_guru || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
     String(p.username || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -1208,7 +1294,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       
       {/* HEADER: PROFIL MANDIRI GURU (FULL WIDTH BANNER) */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm relative overflow-hidden">
-        {/* Decorative subtle background gradient/pattern or spark */}
+        {/* Decorative subtle background gradient */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-blue-50/40 via-transparent to-transparent rounded-bl-full pointer-events-none" />
 
         <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -1240,14 +1326,18 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                 <span className="text-[10px] font-black bg-blue-50 text-[#0c66e4] uppercase tracking-wider px-2 py-0.5 rounded-md border border-blue-100 flex items-center gap-1">
                   <Sparkles className="w-2.5 h-2.5" /> Pendidik Resmi
                 </span>
+
+                <span className="text-[10px] font-black bg-indigo-50 text-indigo-700 uppercase tracking-wider px-2 py-0.5 rounded-md border border-indigo-100 flex items-center gap-1">
+                  <GraduationCap className="w-2.5 h-2.5" /> {profile.kategori_guru || "Guru SMP"}
+                </span>
                 
                 {profile.nama_lengkap && profile.id ? (
                   <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 uppercase tracking-wider px-2 py-0.5 rounded-md border border-emerald-100 flex items-center gap-1">
-                    <CheckCircle className="w-2.5 h-2.5" /> Profil Lengkap
+                    <CheckCircle className="w-2.5 h-2.5" /> Terdaftar di Database
                   </span>
                 ) : (
                   <span className="text-[10px] font-black bg-amber-50 text-amber-600 uppercase tracking-wider px-2 py-0.5 rounded-md border border-amber-100 flex items-center gap-1">
-                    <AlertTriangle className="w-2.5 h-2.5" /> Profil Belum Lengkap
+                    <AlertTriangle className="w-2.5 h-2.5" /> Belum Terdaftar di Tabel Guru
                   </span>
                 )}
               </div>
@@ -1258,14 +1348,22 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
               <p className="text-sm font-semibold text-slate-500 mt-1 flex flex-wrap items-center justify-center sm:justify-start gap-y-1 gap-x-3">
                 <span className="flex items-center gap-1">
-                  <span className="text-slate-400">Mapel:</span> 
-                  <span className="font-bold text-[#0c66e4]">{profile.mata_pelajaran || "Semua Mata Pelajaran"}</span>
+                  <span className="text-slate-400">Kategori:</span> 
+                  <span className="font-bold text-[#0c66e4]">{profile.kategori_guru || "Guru SMP"}</span>
                 </span>
                 <span className="hidden sm:inline text-slate-300">•</span>
                 <span className="flex items-center gap-1">
-                  <span className="text-slate-400">Username/ID:</span> 
+                  <span className="text-slate-400">Akun Login:</span> 
                   <span className="font-mono font-bold text-slate-700">{profile.username || currentUser?.username}</span>
                 </span>
+                {profile.pengguna_id && (
+                  <>
+                    <span className="hidden sm:inline text-slate-300">•</span>
+                    <span className="flex items-center gap-1 text-xs text-slate-400 font-mono">
+                      <span>ID Akun: {String(profile.pengguna_id).substring(0, 8)}...</span>
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -1277,7 +1375,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                 onClick={() => setIsEditingProfileModal(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-bold bg-[#0c66e4] hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all shadow-sm hover:shadow cursor-pointer"
               >
-                <Edit className="w-3.5 h-3.5" /> Lengkapi &amp; Ubah Profil
+                <Edit className="w-3.5 h-3.5" /> Ubah Profil Guru
               </button>
 
               {(currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin') && (
@@ -1291,22 +1389,22 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
             </div>
             
             <p className="text-[11px] text-slate-400 font-medium">
-              Absensi Titik GPS &amp; Manajemen Data Diri Guru Terintegrasi
+              Data Profil Guru Sesuai Tabel Database Supabase
             </p>
           </div>
         </div>
 
-        {/* Full Details grid: NIK, WA, Kelamin, dll - "Isinya penuh bukan hanya kartu kecil" */}
+        {/* Full Details grid: Kategori Guru, No HP, Kelamin, Database ID */}
         <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
           <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[#0c66e4] shrink-0">
-              <IdCard className="w-4 h-4" />
+              <GraduationCap className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">NIK KTP</span>
-              <span className="text-xs font-bold text-slate-700 block truncate font-mono">
-                {profile.id || "Belum diisi"}
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kategori Guru</span>
+              <span className="text-xs font-bold text-slate-700 block truncate">
+                {profile.kategori_guru || "Guru SMP"}
               </span>
             </div>
           </div>
@@ -1316,9 +1414,20 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
               <Phone className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">No. WhatsApp</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Nomor HP / WhatsApp</span>
               <span className="text-xs font-bold text-slate-700 block truncate font-mono">
-                {profile.nomor_seluler || "Belum diisi"}
+                {profile.nomor_hp ? (
+                  <a
+                    href={`https://wa.me/${String(profile.nomor_hp).replace(/[^0-9]/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-emerald-600 hover:underline"
+                  >
+                    {profile.nomor_hp}
+                  </a>
+                ) : (
+                  "Belum diisi"
+                )}
               </span>
             </div>
           </div>
@@ -1335,16 +1444,14 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3">
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3" title={profile.id || "Belum ada ID (baru)"}>
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
-              <Calendar className="w-4 h-4" />
+              <Database className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tempat/Tgl Lahir</span>
-              <span className="text-xs font-bold text-slate-700 block truncate">
-                {profile.tempat_lahir || profile.tanggal_lahir 
-                  ? `${profile.tempat_lahir || "-"}, ${profile.tanggal_lahir || "-"}` 
-                  : "Belum diisi"}
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ID Tabel Guru (UUID)</span>
+              <span className="text-xs font-bold text-slate-700 block truncate font-mono">
+                {profile.id ? String(profile.id).substring(0, 13) + '...' : "Otomatis dibuat"}
               </span>
             </div>
           </div>
@@ -1408,44 +1515,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         </div>
       )}
 
-      {/* SUB-TAB NAVIGATION */}
-      <div className="flex flex-col sm:flex-row items-center justify-center p-1.5 bg-slate-100/90 dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-sm max-w-4xl mx-auto gap-1.5 backdrop-blur-sm mb-6">
-        <button
-          onClick={() => setActiveSubTab("absensi")}
-          className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
-            activeSubTab === "absensi"
-              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/40"
-          }`}
-        >
-          <Clock className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "absensi" ? "scale-110" : ""}`} /> 
-          <span>Presensi Kehadiran</span>
-        </button>
-        <button
-          onClick={() => setActiveSubTab("mengajar")}
-          className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
-            activeSubTab === "mengajar"
-              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.01]"
-              : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/40"
-          }`}
-        >
-          <BookOpen className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "mengajar" ? "scale-110" : ""}`} /> 
-          <span>Tab Mengajar</span>
-        </button>
-        {(currentUser?.role === 'admin' || currentUser?.role === 'super admin' || currentUser?.role === 'superadmin' || currentUser?.role === 'pengurus') && (
-          <button
-            onClick={() => setActiveSubTab("semua_guru")}
-            className={`w-full sm:flex-1 py-3 px-5 text-center text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
-              activeSubTab === "semua_guru"
-                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/40"
-            }`}
-          >
-            <Search className={`w-4.5 h-4.5 transition-transform duration-300 ${activeSubTab === "semua_guru" ? "scale-110" : ""}`} /> 
-            <span>Daftar Guru Sekolah</span>
-          </button>
-        )}
-      </div>
+
 
       {/* CONNECTION ALERT FOR GURU_SEKOLAH */}
       {profileDbError && (
@@ -2673,9 +2743,9 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-sm flex items-center gap-2">
-                      <Users className="text-[#0c66e4] w-4.5 h-4.5" /> Jurnal Mengajar Kelas & Guru Sekolah
+                      <Users className="text-[#0c66e4] w-4.5 h-4.5" /> Jurnal Mengajar Guru (Format Lembar Kerja Resmi)
                     </h3>
-                    <p className="text-xs text-slate-500">Kumpulan digital jurnal kelas terintegrasi lintas seluruh guru pengajar.</p>
+                    <p className="text-xs text-slate-500">Rekapitulasi KBM persis format fisik / Excel Jurnal Mengajar Guru.</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2.5">
@@ -2685,91 +2755,250 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                       onChange={(e) => setSelectedJournalClass(e.target.value)}
                       className="px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-200"
                     >
-                      <option value="Semua Kelas">Semua Kelas</option>
+                      <option value="Semua Kelas">-- Pilih Kelas --</option>
                       {Array.from(new Set(journals.map(j => j.kelas).filter(Boolean))).map(cls => (
-                        <option key={cls} value={cls}>{cls}</option>
+                        <option key={cls} value={cls}>Kelas {cls}</option>
                       ))}
                     </select>
 
-                    {/* Teacher Selector Filter */}
+                    {/* Semester Selector */}
                     <select
-                      value={selectedJournalTeacher}
-                      onChange={(e) => setSelectedJournalTeacher(e.target.value)}
+                      value={semester}
+                      onChange={(e) => setSemester(e.target.value)}
                       className="px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-200"
                     >
-                      <option value="Semua Guru">Semua Guru</option>
-                      {Array.from(new Set(journals.map(j => j.guru_nama).filter(Boolean))).map(teach => (
-                        <option key={teach} value={teach}>{teach}</option>
-                      ))}
+                      <option value="Ganjil">Semester Ganjil</option>
+                      <option value="Genap">Semester Genap</option>
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* Jurnal Kelas Table / Document List */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800/80 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/20">
-                  <span className="text-xs font-black text-slate-700 dark:text-slate-300">Arsip Pembelajaran Jurnal Kelas</span>
+              {/* EXCEL / PHYSICAL SHEET CONTAINER */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl overflow-hidden shadow-md">
+                
+                {/* SHEET HEADER TITLE */}
+                <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/40">
+                  <div className="text-center pb-4 border-b border-dashed border-slate-300 dark:border-slate-700">
+                    <h2 className="text-base font-black tracking-widest uppercase text-slate-900 dark:text-slate-100">JURNAL MENGAJAR GURU</h2>
+                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">Al Muttaqin Islamic Boarding School</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4 text-xs font-bold text-slate-700 dark:text-slate-300 max-w-xl">
+                    <div className="flex">
+                      <span className="w-32 text-slate-500">Kelas</span>
+                      <span className="font-black">: {selectedJournalClass === "Semua Kelas" ? "(Semua Kelas)" : selectedJournalClass}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-32 text-slate-500">Semester</span>
+                      <span className="font-black">: {semester}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-32 text-slate-500">Tahun Pelajaran</span>
+                      <span className="font-black">: {tahunAjaran}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TABLE ACCORDING TO PHYSICAL EXCEL FORMAT */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse border border-slate-300 dark:border-slate-700 text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-black text-center border-b border-slate-300 dark:border-slate-700">
+                        <th className="border border-slate-300 dark:border-slate-700 py-3 px-3 w-36">Hari, Tanggal</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-3 px-3 w-24">Jam Ke</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-3 px-3 w-32">Mata Pelajaran</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-3 px-4">Materi Pembelajaran</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-3 px-3 w-40">Keterangan</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-2 px-2" colSpan={3}>
+                          Kehadiran Peserta Didik
+                        </th>
+                      </tr>
+                      <tr className="bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-black text-center text-[11px] border-b border-slate-300 dark:border-slate-700">
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2"></th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2"></th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2"></th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2"></th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2"></th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2 w-10 text-orange-600">S</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2 w-10 text-amber-600">I</th>
+                        <th className="border border-slate-300 dark:border-slate-700 py-1.5 px-2 w-10 text-rose-600">A</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-medium">
+                      {journals
+                        .filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass)
+                        .filter(j => selectedJournalTeacher === "Semua Guru" || j.guru_nama === selectedJournalTeacher)
+                        .map((j, idx) => {
+                          // Extract S, I, A from attendance_summary string e.g. "Hadir: 20, Sakit: 1, Izin: 2, Alfa: 0"
+                          const sumStr = j.attendance_summary || "";
+                          const sMatch = sumStr.match(/Sakit:\s*(\d+)/i);
+                          const iMatch = sumStr.match(/Izin:\s*(\d+)/i);
+                          const aMatch = sumStr.match(/Alfa:\s*(\d+)/i);
+                          const sakitCount = sMatch ? sMatch[1] : "0";
+                          const izinCount = iMatch ? iMatch[1] : "0";
+                          const alpaCount = aMatch ? aMatch[1] : "0";
+
+                          return (
+                            <tr key={j.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-center text-xs">
+                                <div className="font-bold">{j.hari || "-"}</div>
+                                <div className="text-[10px] text-slate-500">{j.tanggal || "-"}</div>
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-center text-xs font-semibold">
+                                {j.jam_pelajaran || "-"}
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-xs font-semibold">
+                                {j.mata_pelajaran || "-"}
+                                <div className="text-[9px] text-slate-400">Guru: {j.guru_nama}</div>
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-4 text-xs">
+                                <div className="font-extrabold text-slate-800 dark:text-slate-200">{j.materi_pokok}</div>
+                                {j.tujuan_pembelajaran && (
+                                  <div className="text-[10px] text-slate-500 mt-0.5">Tujuan: {j.tujuan_pembelajaran}</div>
+                                )}
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-xs text-slate-600 dark:text-slate-300">
+                                {j.kendala ? `Kendala: ${j.kendala}` : (j.evaluasi ? `Eval: ${j.evaluasi}` : "-")}
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-2 text-center text-xs font-bold text-orange-600 bg-orange-50/20">
+                                {sakitCount}
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-2 text-center text-xs font-bold text-amber-600 bg-amber-50/20">
+                                {izinCount}
+                              </td>
+                              <td className="border border-slate-300 dark:border-slate-700 py-3 px-2 text-center text-xs font-bold text-rose-600 bg-rose-50/20">
+                                {alpaCount}
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                      {/* Empty filler rows to match physical sheet look if less than 5 rows */}
+                      {journals.filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass).length === 0 && (
+                        Array.from({ length: 6 }).map((_, i) => (
+                          <tr key={`empty-${i}`} className="h-10">
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-center text-slate-300">-</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-center text-slate-300">-</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-center text-slate-300">-</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-4 text-center text-slate-300">Belum ada entri jurnal KBM untuk kelas ini.</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-3 text-center text-slate-300">-</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-2 text-center text-slate-300">-</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-2 text-center text-slate-300">-</td>
+                            <td className="border border-slate-300 dark:border-slate-700 py-3 px-2 text-center text-slate-300">-</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* FOOTER ACTIONS / EXPORT */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-300 dark:border-slate-800 flex items-center justify-between">
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Menampilkan rekapitulasi sesuai lembar resmi Jurnal Mengajar Guru.
+                  </p>
                   <button
                     onClick={() => {
-                      // print all filtered journals
                       const filtered = journals
-                        .filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass)
-                        .filter(j => selectedJournalTeacher === "Semua Guru" || j.guru_nama === selectedJournalTeacher);
+                        .filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass);
 
                       const printWindow = window.open("", "_blank");
                       if (printWindow) {
                         let htmlContent = `
                           <html>
                             <head>
-                              <title>Cetak Rekap Jurnal Kelas</title>
+                              <title>Cetak Jurnal Mengajar Guru</title>
                               <style>
-                                body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 30px; color: #333; }
-                                .title { text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 25px; }
-                                table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
-                                th, td { border: 1px solid #aaa; padding: 8px; text-align: left; }
-                                th { background-color: #f2f2f2; font-weight: bold; }
-                                .badge { font-weight: bold; color: #1e3a8a; }
+                                body { font-family: 'Times New Roman', Times, serif; padding: 30px; color: #000; }
+                                .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+                                .header h2 { margin: 0; font-size: 18px; text-transform: uppercase; }
+                                .header h4 { margin: 5px 0 0; font-size: 13px; font-weight: normal; }
+                                .meta { margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+                                th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: middle; }
+                                th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
+                                .text-center { text-align: center; }
                               </style>
                             </head>
                             <body>
-                              <div class="title">
-                                <h2>REKAPITULASI JURNAL KELAS & GURU SEKOLAH</h2>
-                                <h4>Al Muttaqin Islamic Boarding School</h4>
-                                <p>Filter: Kelas [${selectedJournalClass}] | Guru [${selectedJournalTeacher}]</p>
+                              <div class="header">
+                                <h2>JURNAL MENGAJAR GURU</h2>
+                                <h4>AL MUTTAQIN ISLAMIC BOARDING SCHOOL</h4>
+                              </div>
+                              <div class="meta">
+                                <div><strong>Kelas</strong> : ${selectedJournalClass === "Semua Kelas" ? "Semua Kelas" : selectedJournalClass}</div>
+                                <div><strong>Semester</strong> : ${semester}</div>
+                                <div><strong>Tahun Pelajaran</strong> : ${tahunAjaran}</div>
                               </div>
                               <table>
                                 <thead>
                                   <tr>
-                                    <th>Tanggal/Hari</th>
-                                    <th>Kelas</th>
-                                    <th>Guru / Mapel</th>
-                                    <th>Materi Pokok</th>
-                                    <th>Tujuan Pembelajaran</th>
-                                    <th>Kehadiran Siswa</th>
-                                    <th>Catatan / Evaluasi</th>
+                                    <th rowspan="2" style="width: 100px;">Hari, Tanggal</th>
+                                    <th rowspan="2" style="width: 60px;">Jam Ke</th>
+                                    <th rowspan="2" style="width: 110px;">Mata Pelajaran</th>
+                                    <th rowspan="2">Materi Pembelajaran</th>
+                                    <th rowspan="2" style="width: 120px;">Keterangan</th>
+                                    <th colspan="3" class="text-center">Kehadiran Peserta Didik</th>
+                                  </tr>
+                                  <tr>
+                                    <th class="text-center" style="width: 35px;">S</th>
+                                    <th class="text-center" style="width: 35px;">I</th>
+                                    <th class="text-center" style="width: 35px;">A</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                         `;
-                        
+
                         filtered.forEach(j => {
+                          const sumStr = j.attendance_summary || "";
+                          const sMatch = sumStr.match(/Sakit:\s*(\d+)/i);
+                          const iMatch = sumStr.match(/Izin:\s*(\d+)/i);
+                          const aMatch = sumStr.match(/Alfa:\s*(\d+)/i);
+                          const sakitCount = sMatch ? sMatch[1] : "0";
+                          const izinCount = iMatch ? iMatch[1] : "0";
+                          const alpaCount = aMatch ? aMatch[1] : "0";
+
                           htmlContent += `
                             <tr>
-                              <td>${j.tanggal}<br/>(${j.hari})</td>
-                              <td><b>Kelas ${j.kelas}</b><br/>${j.jam_pelajaran}</td>
-                              <td><b>${j.guru_nama}</b><br/>Mapel: ${j.mata_pelajaran || "-"}</td>
-                              <td>${j.materi_pokok}</td>
-                              <td>${j.tujuan_pembelajaran || "-"}</td>
-                              <td class="badge">${j.attendance_summary || "-"}</td>
-                              <td><b>Eval:</b> ${j.evaluasi || "-"}<br/><b>Kendala:</b> ${j.kendala || "-"}</td>
+                              <td class="text-center">${j.hari || "-"},<br/>${j.tanggal || "-"}</td>
+                              <td class="text-center">${j.jam_pelajaran || "-"}</td>
+                              <td>${j.mata_pelajaran || "-"}<br/><small>(${j.guru_nama})</small></td>
+                              <td><b>${j.materi_pokok}</b>${j.tujuan_pembelajaran ? '<br/><small>' + j.tujuan_pembelajaran + '</small>' : ''}</td>
+                              <td>${j.kendala || j.evaluasi || "-"}</td>
+                              <td class="text-center">${sakitCount}</td>
+                              <td class="text-center">${izinCount}</td>
+                              <td class="text-center">${alpaCount}</td>
                             </tr>
                           `;
                         });
 
+                        // Add empty rows if less than 8 rows to match physical sheet aesthetic
+                        if (filtered.length < 8) {
+                          for (let i = 0; i < (8 - filtered.length); i++) {
+                            htmlContent += `
+                              <tr style="height: 32px;">
+                                <td></td><td></td><td></td><td></td><td></td><td class="text-center"></td><td class="text-center"></td><td class="text-center"></td>
+                              </tr>
+                            `;
+                          }
+                        }
+
                         htmlContent += `
                                 </tbody>
                               </table>
+                              <div style="margin-top: 40px; display: flex; justify-content: space-between; font-size: 12px;">
+                                <div style="text-align: center;">
+                                  <p>Mengetahui,<br/>Kepala Madrasah / Sekolah</p>
+                                  <br/><br/><br/>
+                                  <p><b>( ......................................... )</b></p>
+                                </div>
+                                <div style="text-align: center;">
+                                  <p>Guru Mata Pelajaran</p>
+                                  <br/><br/><br/>
+                                  <p><b>( ${currentUser?.name || "........................................."} )</b></p>
+                                </div>
+                              </div>
                               <script>window.print();</script>
                             </body>
                           </html>
@@ -2778,72 +3007,12 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                         printWindow.document.close();
                       }
                     }}
-                    className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0c66e4] text-[11px] font-black rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-blue-100/50"
+                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                   >
-                    <Printer className="w-3.5 h-3.5" /> Cetak Rekap Kelas ({
-                      journals
-                        .filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass)
-                        .filter(j => selectedJournalTeacher === "Semua Guru" || j.guru_nama === selectedJournalTeacher)
-                        .length
-                    })
+                    <Printer className="w-4 h-4" /> Eksport PDF / Cetak Lembar Kerja Resmi
                   </button>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse border-spacing-0">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-[10px] uppercase font-black border-b border-slate-100 dark:border-slate-800">
-                        <th className="py-3.5 px-4 w-1/6">Hari / Tanggal</th>
-                        <th className="py-3.5 px-4 w-[12%]">Kelas / Jam</th>
-                        <th className="py-3.5 px-4 w-[20%]">Guru / Mapel</th>
-                        <th className="py-3.5 px-4">Materi Pokok & Tujuan</th>
-                        <th className="py-3.5 px-4 text-center w-[18%]">Keterangan Absensi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {journals
-                        .filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass)
-                        .filter(j => selectedJournalTeacher === "Semua Guru" || j.guru_nama === selectedJournalTeacher)
-                        .map((j) => (
-                          <tr key={j.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/10 transition-colors">
-                            <td className="py-3.5 px-4">
-                              <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{j.tanggal}</span>
-                              <span className="text-[10px] font-bold text-slate-400 block">{j.hari}</span>
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <span className="px-2 py-0.5 bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-slate-300 text-[10px] font-extrabold rounded-lg border border-indigo-100/30">
-                                Kelas {j.kelas}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-bold block mt-1.5">{j.jam_pelajaran}</span>
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <span className="text-xs font-black text-slate-800 dark:text-slate-200 block">{j.guru_nama}</span>
-                              <span className="text-[10px] font-bold text-slate-400 block">Mapel: {j.mata_pelajaran || "-"}</span>
-                            </td>
-                            <td className="py-3.5 px-4 space-y-1">
-                              <p className="text-xs font-black text-slate-800 dark:text-slate-100">{j.materi_pokok}</p>
-                              <p className="text-[11px] text-slate-500 font-medium leading-relaxed">{j.tujuan_pembelajaran || "-"}</p>
-                            </td>
-                            <td className="py-3.5 px-4 text-center">
-                              <span className="inline-block px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 border border-blue-100/30 text-[#0c66e4] dark:text-blue-300 text-[11px] font-extrabold rounded-xl shadow-sm">
-                                {j.attendance_summary || "-"}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      {journals
-                        .filter(j => selectedJournalClass === "Semua Kelas" || j.kelas === selectedJournalClass)
-                        .filter(j => selectedJournalTeacher === "Semua Guru" || j.guru_nama === selectedJournalTeacher)
-                        .length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="text-center py-10 text-slate-400 text-xs">
-                            Tidak ditemukan data jurnal kelas yang cocok dengan kriteria filter saat ini.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
               </div>
             </div>
           )}
@@ -2881,77 +3050,77 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Cari berdasarkan nama lengkap, NIK, atau username..."
+              placeholder="Cari berdasarkan nama lengkap, nomor HP, atau kategori guru..."
             />
           </div>
 
           {/* Grid of Profiles */}
           {filteredProfiles.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredProfiles.map((guru, idx) => (
-                <div key={`absensi-guru-${guru.id || guru.username || idx}-${idx}`} className="border border-slate-150 rounded-xl p-5 hover:shadow-md transition-all space-y-4 bg-slate-50/50">
+                <div key={`absensi-guru-${guru.id || guru.username || idx}-${idx}`} className="border border-slate-200/80 rounded-2xl p-5 hover:shadow-md transition-all space-y-4 bg-white">
                   <div className="flex items-start gap-4">
                     {/* Avatar */}
                     {guru.foto_diri ? (
                       <img 
                         src={guru.foto_diri} 
                         alt={String(guru.nama_lengkap || "")} 
-                        className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-sm"
+                        className="w-16 h-16 rounded-full object-cover border-2 border-slate-100 shadow-sm shrink-0"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <div className="w-20 h-20 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-extrabold text-xl shadow-inner border border-slate-300">
-                        {guru.nama_lengkap ? String(guru.nama_lengkap).charAt(0).toUpperCase() : "?"}
+                      <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-extrabold text-xl shadow-inner border border-blue-100 shrink-0">
+                        {guru.nama_lengkap ? String(guru.nama_lengkap).charAt(0).toUpperCase() : "G"}
                       </div>
                     )}
 
                     {/* Basic Info */}
-                    <div className="space-y-1">
-                      <h4 className="font-extrabold text-slate-800 text-base leading-tight">{guru.nama_lengkap || "-"}</h4>
-                      <p className="text-xs text-slate-400 font-bold tracking-wide uppercase">ID: {guru.username}</p>
-                      <p className="text-xs text-slate-600 font-medium">
-                        Mapel: <span className="font-bold text-[#0c66e4]">{guru.mata_pelajaran || "Semua Mata Pelajaran"}</span>
-                      </p>
-                      
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${
-                          guru.jenis_kelamin === "L" ? "bg-blue-100 text-blue-800" : "bg-pink-100 text-pink-800"
-                        }`}>
-                          {guru.jenis_kelamin === "L" ? "Laki-laki" : "Perempuan"}
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center gap-1">
+                          <GraduationCap className="w-2.5 h-2.5" /> {guru.kategori_guru || "Guru SMP"}
                         </span>
-                        {guru.id && (
-                          <span className="text-[10px] font-mono text-slate-500 bg-white border border-slate-200 px-1.5 rounded">
-                            NIK: {guru.id}
-                          </span>
-                        )}
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                          guru.jenis_kelamin === "P" ? "bg-pink-50 text-pink-700 border border-pink-100" : "bg-blue-50 text-blue-700 border border-blue-100"
+                        }`}>
+                          {guru.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"}
+                        </span>
                       </div>
+
+                      <h4 className="font-extrabold text-slate-800 text-base leading-tight truncate">{guru.nama_lengkap || "-"}</h4>
+                      
+                      {guru.username && (
+                        <p className="text-xs text-slate-400 font-semibold tracking-wide">
+                          Akun: <span className="font-mono text-slate-600">{guru.username}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Detailed profile grid */}
-                  <div className="grid grid-cols-2 gap-3 text-xs pt-3 border-t border-slate-150 text-slate-600 bg-white p-3 rounded-lg border border-slate-100 shadow-inner">
+                  {/* Detailed profile grid matching database schema */}
+                  <div className="grid grid-cols-2 gap-3 text-xs pt-3 border-t border-slate-100 text-slate-600 bg-slate-50/60 p-3 rounded-xl border border-slate-100">
                     <div>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">TTL</p>
-                      <p className="font-semibold text-slate-800">{guru.tempat_lahir || "-"}, {guru.tanggal_lahir ? new Date(guru.tanggal_lahir).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'}) : "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">No. Telepon / WA</p>
-                      {guru.nomor_seluler ? (
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">No. WhatsApp</p>
+                      {guru.nomor_hp ? (
                         <a 
-                          href={`https://wa.me/${String(guru.nomor_seluler || "").replace(/[^0-9]/g, "")}`}
+                          href={`https://wa.me/${String(guru.nomor_hp || "").replace(/[^0-9]/g, "")}`}
                           target="_blank" 
                           rel="noreferrer"
-                          className="font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                          className="font-bold text-emerald-600 hover:underline flex items-center gap-1 mt-0.5"
                         >
-                          <Phone className="w-3 h-3" /> {guru.nomor_seluler}
+                          <Phone className="w-3 h-3 text-emerald-500 shrink-0" /> {guru.nomor_hp}
                         </a>
                       ) : (
-                        <p className="text-slate-500 font-semibold">-</p>
+                        <p className="text-slate-400 font-semibold mt-0.5">-</p>
                       )}
                     </div>
-                    <div className="col-span-2">
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">Alamat Sesuai KTP</p>
-                      <p className="font-semibold text-slate-800 leading-normal">{guru.alamat_pribadi || "-"}</p>
+                    <div>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Kategori Guru</p>
+                      <p className="font-bold text-slate-700 mt-0.5">{guru.kategori_guru || "Guru SMP"}</p>
+                    </div>
+                    <div className="col-span-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                      <span>ID: {guru.id ? String(guru.id).substring(0, 18) + '...' : "Tersimpan Lokal"}</span>
+                      {guru.pengguna_id && <span>User ID: {String(guru.pengguna_id).substring(0, 8)}...</span>}
                     </div>
                   </div>
 
@@ -2968,241 +3137,222 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         </div>
       )}
 
-      {/* MODAL: LENGKAPI / UBAH DATA DIRI */}
+      {/* MODAL: UBAH PROFIL GURU (SESUAI SKEMA TABEL DATABASE GURU) */}
       {isEditingProfileModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto animate-fade-in">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto flex flex-col">
             
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
-              <h3 className="font-extrabold text-slate-800 flex items-center gap-2 text-base">
-                <User className="text-[#0c66e4] w-5 h-5" /> Ubah Profil Mandiri Guru
-              </h3>
+            {/* Modal Header: Clean White with Slate Title and Smooth Close Button */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">
+                  Ubah Profil Guru
+                </h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  Menyesuaikan skema tabel database guru
+                </p>
+              </div>
               <button
                 onClick={() => setIsEditingProfileModal(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-150 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                title="Tutup Modal"
               >
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSaveProfile} className="p-6 space-y-6 text-left">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Foto Diri Upload */}
-                <div className="flex flex-col items-center space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200/60">
-                  <span className="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Foto Diri</span>
-                  <div className="relative w-28 h-28 group">
-                    {isUploadingPhoto ? (
-                      <div className="w-full h-full rounded-full bg-slate-100 border-2 border-slate-200 flex flex-col items-center justify-center text-slate-500">
-                        <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
-                        <span className="text-[9px] mt-1.5 font-bold text-indigo-600 animate-pulse">Uploading...</span>
-                      </div>
-                    ) : profile.foto_diri ? (
-                      <img 
-                        src={profile.foto_diri} 
-                        alt="Preview Foto" 
-                        className="w-full h-full rounded-full object-cover border-4 border-white shadow-md"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-full h-full rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
-                        <Camera className="w-6 h-6 text-slate-300" />
-                        <span className="text-[9px] mt-1 font-semibold">Pilih Foto</span>
-                      </div>
-                    )}
-                    {profile.foto_diri && !isUploadingPhoto && (
-                      <button
-                        type="button"
-                        onClick={() => setProfile(prev => ({ ...prev, foto_diri: "" }))}
-                        className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow"
-                        title="Hapus Foto"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div className="w-full text-center">
+            <form onSubmit={handleSaveProfile} className="p-6 space-y-5 text-left">
+              
+              {/* Photo uploader (Optional helper) */}
+              <div className="flex items-center gap-4 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80">
+                <div className="relative w-16 h-16 shrink-0">
+                  {isUploadingPhoto ? (
+                    <div className="w-full h-full rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center text-slate-500">
+                      <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
+                    </div>
+                  ) : profile.foto_diri ? (
+                    <img 
+                      src={profile.foto_diri} 
+                      alt="Preview Foto" 
+                      className="w-full h-full rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-slate-200"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-blue-50 border-2 border-dashed border-blue-200 flex items-center justify-center text-blue-500">
+                      <User className="w-7 h-7 text-blue-400" />
+                    </div>
+                  )}
+                  {profile.foto_diri && !isUploadingPhoto && (
+                    <button
+                      type="button"
+                      onClick={() => setProfile(prev => ({ ...prev, foto_diri: "" }))}
+                      className="absolute -top-1 -right-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full p-0.5 shadow"
+                      title="Hapus Foto"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-bold text-slate-700 block">Foto Diri (Opsional)</span>
+                  <p className="text-[11px] text-slate-400">Unggah pas foto formal pendidik maksimal 2MB</p>
+                  <div className="mt-2 flex items-center gap-2">
                     <input 
                       type="file" 
                       accept="image/*"
                       onChange={handlePhotoChange}
                       ref={fileInputRef}
                       className="hidden"
-                      id="modal-foto-file-input"
+                      id="modal-guru-foto-input"
                       disabled={isUploadingPhoto}
                     />
                     <label 
-                      htmlFor="modal-foto-file-input"
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 border text-xs font-bold rounded-lg shadow-sm ${
+                      htmlFor="modal-guru-foto-input"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border transition-colors ${
                         isUploadingPhoto 
                           ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed" 
-                          : "bg-white border-slate-300 hover:bg-slate-50 text-slate-700 cursor-pointer"
+                          : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700 cursor-pointer shadow-xs"
                       }`}
                     >
-                      {isUploadingPhoto ? (
-                        <>
-                          <RefreshCw className="w-3 h-3 animate-spin text-slate-400" /> Mengunggah...
-                        </>
-                      ) : (
-                        <>
-                          <Camera className="w-3 h-3" /> Unggah Foto
-                        </>
-                      )}
+                      <Camera className="w-3.5 h-3.5" /> {isUploadingPhoto ? "Mengunggah..." : "Pilih Foto"}
                     </label>
-                    <p className="text-[8px] text-slate-400 mt-1.5">Maksimal file 2MB (JPG/PNG)</p>
-                  </div>
-
-                  {/* Pas Foto URL Fallback */}
-                  <div className="w-full pt-2 border-t border-slate-200 text-left">
-                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Atau Paste URL Foto</label>
-                    <input 
-                      type="text" 
-                      value={profile.foto_diri && !profile.foto_diri.startsWith("data:") ? profile.foto_diri : ""}
-                      onChange={e => setProfile(prev => ({ ...prev, foto_diri: e.target.value }))}
-                      className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="https://example.com/foto.jpg"
-                    />
                   </div>
                 </div>
+              </div>
 
-                {/* Form Inputs */}
-                <div className="md:col-span-2 space-y-4">
-                  
-                  {/* Nama Lengkap */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Nama Lengkap <span className="text-red-500">*</span>
-                    </label>
+              {/* Form Grid 2-cols */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                
+                {/* 1. Nama Lengkap (Required) */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-800 block">
+                    Nama Lengkap <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input 
                       type="text"
                       required
                       value={profile.nama_lengkap}
                       onChange={e => setProfile(prev => ({ ...prev, nama_lengkap: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Masukkan nama lengkap"
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      placeholder="Contoh: Ustadz Ahmad Fauzi, S.Pd."
                     />
                   </div>
+                </div>
 
-                  {/* NIK and Gender */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                        NIK KTP <span className="text-red-500">*</span>
-                      </label>
+                {/* 2. Jenis Kelamin (Segmented Button / Radio Toggle Card) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-800 block">
+                    Jenis Kelamin <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                      profile.jenis_kelamin === "L" 
+                        ? "bg-blue-50 border-blue-500 text-blue-700 shadow-xs" 
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}>
                       <input 
-                        type="text"
-                        required
-                        maxLength={16}
-                        value={profile.id}
-                        onChange={e => setProfile(prev => ({ ...prev, nik: e.target.value.replace(/[^0-9]/g, "") }))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                        placeholder="16 digit angka KTP"
+                        type="radio" 
+                        name="modal_guru_jk" 
+                        checked={profile.jenis_kelamin === "L"} 
+                        onChange={() => setProfile(prev => ({ ...prev, jenis_kelamin: "L" }))}
+                        className="hidden" 
                       />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                        Jenis Kelamin <span className="text-red-500">*</span>
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <label className={`flex items-center justify-center p-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
-                          profile.jenis_kelamin === "L" 
-                            ? "bg-blue-50 border-blue-500 text-blue-700" 
-                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                        }`}>
-                          <input 
-                            type="radio" 
-                            name="modal_jenis_kelamin" 
-                            checked={profile.jenis_kelamin === "L"} 
-                            onChange={() => setProfile(prev => ({ ...prev, jenis_kelamin: "L" }))}
-                            className="hidden" 
-                          />
-                          Laki-laki
-                        </label>
-                        <label className={`flex items-center justify-center p-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
-                          profile.jenis_kelamin === "P" 
-                            ? "bg-pink-50 border-pink-500 text-pink-700" 
-                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                        }`}>
-                          <input 
-                            type="radio" 
-                            name="modal_jenis_kelamin" 
-                            checked={profile.jenis_kelamin === "P"} 
-                            onChange={() => setProfile(prev => ({ ...prev, jenis_kelamin: "P" }))}
-                            className="hidden" 
-                          />
-                          Perempuan
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Mata Pelajaran */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Mata Pelajaran yang Diampu
+                      Laki-laki
                     </label>
+                    <label className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                      profile.jenis_kelamin === "P" 
+                        ? "bg-pink-50 border-pink-500 text-pink-700 shadow-xs" 
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}>
+                      <input 
+                        type="radio" 
+                        name="modal_guru_jk" 
+                        checked={profile.jenis_kelamin === "P"} 
+                        onChange={() => setProfile(prev => ({ ...prev, jenis_kelamin: "P" }))}
+                        className="hidden" 
+                      />
+                      Perempuan
+                    </label>
+                  </div>
+                </div>
+
+                {/* 3. Nomor HP / WhatsApp */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-800 block">
+                    Nomor HP / WhatsApp
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input 
                       type="text"
-                      value={profile.mata_pelajaran || ""}
-                      onChange={e => setProfile(prev => ({ ...prev, mata_pelajaran: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-semibold"
-                      placeholder="Contoh: Matematika, Bahasa Arab, Fiqih"
-                    />
-                  </div>
-
-                  {/* Birthplace and Birthday */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tempat Lahir</label>
-                      <input 
-                        type="text"
-                        value={profile.tempat_lahir}
-                        onChange={e => setProfile(prev => ({ ...prev, tempat_lahir: e.target.value }))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Contoh: Sleman"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tanggal Lahir</label>
-                      <input 
-                        type="date"
-                        value={profile.tanggal_lahir}
-                        onChange={e => setProfile(prev => ({ ...prev, tanggal_lahir: e.target.value }))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Alamat Pribadi */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Alamat Pribadi (Sesuai KTP)</label>
-                    <textarea 
-                      rows={2}
-                      value={profile.alamat_pribadi}
-                      onChange={e => setProfile(prev => ({ ...prev, alamat_pribadi: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Masukkan alamat KTP lengkap"
-                    />
-                  </div>
-
-                  {/* Nomor Seluler */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">No. WhatsApp</label>
-                    <input 
-                      type="text"
-                      value={profile.nomor_seluler}
-                      onChange={e => setProfile(prev => ({ ...prev, nomor_seluler: e.target.value.replace(/[^0-9+]/g, "") }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={profile.nomor_hp || ""}
+                      onChange={e => setProfile(prev => ({ ...prev, nomor_hp: e.target.value.replace(/[^0-9+]/g, "") }))}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
                       placeholder="Contoh: 081234567890"
                     />
                   </div>
-
                 </div>
+
+                {/* 4. Kategori Guru (Select Option) */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-800 block">
+                    Kategori Guru <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <GraduationCap className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <select
+                      value={["Guru SMP", "Guru Pondok", "Guru Madrasah", "Pengajar Tahfidh", "Pengajar Kitab Kuning", "Guru Ekstrakurikuler"].includes(profile.kategori_guru) ? profile.kategori_guru : "Lainnya"}
+                      onChange={(e) => {
+                        if (e.target.value !== "Lainnya") {
+                          setProfile(prev => ({ ...prev, kategori_guru: e.target.value }));
+                        } else {
+                          setProfile(prev => ({ ...prev, kategori_guru: "" }));
+                        }
+                      }}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    >
+                      <option value="Guru SMP">Guru SMP</option>
+                      <option value="Guru Pondok">Guru Pondok</option>
+                      <option value="Guru Madrasah">Guru Madrasah</option>
+                      <option value="Pengajar Tahfidh">Pengajar Tahfidh</option>
+                      <option value="Pengajar Kitab Kuning">Pengajar Kitab Kuning</option>
+                      <option value="Guru Ekstrakurikuler">Guru Ekstrakurikuler</option>
+                      <option value="Lainnya">Lainnya (Ketik Manual)</option>
+                    </select>
+                  </div>
+                  {!["Guru SMP", "Guru Pondok", "Guru Madrasah", "Pengajar Tahfidh", "Pengajar Kitab Kuning", "Guru Ekstrakurikuler"].includes(profile.kategori_guru) && (
+                    <input
+                      type="text"
+                      value={profile.kategori_guru}
+                      onChange={e => setProfile(prev => ({ ...prev, kategori_guru: e.target.value }))}
+                      className="w-full mt-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      placeholder="Masukkan nama kategori guru kustom..."
+                      autoFocus
+                    />
+                  )}
+                </div>
+
+                {/* 5. Database Info Box (UUID info) */}
+                <div className="sm:col-span-2 p-3 bg-slate-50 rounded-xl border border-slate-200/60 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-600">
+                    <Database className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Integrasi Tabel Database 'guru'</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-500 pt-1 font-mono">
+                    <div>
+                      <span className="text-slate-400 block text-[9px] uppercase font-sans font-bold">id (UUID Guru)</span>
+                      <span className="text-slate-700 font-semibold">{profile.id || "(Otomatis dibuat saat disimpan)"}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[9px] uppercase font-sans font-bold">pengguna_id (UUID Akun)</span>
+                      <span className="text-slate-700 font-semibold">{profile.pengguna_id || currentUser?.username || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               {/* Form Footer Buttons */}
@@ -3210,14 +3360,14 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                 <button
                   type="button"
                   onClick={() => setIsEditingProfileModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-bold rounded-lg cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-xs font-bold rounded-lg cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingProfile}
-                  className="px-5 py-2 bg-[#0c66e4] hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 bg-[#0c66e4] hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
                   {isSavingProfile ? (
                     <>
@@ -3226,7 +3376,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                     </>
                   ) : (
                     <>
-                      <Save className="w-3.5 h-3.5" /> Simpan Profil
+                      <Save className="w-3.5 h-3.5" /> Simpan Profil Guru
                     </>
                   )}
                 </button>

@@ -1,7 +1,7 @@
 import { SearchableSelect } from './ui/SearchableSelect';
 import { PageHeader } from './ui/PageHeader';
 import React, { useState } from "react";
-import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database, User } from "lucide-react";
+import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database, User, Plus, UserPlus } from "lucide-react";
 import { SantriData } from "../supabaseClient";
 
 interface SantriListProps {
@@ -15,6 +15,7 @@ interface SantriListProps {
   currentUserRole?: string;
   schoolClasses?: string[];
   recitationClasses?: string[];
+  onAddNewStudent?: () => void;
 }
 
 // Helper to infer gender based on common Indonesian female name keywords for authentic visual parity with the mockup screen
@@ -107,7 +108,8 @@ export default function SantriList({
   initialFilterClass = "All",
   currentUserRole,
   schoolClasses,
-  recitationClasses
+  recitationClasses,
+  onAddNewStudent
 }: SantriListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>(initialFilterCategory);
@@ -542,12 +544,23 @@ export default function SantriList({
             <button
               onClick={exportToCSV}
               disabled={filteredStudents.length === 0}
-              className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+              className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               id="export-csv-btn"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
               <span>Ekspor CSV</span>
             </button>
+            {onAddNewStudent && currentUserRole !== "guru SMP" && (
+              <button
+                type="button"
+                onClick={onAddNewStudent}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                id="tambah-siswa-btn"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Pendaftaran Siswa</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

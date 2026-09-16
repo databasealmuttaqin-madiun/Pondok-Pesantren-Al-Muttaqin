@@ -61,6 +61,19 @@ export interface SantriData {
   status?: "Aktif" | "Sakit" | "Pulang" | "Haid";
   nfc_id?: string;
   foto?: string;
+
+  // Additional detail fields
+  nisn?: string;
+  nik?: string;
+  tempat_lahir?: string;
+  tanggal_lahir?: string;
+  no_hp?: string;
+  nama_ayah?: string;
+  no_hp_ayah?: string;
+  nama_ibu?: string;
+  no_hp_ibu?: string;
+  alamat?: string;
+  status_asrama?: string;
 }
 
 /**
@@ -92,6 +105,9 @@ export function formatSantriData(s: SantriData): SantriData {
     kelompok_sambung: s.kelompok_sambung ? toTitleCase(s.kelompok_sambung) : "",
     desa_sambung: s.desa_sambung ? toTitleCase(s.desa_sambung) : "",
     daerah: s.daerah ? toTitleCase(s.daerah) : "",
+    nama_ayah: s.nama_ayah ? toTitleCase(s.nama_ayah) : "",
+    nama_ibu: s.nama_ibu ? toTitleCase(s.nama_ibu) : "",
+    tempat_lahir: s.tempat_lahir ? toTitleCase(s.tempat_lahir) : "",
     status: s.status || "Aktif",
     jenis_kelamin: s.jenis_kelamin || "L",
   };

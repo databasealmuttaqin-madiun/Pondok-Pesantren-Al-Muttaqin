@@ -6,6 +6,7 @@ import Dashboard from "./components/Dashboard";
 import DashboardGuruSekolah from "./components/DashboardGuruSekolah";
 import DashboardGuruPondok from "./components/DashboardGuruPondok";
 import AbsensiGuruPanel from "./components/AbsensiGuruPanel";
+import JurnalMengajarBaruPanel from "./components/JurnalMengajarBaruPanel";
 import LoginForm from "./components/LoginForm";
 import ManagementPanel from "./components/ManagementPanel";
 import PresensiPanel from "./components/PresensiPanel";
@@ -92,7 +93,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -109,6 +110,7 @@ export default function App() {
     }
     return "dashboard";
   });
+  const [isSekolahExpanded, setIsSekolahExpanded] = useState(true);
   const [isPerizinanExpanded, setIsPerizinanExpanded] = useState(true);
   const [isRekapExpanded, setIsRekapExpanded] = useState(true);
   const [isNfcExpanded, setIsNfcExpanded] = useState(true);
@@ -117,7 +119,8 @@ export default function App() {
   const [isKantinExpanded, setIsKantinExpanded] = useState(true);
   const [isManajemenExpanded, setIsManajemenExpanded] = useState(false);
   const [isPengajianExpanded, setIsPengajianExpanded] = useState(false);
-  const [hoveredFlyout, setHoveredFlyout] = useState<"rekap" | "data_warga" | "pelanggaran" | "manajemen" | "pengajian" | "nfc" | "kantin" | "perizinan" | null>(null);
+  const [hoveredFlyout, setHoveredFlyout] = useState<"rekap" | "data_warga" | "pelanggaran" | "manajemen" | "pengajian" | "nfc" | "kantin" | "perizinan" | "sekolah" | null>(null);
+  const [mobileSekolahOpen, setMobileSekolahOpen] = useState(true);
   const [mobilePerizinanOpen, setMobilePerizinanOpen] = useState(true);
   const [mobileRekapOpen, setMobileRekapOpen] = useState(true);
   const [mobileNfcOpen, setMobileNfcOpen] = useState(true);
@@ -712,12 +715,12 @@ export default function App() {
   }, [mobileMenuOpen]);
 
   // Save or Update a Santri
-  const handleFormSubmit = async (data: SantriData): Promise<{ success: boolean; error?: string }> => {
+  const handleFormSubmit = async (data: SantriData, keepOpen = false): Promise<{ success: boolean; error?: string }> => {
     setIsFormSubmitting(true);
     try {
       const formattedData = formatSantriData(data);
       const targetStatus = formattedData.status || "Aktif";
-      const payload: Partial<SantriData> = {
+      const payload: any = {
         kategori: formattedData.kategori,
         nama_lengkap: formattedData.nama_lengkap,
         jenis_kelamin: formattedData.jenis_kelamin || "L",
@@ -729,95 +732,66 @@ export default function App() {
         kelompok_sambung: formattedData.kelompok_sambung || "",
         desa_sambung: formattedData.desa_sambung || "",
         daerah: formattedData.daerah || "",
-        no_hp_ortu: formattedData.no_hp_ortu || "",
+        no_hp_ortu: formattedData.no_hp_ortu || formattedData.no_hp_ayah || formattedData.no_hp_ibu || "",
         status: targetStatus,
+        nisn: formattedData.nisn || "",
+        nik: formattedData.nik || "",
+        tempat_lahir: formattedData.tempat_lahir || "",
+        tanggal_lahir: formattedData.tanggal_lahir || "",
+        no_hp: formattedData.no_hp || "",
+        nama_ayah: formattedData.nama_ayah || "",
+        no_hp_ayah: formattedData.no_hp_ayah || "",
+        nama_ibu: formattedData.nama_ibu || "",
+        no_hp_ibu: formattedData.no_hp_ibu || "",
+        alamat: formattedData.alamat || "",
+        status_asrama: formattedData.status_asrama || "",
       };
 
       if (dbStatus === "connected") {
-        // Attempt Supabase SQL Insert or Update
-        if (editingStudent && editingStudent.id) {
-          let { error } = await supabase
-            .from(TABLE_NAME)
-            .update(payload)
-            .eq("id", editingStudent.id);
+        // Dynamic resilient query helper in case some optional columns don't exist in the database table yet
+        const executeWithColumnRetry = async (isUpdate: boolean, studentId?: number) => {
+          let currentPayload = { ...payload };
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const query = isUpdate && studentId
+              ? supabase.from(TABLE_NAME).update(currentPayload).eq("id", studentId)
+              : supabase.from(TABLE_NAME).insert([currentPayload]);
+            
+            const { data: resData, error: resError } = await query;
+            if (!resError) return { success: true };
 
-          // Retry logic if there are column cache mismatches (nfc_id or no_hp_ortu)
-          if (error && (error.message.includes("column") || error.message.includes("does not exist") || error.message.includes("nfc_id") || error.message.includes("no_hp_ortu"))) {
-            console.warn("PostgREST schema cache mismatch. Stripping missing columns and retrying...");
-            let strippedPayload: any = { ...payload };
-            let hasNoHpOrtuError = error.message.includes("no_hp_ortu");
-            
-            if (error.message.includes("no_hp_ortu")) {
-              const { no_hp_ortu, ...rest } = strippedPayload;
-              strippedPayload = rest;
-            }
-            if (error.message.includes("nfc_id")) {
-              const { nfc_id, ...rest } = strippedPayload;
-              strippedPayload = rest;
-            }
-            
-            // In case of a generic column error, let's try stripping no_hp_ortu first then nfc_id
-            if (!error.message.includes("no_hp_ortu") && !error.message.includes("nfc_id")) {
-              const { no_hp_ortu, nfc_id, ...rest } = strippedPayload;
-              strippedPayload = rest;
-              hasNoHpOrtuError = true;
+            // Check if error is due to missing column
+            const missingColMatch = resError.message?.match(/column ["']?([a-zA-Z0-9_]+)["']? of relation/i) ||
+                                    resError.message?.match(/could not find the ['"]?([a-zA-Z0-9_]+)['"]? column/i);
+            if (missingColMatch && missingColMatch[1]) {
+              const missingCol = missingColMatch[1];
+              delete currentPayload[missingCol];
+              continue;
             }
 
-            const retryRes = await supabase
-              .from(TABLE_NAME)
-              .update(strippedPayload)
-              .eq("id", editingStudent.id);
-            
-            error = retryRes.error;
-            
-            if (!error && hasNoHpOrtuError) {
-              triggerNotification("Peringatan: Data tersimpan tanpa No. HP Ortu karena API Supabase belum diperbarui. Silakan klik 'Reload schema' di API Docs Supabase Dashboard Anda.", "warning");
+            // Fallback for standard column mismatch
+            if (resError.message?.includes("column") || resError.message?.includes("does not exist")) {
+              const optionalCols = ["nisn", "nik", "tempat_lahir", "tanggal_lahir", "no_hp", "nama_ayah", "no_hp_ayah", "nama_ibu", "no_hp_ibu", "alamat", "status_asrama", "no_hp_ortu", "nfc_id"];
+              for (const col of optionalCols) {
+                if (currentPayload[col] !== undefined) {
+                  delete currentPayload[col];
+                }
+              }
+              continue;
             }
+
+            return { success: false, error: resError };
           }
+          return { success: false, error: new Error("Gagal menyimpan setelah beberapa percobaan") };
+        };
 
-          if (error) throw error;
-          
+        if (editingStudent && editingStudent.id) {
+          const res = await executeWithColumnRetry(true, editingStudent.id);
+          if (!res.success) throw res.error;
           triggerNotification(`Berhasil memperbarui data siswa ${formattedData.nama_lengkap}!`, "success");
         } else {
-          let { error } = await supabase
-            .from(TABLE_NAME)
-            .insert([payload]);
-
-          // Retry logic if there are column cache mismatches (nfc_id or no_hp_ortu)
-          if (error && (error.message.includes("column") || error.message.includes("does not exist") || error.message.includes("nfc_id") || error.message.includes("no_hp_ortu"))) {
-            console.warn("PostgREST schema cache mismatch. Stripping missing columns and retrying...");
-            let strippedPayload: any = { ...payload };
-            let hasNoHpOrtuError = error.message.includes("no_hp_ortu");
-            
-            if (error.message.includes("no_hp_ortu")) {
-              const { no_hp_ortu, ...rest } = strippedPayload;
-              strippedPayload = rest;
-            }
-            if (error.message.includes("nfc_id")) {
-              const { nfc_id, ...rest } = strippedPayload;
-              strippedPayload = rest;
-            }
-            
-            // In case of a generic column error, let's try stripping no_hp_ortu first then nfc_id
-            if (!error.message.includes("no_hp_ortu") && !error.message.includes("nfc_id")) {
-              const { no_hp_ortu, nfc_id, ...rest } = strippedPayload;
-              strippedPayload = rest;
-              hasNoHpOrtuError = true;
-            }
-
-            const retryRes = await supabase
-              .from(TABLE_NAME)
-              .insert([strippedPayload]);
-            
-            error = retryRes.error;
-            
-            if (!error && hasNoHpOrtuError) {
-              triggerNotification("Peringatan: Data tersimpan tanpa No. HP Ortu karena API Supabase belum diperbarui. Silakan klik 'Reload schema' di API Docs Supabase Dashboard Anda.", "warning");
-            }
-          }
-
-          if (error) throw error;
-          triggerNotification(`Siswa baru ${formattedData.nama_lengkap} berhasil terdaftarkan ke cloud database!`, "success");
+          const res = await executeWithColumnRetry(false);
+          if (!res.success) throw res.error;
+          triggerNotification(`Siswa baru ${formattedData.nama_lengkap} berhasil didaftarkan!`, "success");
         }
 
         // Save NFC Mapping to 'nfc' table too if nfc_id is provided
@@ -893,9 +867,11 @@ export default function App() {
         localStorage.setItem("santri_data", JSON.stringify(localList.map(formatSantriData)));
       }
 
-      // Restore states
-      setEditingStudent(null);
-      setActiveTab("list");
+      // Restore states if not keeping form open
+      if (!keepOpen) {
+        setEditingStudent(null);
+        setActiveTab("list");
+      }
       return { success: true };
     } catch (e: any) {
       console.error(e);
@@ -1264,7 +1240,11 @@ export default function App() {
     { id: "dashboard", group: "UTAMA", label: "Dasbor", shortLabel: "Dasbor", icon: Home, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     { id: "form", group: "UTAMA", label: editingStudent ? "Edit Siswa" : "Pendaftaran", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["super admin", "admin", "guru pondok"] },
     { id: "absensi", group: "UTAMA", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "siswa"] },
-    { id: "absensi_guru", group: "UTAMA", label: "Guru Sekolah & Jurnal", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
+
+    // SEKOLAH GROUP WITH SUBMENUS (Presensi Guru, Jurnal Mengajar, Daftar Guru Sekolah)
+    { id: "presensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Presensi Guru", label: "Presensi Guru", shortLabel: "Presensi Guru", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "jurnal_mengajar", group: "SEKOLAH", isSubmenu: true, subLabel: "Jurnal Mengajar", label: "Jurnal Mengajar", shortLabel: "Jurnal Mengajar", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "daftar_guru_sekolah", group: "SEKOLAH", isSubmenu: true, subLabel: "Daftar Guru", label: "Daftar Guru Sekolah", shortLabel: "Daftar Guru", icon: Search, roles: ["super admin", "admin", "guru SMP", "pengurus"] },
 
     // PERIZINAN GROUP WITH SUBMENUS (Sakit, Sambang, Haid)
     { id: "perizinan_sakit", group: "PERIZINAN", isSubmenu: true, subLabel: "Sakit", label: "Izin Sakit", shortLabel: "Sakit", icon: HeartPulse, roles: ["super admin", "admin", "guru pondok"] },
@@ -1330,7 +1310,7 @@ export default function App() {
     if (tabId === "list" || tabId.startsWith("warga_")) return "data_warga";
     if (tabId === "kantin_input") return "kas_kantin";
     if (tabId === "kantin_rekap") return "rekap_pembukuan";
-    if (tabId === "absensi_guru") return "guru_sekolah";
+    if (tabId === "absensi_guru" || tabId === "presensi_guru" || tabId === "jurnal_mengajar" || tabId === "daftar_guru_sekolah") return "guru_sekolah";
     if (tabId === "rekap_sekolah") return "rekap_sekolah";
     if (["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(tabId)) return "pengajian";
     if (tabId === "pengguna") return "admin_only";
@@ -1676,6 +1656,94 @@ export default function App() {
                   </div>
                 );
               })}
+
+            {/* SEKOLAH GROUP (ACCORDION) */}
+            {accessibleTabs.some(t => t.group === "SEKOLAH") && (!sidebarSearchQuery || "sekolah presensi guru jurnal mengajar absensi siswa daftar guru".includes(sidebarSearchQuery.toLowerCase())) && (
+              <div 
+                className="w-full pt-1.5 relative group/flyout"
+                onMouseEnter={() => setHoveredFlyout("sekolah")}
+                onMouseLeave={() => setHoveredFlyout(null)}
+              >
+                {!sidebarCollapsed ? (
+                  <div
+                    onClick={() => setIsSekolahExpanded(!isSekolahExpanded)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Sekolah</span>
+                    {isSekolahExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full flex justify-center py-1">
+                    <button
+                      onClick={() => setIsSekolahExpanded(!isSekolahExpanded)}
+                      className={`p-2 rounded-xl transition-colors ${
+                        ["absensi_guru", "presensi_guru", "jurnal_mengajar", "daftar_guru_sekolah"].includes(activeTab)
+                          ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                          : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                      }`}
+                      title="Sekolah"
+                    >
+                      <School className="w-4.5 h-4.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Expanded Inline Submenu */}
+                {!sidebarCollapsed && isSekolahExpanded && (
+                  <div className="space-y-0.5 mt-0.5">
+                    {accessibleTabs.filter(t => t.group === "SEKOLAH").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id || (activeTab === "absensi_guru" && sub.id === "presensi_guru");
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center justify-start px-3 py-2 gap-3 rounded-xl transition-all text-xs ${
+                            isSubActive
+                              ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                          }`}
+                        >
+                          <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                          <span className="truncate tracking-normal text-xs">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Collapsed Flyout Popover */}
+                {sidebarCollapsed && hoveredFlyout === "sekolah" && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                    <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      Sekolah
+                    </div>
+                    {accessibleTabs.filter(t => t.group === "SEKOLAH").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id || (activeTab === "absensi_guru" && sub.id === "presensi_guru");
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                            isSubActive
+                              ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <SubIcon className="w-4 h-4 text-slate-400" />
+                          <span>{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* PERIZINAN GROUP (ACCORDION) */}
             {accessibleTabs.some(t => t.group === "PERIZINAN") && (!sidebarSearchQuery || "perizinan izin sakit sambang haid".includes(sidebarSearchQuery.toLowerCase())) && (
@@ -2590,7 +2658,7 @@ export default function App() {
                   setListFilters(filters || {});
                   setActiveTab("list");
                 }}
-                onNavigateToAbsensiGuru={() => setActiveTab("absensi_guru")}
+                onNavigateToAbsensiGuru={() => setActiveTab("presensi_guru")}
                 isDarkMode={isDarkMode}
                 setIsDarkMode={setIsDarkMode}
                 currentUser={currentUser}
@@ -2614,7 +2682,7 @@ export default function App() {
                   setListFilters(filters || {});
                   setActiveTab("list");
                 }}
-                onNavigateToAbsensiGuru={() => setActiveTab("absensi_guru")}
+                onNavigateToAbsensiGuru={() => setActiveTab("presensi_guru")}
                 isDarkMode={isDarkMode}
                 setIsDarkMode={setIsDarkMode}
                 currentUser={currentUser}
@@ -2662,26 +2730,7 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "form" && (
-              <div className="w-full">
-                <RegistrationForm
-                  onSubmit={handleFormSubmit}
-                  isSubmitting={isFormSubmitting}
-                  initialData={editingStudent}
-                  rooms={rooms}
-                  recitationClasses={recitationClasses}
-                  schoolClasses={schoolClasses}
-                  students={displayedStudents}
-                  onCancel={() => {
-                    setEditingStudent(null);
-                    setListFilters({});
-                    setActiveTab("list");
-                  }}
-                />
-              </div>
-            )}
-
-            {activeTab === "list" && (
+            {(activeTab === "list" || activeTab === "form") && (
               <SantriList
                 students={displayedStudents}
                 onEdit={handleTriggerEdit}
@@ -2693,6 +2742,27 @@ export default function App() {
                 currentUserRole={userRole}
                 schoolClasses={schoolClasses}
                 recitationClasses={recitationClasses}
+                onAddNewStudent={() => {
+                  setEditingStudent(null);
+                  setActiveTab("form");
+                }}
+              />
+            )}
+
+            {activeTab === "form" && (
+              <RegistrationForm
+                onSubmit={handleFormSubmit}
+                isSubmitting={isFormSubmitting}
+                initialData={editingStudent}
+                rooms={rooms}
+                recitationClasses={recitationClasses}
+                schoolClasses={schoolClasses}
+                students={displayedStudents}
+                onCancel={() => {
+                  setEditingStudent(null);
+                  setListFilters({});
+                  setActiveTab("list");
+                }}
               />
             )}
 
@@ -2782,9 +2852,27 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === "absensi_guru" && (
+            {(activeTab === "absensi_guru" || activeTab === "presensi_guru" || activeTab === "daftar_guru_sekolah") && (
               <div className="w-full">
-                <AbsensiGuruPanel currentUser={currentUser} />
+                <AbsensiGuruPanel 
+                  currentUser={currentUser} 
+                  initialSubTab={
+                    activeTab === "daftar_guru_sekolah" ? "semua_guru" : "absensi"
+                  }
+                  onSubTabChange={(sub) => {
+                    if (sub === "semua_guru") setActiveTab("daftar_guru_sekolah");
+                    else if (sub === "absensi") setActiveTab("presensi_guru");
+                  }}
+                />
+              </div>
+            )}
+
+            {activeTab === "jurnal_mengajar" && (
+              <div className="w-full">
+                <JurnalMengajarBaruPanel
+                  currentUser={currentUser}
+                  onTriggerNotification={triggerNotification}
+                />
               </div>
             )}
 
@@ -2986,6 +3074,49 @@ export default function App() {
                     </button>
                   );
                 })}
+
+              {/* SEKOLAH GROUP */}
+              {accessibleTabs.some(t => t.group === "SEKOLAH") && (
+                <div className="pt-1.5">
+                  <div
+                    onClick={() => setMobileSekolahOpen(!mobileSekolahOpen)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Sekolah</span>
+                    {mobileSekolahOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+
+                  {mobileSekolahOpen && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {accessibleTabs.filter(t => t.group === "SEKOLAH").map((sub) => {
+                        const SubIcon = sub.icon;
+                        const isSubActive = activeTab === sub.id || (activeTab === "absensi_guru" && sub.id === "presensi_guru");
+                        return (
+                          <button
+                            key={sub.id}
+                            onClick={() => {
+                              setActiveTab(sub.id as any);
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs ${
+                              isSubActive
+                                ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                                : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                            <span className="truncate">{sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* PERIZINAN GROUP */}
               {accessibleTabs.some(t => t.group === "PERIZINAN") && (
