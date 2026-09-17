@@ -11,7 +11,6 @@ import {
   AlertCircle, 
   X, 
   Check, 
-  Phone,
   School,
   User,
   GraduationCap
@@ -26,7 +25,6 @@ export interface WaliKelasItem {
   guru_id?: string;
   guru_nama: string;
   nomor_hp?: string;
-  catatan?: string;
   created_at?: string;
 }
 
@@ -43,8 +41,8 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
     return [];
   });
 
-  const [availableClasses, setAvailableClasses] = useState<string[]>(schoolClasses);
-  const [guruList, setGuruList] = useState<{ id: string; nama: string; no_hp?: string; nip?: string }[]>([]);
+  const [availableClasses, setAvailableClasses] = useState<{ id: number; nama: string }[]>([]);
+  const [guruList, setGuruList] = useState<{ id: string; nama: string; no_hp?: string }[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,9 +51,8 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<WaliKelasItem | null>(null);
-  const [formKelas, setFormKelas] = useState("");
+  const [formKelasId, setFormKelasId] = useState<number | "">("");
   const [formGuruId, setFormGuruId] = useState("");
-  const [formCatatan, setFormCatatan] = useState("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
     setFeedback({ type, text });
@@ -65,62 +62,63 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch school classes from 'plotting' (jenis = 'kelas sekolah') or 'kelas'
-      const classSet = new Set<string>(schoolClasses);
+      // 1. Fetch school classes from 'plotting' (jenis = 'kelas sekolah')
+      const classesList: { id: number; nama: string }[] = [];
       try {
         const { data: plotClasses } = await supabase
           .from("plotting")
-          .select("nama")
+          .select("id, nama")
           .eq("jenis", "kelas sekolah");
-        if (plotClasses) {
-          plotClasses.forEach((c: any) => { if (c.nama) classSet.add(c.nama); });
-        }
-      } catch (err) {
-        console.warn("Error fetching classes from plotting:", err);
-      }
-      setAvailableClasses(Array.from(classSet).sort());
-
-      // 2. Fetch Guru Sekolah list
-      const gList: { id: string; nama: string; no_hp?: string; nip?: string }[] = [];
-      try {
-        const { data: dbGuru } = await supabase
-          .from("guru")
-          .select("id, nama_lengkap, nomor_hp, role");
-        if (dbGuru && dbGuru.length > 0) {
-          dbGuru.forEach((g: any) => {
-            gList.push({
-              id: String(g.id),
-              nama: g.nama_lengkap,
-              no_hp: g.nomor_hp
-            });
-          });
-        }
-      } catch (err) {
-        console.warn("Notice when fetching guru table:", err);
-      }
-
-      // Enrich from pengguna table
-      try {
-        const { data: dbPengguna } = await supabase
-          .from("pengguna")
-          .select("id, username, nama_lengkap, no_hp, peran_utama");
-        if (dbPengguna) {
-          dbPengguna.forEach((u: any) => {
-            const role = String(u.peran_utama || "").toLowerCase();
-            if (role.includes("guru") || role.includes("smp") || role.includes("sekolah")) {
-              const displayName = u.nama_lengkap || u.username;
-              if (!gList.some(g => g.nama.toLowerCase() === displayName.toLowerCase())) {
-                gList.push({
-                  id: String(u.id),
-                  nama: displayName,
-                  no_hp: u.no_hp
-                });
-              }
+        if (plotClasses && plotClasses.length > 0) {
+          plotClasses.forEach((c: any) => {
+            if (c.nama) {
+              classesList.push({
+                id: Number(c.id),
+                nama: c.nama
+              });
             }
           });
         }
       } catch (err) {
-        console.warn("Notice when fetching pengguna for guru:", err);
+        console.warn("Error fetching classes from plotting:", err);
+      }
+
+      // If database is empty, fallback using schoolClasses strings to prevent blank screen
+      if (classesList.length === 0 && schoolClasses && schoolClasses.length > 0) {
+        schoolClasses.forEach((clsName, index) => {
+          classesList.push({
+            id: 1000 + index,
+            nama: clsName
+          });
+        });
+      }
+
+      setAvailableClasses(classesList.sort((a, b) => a.nama.localeCompare(b.nama)));
+
+      // 2. Fetch Wali Kelas from 'guru' and map with 'pengguna' (nama_lengkap)
+      const gList: { id: string; nama: string; no_hp?: string }[] = [];
+      try {
+        const { data: dbGuru } = await supabase
+          .from("guru")
+          .select("id, pengguna_id, nama_lengkap, nomor_hp");
+        
+        const { data: dbPengguna } = await supabase
+          .from("pengguna")
+          .select("id, username, nama_lengkap, no_hp");
+        
+        if (dbGuru) {
+          dbGuru.forEach((g: any) => {
+            const matchedUser = dbPengguna?.find((u: any) => String(u.id) === String(g.pengguna_id));
+            const displayName = matchedUser?.nama_lengkap || g.nama_lengkap || matchedUser?.username || "Guru";
+            gList.push({
+              id: String(g.id),
+              nama: displayName,
+              no_hp: matchedUser?.no_hp || g.nomor_hp || ""
+            });
+          });
+        }
+      } catch (err) {
+        console.warn("Notice when fetching guru and pengguna for wali kelas:", err);
       }
 
       if (gList.length === 0) {
@@ -136,25 +134,23 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
       try {
         const { data: dbWali, error } = await supabase
           .from("plotting_wali_kelas")
-          .select("id, kelas_id, guru_id, created_at");
+          .select("id, kelas_id, kelas_nama, guru_id, created_at");
 
         if (!error && dbWali) {
           const mapped: WaliKelasItem[] = dbWali.map((item: any) => {
             const matchedGuru = gList.find(g => g.id === String(item.guru_id));
             return {
               id: String(item.id),
-              kelas_id: item.kelas_id,
-              kelas_nama: item.kelas_nama || item.kelas_id || "Kelas",
-              guru_id: item.guru_id,
+              kelas_id: item.kelas_id ? String(item.kelas_id) : undefined,
+              kelas_nama: item.kelas_nama || "Kelas",
+              guru_id: item.guru_id ? String(item.guru_id) : undefined,
               guru_nama: matchedGuru ? matchedGuru.nama : "Guru Wali Kelas",
-              nomor_hp: matchedGuru?.no_hp,
+              nomor_hp: matchedGuru?.no_hp || "",
               created_at: item.created_at
             };
           });
-          if (mapped.length > 0) {
-            setItems(mapped);
-            localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(mapped));
-          }
+          setItems(mapped);
+          localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(mapped));
         }
       } catch (err) {
         console.warn("Notice when fetching plotting_wali_kelas:", err);
@@ -173,125 +169,161 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
 
   const openAddModal = () => {
     setEditingItem(null);
-    setFormKelas(availableClasses[0] || "");
+    setFormKelasId(availableClasses[0]?.id || "");
     setFormGuruId(guruList[0]?.id || "");
-    setFormCatatan("");
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: WaliKelasItem) => {
     setEditingItem(item);
-    setFormKelas(item.kelas_nama);
-    const matched = guruList.find(g => g.nama.toLowerCase() === item.guru_nama.toLowerCase() || g.id === item.guru_id);
-    setFormGuruId(matched?.id || guruList[0]?.id || "");
-    setFormCatatan(item.catatan || "");
+    
+    const matchedClass = availableClasses.find(
+      c => String(c.id) === item.kelas_id || c.nama.toLowerCase() === item.kelas_nama.toLowerCase()
+    );
+    setFormKelasId(matchedClass ? matchedClass.id : "");
+
+    const matchedGuru = guruList.find(
+      g => g.id === item.guru_id || g.nama.toLowerCase() === item.guru_nama.toLowerCase()
+    );
+    setFormGuruId(matchedGuru?.id || guruList[0]?.id || "");
+    
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formKelas || !formGuruId) {
+    if (!formKelasId || !formGuruId) {
       showFeedback("error", "Harap pilih kelas dan guru wali kelas!");
       return;
     }
 
+    const selectedClass = availableClasses.find(c => c.id === Number(formKelasId));
     const selectedGuru = guruList.find(g => g.id === formGuruId);
-    const guruNama = selectedGuru ? selectedGuru.nama : "Guru";
-    const nomorHp = selectedGuru?.no_hp || "";
+
+    if (!selectedClass || !selectedGuru) {
+      showFeedback("error", "Data kelas atau guru tidak valid!");
+      return;
+    }
+
+    const kelasId = selectedClass.id;
+    const kelasNama = selectedClass.nama;
+    const guruId = selectedGuru.id;
+    const guruNama = selectedGuru.nama;
+    const nomorHp = selectedGuru.no_hp || "";
 
     // Check duplicate kelas (1 kelas = 1 wali kelas)
     const duplicate = items.find(
-      it => it.kelas_nama.toLowerCase() === formKelas.toLowerCase() && (!editingItem || it.id !== editingItem.id)
+      it => Number(it.kelas_id) === kelasId && (!editingItem || it.id !== editingItem.id)
     );
     if (duplicate) {
-      showFeedback("error", `Kelas "${formKelas}" sudah memiliki Wali Kelas (${duplicate.guru_nama}).`);
+      showFeedback("error", `Kelas "${kelasNama}" sudah memiliki Wali Kelas (${duplicate.guru_nama}).`);
       return;
     }
 
     setIsSubmitting(true);
 
     if (editingItem) {
-      const updatedList = items.map(it => {
-        if (it.id === editingItem.id) {
-          return {
-            ...it,
-            kelas_nama: formKelas,
-            guru_id: formGuruId,
-            guru_nama: guruNama,
-            nomor_hp: nomorHp,
-            catatan: formCatatan
-          };
-        }
-        return it;
-      });
-      setItems(updatedList);
-      localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(updatedList));
-
       try {
-        await supabase
+        const { error: updateErr } = await supabase
           .from("plotting_wali_kelas")
           .update({
-            guru_id: formGuruId
+            kelas_id: kelasId,
+            kelas_nama: kelasNama,
+            guru_id: guruId
           })
           .eq("id", editingItem.id);
+
+        if (updateErr) {
+          showFeedback("error", `Gagal memperbarui: ${updateErr.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        const updatedItem: WaliKelasItem = {
+          id: editingItem.id,
+          kelas_id: String(kelasId),
+          kelas_nama: kelasNama,
+          guru_id: guruId,
+          guru_nama: guruNama,
+          nomor_hp: nomorHp,
+          created_at: editingItem.created_at
+        };
+
+        const updatedList = items.map(it => (it.id === editingItem.id ? updatedItem : it));
+        setItems(updatedList);
+        localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(updatedList));
+
+        showFeedback("success", `Wali Kelas untuk "${kelasNama}" berhasil diperbarui!`);
+        setIsModalOpen(false);
       } catch (err: any) {
-        console.warn("Supabase update error:", err?.message);
+        showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
       }
-
-      showFeedback("success", `Wali Kelas untuk "${formKelas}" berhasil diperbarui!`);
     } else {
-      const newItem: WaliKelasItem = {
-        id: "wk_" + Date.now(),
-        kelas_nama: formKelas,
-        guru_id: formGuruId,
-        guru_nama: guruNama,
-        nomor_hp: nomorHp,
-        catatan: formCatatan,
-        created_at: new Date().toISOString()
-      };
-      const nextList = [...items, newItem];
-      setItems(nextList);
-      localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(nextList));
-
       try {
-        await supabase
+        const { data: insertedData, error: insertErr } = await supabase
           .from("plotting_wali_kelas")
           .insert([{
-            guru_id: formGuruId
-          }]);
-      } catch (err: any) {
-        console.warn("Supabase insert error:", err?.message);
-      }
+            kelas_id: kelasId,
+            kelas_nama: kelasNama,
+            guru_id: guruId
+          }])
+          .select();
 
-      showFeedback("success", `Penugasan Wali Kelas untuk "${formKelas}" berhasil disimpan!`);
+        if (insertErr) {
+          showFeedback("error", `Gagal menambahkan: ${insertErr.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (insertedData && insertedData.length > 0) {
+          const newItem: WaliKelasItem = {
+            id: String(insertedData[0].id),
+            kelas_id: String(insertedData[0].kelas_id),
+            kelas_nama: insertedData[0].kelas_nama,
+            guru_id: String(insertedData[0].guru_id),
+            guru_nama: guruNama,
+            nomor_hp: nomorHp,
+            created_at: insertedData[0].created_at
+          };
+          const nextList = [...items, newItem];
+          setItems(nextList);
+          localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(nextList));
+
+          showFeedback("success", `Penugasan Wali Kelas untuk "${kelasNama}" berhasil disimpan!`);
+          setIsModalOpen(false);
+        }
+      } catch (err: any) {
+        showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
+      }
     }
 
     setIsSubmitting(false);
-    setIsModalOpen(false);
   };
 
   const handleDelete = async (id: string, kelasNama: string) => {
     if (!confirm(`Hapus penugasan Wali Kelas untuk ${kelasNama}?`)) return;
 
-    const filtered = items.filter(it => it.id !== id);
-    setItems(filtered);
-    localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(filtered));
-
     try {
-      await supabase.from("plotting_wali_kelas").delete().eq("id", id);
-    } catch (err: any) {
-      console.warn("Supabase delete error:", err?.message);
-    }
+      const { error } = await supabase.from("plotting_wali_kelas").delete().eq("id", id);
+      if (error) {
+        showFeedback("error", `Gagal menghapus: ${error.message}`);
+        return;
+      }
 
-    showFeedback("success", `Penugasan Wali Kelas untuk "${kelasNama}" berhasil dihapus.`);
+      const filtered = items.filter(it => it.id !== id);
+      setItems(filtered);
+      localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(filtered));
+      showFeedback("success", `Penugasan Wali Kelas untuk "${kelasNama}" berhasil dihapus.`);
+    } catch (err: any) {
+      showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
+    }
   };
 
   const filteredItems = useMemo(() => {
     return items.filter(
       it =>
         it.kelas_nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        it.guru_nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (it.catatan && it.catatan.toLowerCase().includes(searchQuery.toLowerCase()))
+        it.guru_nama.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [items, searchQuery]);
 
@@ -402,10 +434,8 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
                 <th className="py-3 px-4 w-12 text-center">No</th>
-                <th className="py-3 px-4">Nama Kelas / Rombel</th>
-                <th className="py-3 px-4">Wali Kelas (Guru)</th>
-                <th className="py-3 px-4">Kontak / No. HP</th>
-                <th className="py-3 px-4">Catatan</th>
+                <th className="py-3 px-4">Nama Kelas</th>
+                <th className="py-3 px-4">Wali Kelas</th>
                 <th className="py-3 px-4 text-center w-28">Aksi</th>
               </tr>
             </thead>
@@ -420,7 +450,7 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
                   </td>
                   <td className="py-3.5 px-4">
                     <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+                       <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
                         <School className="w-3.5 h-3.5" />
                       </div>
                       <span className="font-bold text-slate-800 dark:text-slate-100">
@@ -437,19 +467,6 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
                         {item.guru_nama}
                       </span>
                     </div>
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
-                    {item.nomor_hp ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                        <Phone className="w-3 h-3 text-emerald-500" />
-                        {item.nomor_hp}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-xs">
-                    {item.catatan || "—"}
                   </td>
                   <td className="py-3.5 px-4 text-center">
                     <div className="flex items-center justify-center gap-1.5">
@@ -474,7 +491,7 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
 
               {filteredItems.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-slate-400">
+                  <td colSpan={4} className="py-10 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <School className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                       <p className="font-medium text-xs sm:text-sm">
@@ -523,15 +540,15 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
                   Kelas / Rombel <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  value={formKelas}
-                  onChange={(e) => setFormKelas(e.target.value)}
+                  value={formKelasId}
+                  onChange={(e) => setFormKelasId(Number(e.target.value))}
                   className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   required
                 >
                   <option value="" disabled>-- Pilih Kelas / Rombel --</option>
                   {availableClasses.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
+                    <option key={cls.id} value={cls.id}>
+                      {cls.nama}
                     </option>
                   ))}
                 </select>
@@ -554,19 +571,6 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Catatan / Keterangan Tambahan
-                </label>
-                <input
-                  type="text"
-                  placeholder="Misal: Tahun Ajaran Berjalan / Ruang 101 (opsional)"
-                  value={formCatatan}
-                  onChange={(e) => setFormCatatan(e.target.value)}
-                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 mt-5">

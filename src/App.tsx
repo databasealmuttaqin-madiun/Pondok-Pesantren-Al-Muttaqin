@@ -30,6 +30,7 @@ import KantinPanel from "./components/KantinPanel";
 import PlottingWaliKamarPanel from "./components/PlottingWaliKamarPanel";
 import PlottingGuruPondokPanel from "./components/PlottingGuruPondokPanel";
 import PlottingWaliKelasPanel from "./components/PlottingWaliKelasPanel";
+import PlottingGuruSekolahPanel from "./components/PlottingGuruSekolahPanel";
 import MasterMataPelajaranPanel from "./components/MasterMataPelajaranPanel";
 import PlottingGuruMapelPanel from "./components/PlottingGuruMapelPanel";
 import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone } from "lucide-react";
@@ -98,7 +99,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -1309,6 +1310,7 @@ export default function App() {
     // MANAJEMEN SEKOLAH GROUP WITH SUBMENUS
     { id: "sekolah_plotting", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Plotting Kelas", label: "Plotting Kelas Sekolah", shortLabel: "Plotting", icon: Sliders, roles: ["super admin", "admin", "guru SMP"] },
     { id: "sekolah_wali_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Wali Kelas", label: "Plotting Wali Kelas", shortLabel: "Wali Kelas", icon: UserCheck, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_guru_sekolah", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Sekolah", label: "Plotting Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
     { id: "sekolah_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Mata Pelajaran", label: "Master Mata Pelajaran", shortLabel: "Mapel", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
     { id: "sekolah_guru_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Mata Pelajaran", label: "Plotting Guru Mapel", shortLabel: "Guru Mapel", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
     { id: "sekolah_buat_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Buat Kelas", label: "Buat Kelas Sekolah", shortLabel: "Kelas", icon: Plus, roles: ["super admin", "admin", "guru SMP"] },
@@ -2440,7 +2442,7 @@ export default function App() {
                     <button
                       onClick={() => setIsManajemenSekolahExpanded(!isManajemenSekolahExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["sekolah_plotting", "sekolah_wali_kelas", "sekolah_mapel", "sekolah_guru_mapel", "sekolah_buat_kelas", "sekolah_jam", "sekolah_jadwal", "sekolah_pengumuman"].includes(activeTab)
+                        ["sekolah_plotting", "sekolah_wali_kelas", "sekolah_guru_sekolah", "sekolah_mapel", "sekolah_guru_mapel", "sekolah_buat_kelas", "sekolah_jam", "sekolah_jadwal", "sekolah_pengumuman"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
@@ -3095,6 +3097,12 @@ export default function App() {
             {activeTab === "sekolah_wali_kelas" && (
               <div className="w-full">
                 <PlottingWaliKelasPanel schoolClasses={schoolClasses} />
+              </div>
+            )}
+
+            {activeTab === "sekolah_guru_sekolah" && (
+              <div className="w-full">
+                <PlottingGuruSekolahPanel />
               </div>
             )}
 

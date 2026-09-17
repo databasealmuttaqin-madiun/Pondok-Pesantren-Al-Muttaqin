@@ -21,21 +21,9 @@ export interface MataPelajaranItem {
   id: string;
   kode_mapel: string;
   nama_mapel: string;
-  kategori: "SMP" | "SMA" | "Umum";
+  kategori: "SMP" | "SMA";
   created_at?: string;
 }
-
-const DEFAULT_MAPEL: MataPelajaranItem[] = [
-  { id: "mp_1", kode_mapel: "PAI", nama_mapel: "Pendidikan Agama Islam", kategori: "Umum" },
-  { id: "mp_2", kode_mapel: "MTK-SMP", nama_mapel: "Matematika", kategori: "SMP" },
-  { id: "mp_3", kode_mapel: "IPA-SMP", nama_mapel: "Ilmu Pengetahuan Alam", kategori: "SMP" },
-  { id: "mp_4", kode_mapel: "IPS-SMP", nama_mapel: "Ilmu Pengetahuan Sosial", kategori: "SMP" },
-  { id: "mp_5", kode_mapel: "BIN-SMP", nama_mapel: "Bahasa Indonesia", kategori: "SMP" },
-  { id: "mp_6", kode_mapel: "BIG-SMP", nama_mapel: "Bahasa Inggris", kategori: "SMP" },
-  { id: "mp_7", kode_mapel: "BAR-SMP", nama_mapel: "Bahasa Arab", kategori: "Umum" },
-  { id: "mp_8", kode_mapel: "PKN", nama_mapel: "Pendidikan Pancasila & Kewarganegaraan", kategori: "Umum" },
-  { id: "mp_9", kode_mapel: "PJOK", nama_mapel: "Pendidikan Jasmani & Olahraga", kategori: "Umum" }
-];
 
 export default function MasterMataPelajaranPanel() {
   const [items, setItems] = useState<MataPelajaranItem[]>(() => {
@@ -43,11 +31,11 @@ export default function MasterMataPelajaranPanel() {
       const saved = localStorage.getItem("master_mata_pelajaran_data");
       if (saved) return JSON.parse(saved);
     } catch {}
-    return DEFAULT_MAPEL;
+    return [];
   });
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [kategoriFilter, setKategoriFilter] = useState<"All" | "SMP" | "SMA" | "Umum">("All");
+  const [kategoriFilter, setKategoriFilter] = useState<"All" | "SMP" | "SMA">("All");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -57,7 +45,7 @@ export default function MasterMataPelajaranPanel() {
   const [editingItem, setEditingItem] = useState<MataPelajaranItem | null>(null);
   const [formKode, setFormKode] = useState("");
   const [formNama, setFormNama] = useState("");
-  const [formKategori, setFormKategori] = useState<"SMP" | "SMA" | "Umum">("SMP");
+  const [formKategori, setFormKategori] = useState<"SMP" | "SMA">("SMP");
 
   const showFeedback = (type: "success" | "error", text: string) => {
     setFeedback({ type, text });
@@ -72,12 +60,12 @@ export default function MasterMataPelajaranPanel() {
         .select("id, kode_mapel, nama_mapel, kategori, created_at")
         .order("kode_mapel", { ascending: true });
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         const mapped: MataPelajaranItem[] = data.map((d: any) => ({
           id: String(d.id),
           kode_mapel: d.kode_mapel,
           nama_mapel: d.nama_mapel,
-          kategori: d.kategori || "Umum",
+          kategori: (d.kategori === "SMA" ? "SMA" : "SMP") as "SMP" | "SMA",
           created_at: d.created_at
         }));
         setItems(mapped);
@@ -132,79 +120,97 @@ export default function MasterMataPelajaranPanel() {
     setIsSubmitting(true);
 
     if (editingItem) {
-      const updatedList = items.map(it => {
-        if (it.id === editingItem.id) {
-          return {
-            ...it,
-            kode_mapel: cleanKode,
-            nama_mapel: cleanNama,
-            kategori: formKategori
-          };
-        }
-        return it;
-      });
-      setItems(updatedList);
-      localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(updatedList));
-
       try {
-        await supabase
+        const { data: updatedData, error: updateErr } = await supabase
           .from("mata_pelajaran")
           .update({
             kode_mapel: cleanKode,
             nama_mapel: cleanNama,
             kategori: formKategori
           })
-          .eq("id", editingItem.id);
+          .eq("id", editingItem.id)
+          .select();
+
+        if (updateErr) {
+          showFeedback("error", `Gagal memperbarui: ${updateErr.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        const updatedItem: MataPelajaranItem = {
+          id: editingItem.id,
+          kode_mapel: cleanKode,
+          nama_mapel: cleanNama,
+          kategori: formKategori,
+          created_at: editingItem.created_at
+        };
+
+        const updatedList = items.map(it => (it.id === editingItem.id ? updatedItem : it));
+        setItems(updatedList);
+        localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(updatedList));
+
+        showFeedback("success", `Mata pelajaran "${cleanNama}" berhasil diperbarui!`);
+        setIsModalOpen(false);
       } catch (err: any) {
-        console.warn("Supabase update error:", err?.message);
+        showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
       }
-
-      showFeedback("success", `Mata pelajaran "${cleanNama}" berhasil diperbarui!`);
     } else {
-      const newItem: MataPelajaranItem = {
-        id: "mp_" + Date.now(),
-        kode_mapel: cleanKode,
-        nama_mapel: cleanNama,
-        kategori: formKategori,
-        created_at: new Date().toISOString()
-      };
-      const nextList = [...items, newItem];
-      setItems(nextList);
-      localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(nextList));
-
       try {
-        await supabase
+        const { data: insertedData, error: insertErr } = await supabase
           .from("mata_pelajaran")
           .insert([{
             kode_mapel: cleanKode,
             nama_mapel: cleanNama,
             kategori: formKategori
-          }]);
-      } catch (err: any) {
-        console.warn("Supabase insert error:", err?.message);
-      }
+          }])
+          .select();
 
-      showFeedback("success", `Mata pelajaran "${cleanNama}" berhasil ditambahkan!`);
+        if (insertErr) {
+          showFeedback("error", `Gagal menambahkan: ${insertErr.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (insertedData && insertedData.length > 0) {
+          const newItem: MataPelajaranItem = {
+            id: String(insertedData[0].id),
+            kode_mapel: insertedData[0].kode_mapel,
+            nama_mapel: insertedData[0].nama_mapel,
+            kategori: (insertedData[0].kategori === "SMA" ? "SMA" : "SMP") as "SMP" | "SMA",
+            created_at: insertedData[0].created_at
+          };
+          const nextList = [...items, newItem];
+          setItems(nextList);
+          localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(nextList));
+
+          showFeedback("success", `Mata pelajaran "${cleanNama}" berhasil ditambahkan!`);
+          setIsModalOpen(false);
+        }
+      } catch (err: any) {
+        showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
+      }
     }
 
     setIsSubmitting(false);
-    setIsModalOpen(false);
   };
 
   const handleDelete = async (id: string, namaMapel: string) => {
     if (!confirm(`Hapus mata pelajaran "${namaMapel}"?`)) return;
 
-    const filtered = items.filter(it => it.id !== id);
-    setItems(filtered);
-    localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(filtered));
-
     try {
-      await supabase.from("mata_pelajaran").delete().eq("id", id);
-    } catch (err: any) {
-      console.warn("Supabase delete error:", err?.message);
-    }
+      const { error } = await supabase.from("mata_pelajaran").delete().eq("id", id);
+      if (error) {
+        showFeedback("error", `Gagal menghapus: ${error.message}`);
+        return;
+      }
 
-    showFeedback("success", `Mata pelajaran "${namaMapel}" berhasil dihapus.`);
+      const filtered = items.filter(it => it.id !== id);
+      setItems(filtered);
+      localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(filtered));
+      showFeedback("success", `Mata pelajaran "${namaMapel}" berhasil dihapus.`);
+    } catch (err: any) {
+      showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
+    }
   };
 
   const filteredItems = useMemo(() => {
@@ -251,7 +257,7 @@ export default function MasterMataPelajaranPanel() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
@@ -291,20 +297,6 @@ export default function MasterMataPelajaranPanel() {
             </div>
           </div>
         </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Kategori Umum</p>
-              <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                {items.filter(i => i.kategori === "Umum").length} Mapel
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Main Table Card */}
@@ -324,7 +316,7 @@ export default function MasterMataPelajaranPanel() {
             </div>
 
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-              {(["All", "SMP", "SMA", "Umum"] as const).map((kat) => (
+              {(["All", "SMP", "SMA"] as const).map((kat) => (
                 <button
                   key={kat}
                   onClick={() => setKategoriFilter(kat)}
@@ -384,9 +376,7 @@ export default function MasterMataPelajaranPanel() {
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                         item.kategori === "SMP"
                           ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60"
-                          : item.kategori === "SMA"
-                          ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-                          : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60"
+                          : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
                       }`}
                     >
                       {item.kategori}
@@ -491,22 +481,15 @@ export default function MasterMataPelajaranPanel() {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   Kategori Jenjang <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2.5">
-                  {(["SMP", "SMA", "Umum"] as const).map((kat) => (
-                    <button
-                      key={kat}
-                      type="button"
-                      onClick={() => setFormKategori(kat)}
-                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                        formKategori === kat
-                          ? "bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-600 dark:text-blue-300 ring-2 ring-blue-500/20"
-                          : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      {kat}
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={formKategori}
+                  onChange={(e) => setFormKategori(e.target.value as "SMP" | "SMA")}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                  required
+                >
+                  <option value="SMP">SMP</option>
+                  <option value="SMA">SMA</option>
+                </select>
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 mt-5">

@@ -60,6 +60,14 @@ CREATE TABLE IF NOT EXISTS public.plotting_guru_mapel (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6. Plotting Guru Sekolah
+DROP TABLE IF EXISTS public.plotting_guru_sekolah CASCADE;
+CREATE TABLE IF NOT EXISTS public.plotting_guru_sekolah (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    guru_id UUID REFERENCES public.guru(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Kebijakan Akses / RLS (Row Level Security)
 ALTER TABLE public.kelas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public all kelas" ON public.kelas;
@@ -84,3 +92,7 @@ CREATE POLICY "Allow public all plotting_wali_kelas" ON public.plotting_wali_kel
 ALTER TABLE public.plotting_guru_mapel ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public all plotting_guru_mapel" ON public.plotting_guru_mapel;
 CREATE POLICY "Allow public all plotting_guru_mapel" ON public.plotting_guru_mapel FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.plotting_guru_sekolah ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public all plotting_guru_sekolah" ON public.plotting_guru_sekolah;
+CREATE POLICY "Allow public all plotting_guru_sekolah" ON public.plotting_guru_sekolah FOR ALL USING (true) WITH CHECK (true);

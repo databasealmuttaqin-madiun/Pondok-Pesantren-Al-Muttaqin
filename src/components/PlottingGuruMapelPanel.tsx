@@ -141,7 +141,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
             id: String(m.id),
             kode_mapel: m.kode_mapel,
             nama_mapel: m.nama_mapel,
-            kategori: m.kategori || "Umum"
+            kategori: (m.kategori === "SMA" ? "SMA" : "SMP") as "SMP" | "SMA"
           }));
         }
       } catch (err) {
@@ -160,7 +160,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
           { id: "1", kode_mapel: "MTK-SMP", nama_mapel: "Matematika", kategori: "SMP" },
           { id: "2", kode_mapel: "IPA-SMP", nama_mapel: "Ilmu Pengetahuan Alam", kategori: "SMP" },
           { id: "3", kode_mapel: "BIG-SMP", nama_mapel: "Bahasa Inggris", kategori: "SMP" },
-          { id: "4", kode_mapel: "PAI", nama_mapel: "Pendidikan Agama Islam", kategori: "Umum" }
+          { id: "4", kode_mapel: "PAI", nama_mapel: "Pendidikan Agama Islam", kategori: "SMP" }
         ];
       }
       setMapelList(mList);
