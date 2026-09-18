@@ -180,16 +180,27 @@ export default function DashboardGuru({
 
         // Fetch Absensi Hari Ini
         if (currentUser?.username) {
-          const { data: attData } = await supabase
+          const { data: attList } = await supabase
             .from("absensi_guru")
             .select("*")
             .eq("username", currentUser.username)
-            .eq("tanggal", todayYMD)
-            .maybeSingle();
+            .order("waktu_absen", { ascending: false })
+            .limit(10);
 
           if (isMounted) {
-            if (attData) {
-              setTodayAttendance(attData);
+            const todayMatch = attList?.find(a => {
+              if (!a.waktu_absen) return false;
+              const dStr = new Date(a.waktu_absen).toISOString().split("T")[0];
+              return dStr === todayYMD;
+            });
+
+            if (todayMatch) {
+              const formattedTime = todayMatch.waktu_absen ? new Date(todayMatch.waktu_absen).toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' }) : "-";
+              setTodayAttendance({
+                ...todayMatch,
+                jam_masuk: (todayMatch.keterangan || "").toLowerCase().includes("pulang") ? undefined : formattedTime,
+                jam_pulang: (todayMatch.keterangan || "").toLowerCase().includes("pulang") ? formattedTime : undefined,
+              });
             } else {
               const localKey = `absensi_guru_${currentUser.username}_${todayYMD}`;
               const localSaved = localStorage.getItem(localKey);
@@ -298,35 +309,45 @@ export default function DashboardGuru({
     try {
       const now = new Date();
       const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const statusLokasiDb = dist <= SCHOOL_COORDINATES.radiusMeters ? "Dalam Jangkauan" : "Luar Jangkauan";
 
-      const payload: any = {
+      const dbPayload = {
         username: currentUser.username,
         nama_guru: currentUser.name || currentUser.username,
-        tanggal: todayYMD,
         waktu_absen: now.toISOString(),
         latitude: lat,
         longitude: lng,
+        status_lokasi: statusLokasiDb,
+        keterangan: tipe
+      };
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("absensi_guru")
+        .insert([dbPayload])
+        .select();
+
+      if (insertError) {
+        console.error("Gagal simpan absensi_guru:", insertError);
+        throw new Error(insertError.message);
+      }
+
+      const localPayload = {
+        ...dbPayload,
+        id: inserted?.[0]?.id,
+        tanggal: todayYMD,
+        jam_masuk: tipe === "Masuk" ? timeStr : todayAttendance?.jam_masuk,
+        jam_pulang: tipe === "Pulang" ? timeStr : todayAttendance?.jam_pulang,
         jarak_meter: Math.round(dist),
-        status_lokasi: dist <= SCHOOL_COORDINATES.radiusMeters ? "Dalam Radius" : "Di Luar Radius",
         status: "Hadir"
       };
 
-      if (tipe === "Masuk") {
-        payload.jam_masuk = timeStr;
-      } else {
-        payload.jam_pulang = timeStr;
-      }
-
-      await supabase.from("absensi_guru").upsert(payload, { onConflict: "username,tanggal" });
-
-      const updated = { ...todayAttendance, ...payload };
-      setTodayAttendance(updated);
-      localStorage.setItem(`absensi_guru_${currentUser.username}_${todayYMD}`, JSON.stringify(updated));
+      setTodayAttendance(localPayload);
+      localStorage.setItem(`absensi_guru_${currentUser.username}_${todayYMD}`, JSON.stringify(localPayload));
 
       MySwal.fire({
         icon: "success",
         title: `Presensi ${tipe} Berhasil`,
-        text: `Presensi ${tipe} Anda tercatat pada pukul ${timeStr} WIB.`,
+        text: `Presensi ${tipe} Anda tercatat ke database pada pukul ${timeStr} WIB.`,
         confirmButtonColor: "#2563eb",
         timer: 2000,
         showConfirmButton: false

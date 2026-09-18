@@ -1,126 +1,265 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { 
-  MapPin, CheckCircle, XCircle, AlertTriangle, Crosshair, 
-  Clock, RefreshCw, Eye, Calendar, LogIn, LogOut, CheckCircle2,
-  ExternalLink, ArrowRight, ShieldCheck, Compass, Navigation, Check,
-  Download, FileText, Send, UploadCloud, UserCheck, AlertOctagon, HelpCircle,
-  Camera, QrCode
+  QrCode, 
+  MapPin, 
+  Clock, 
+  Calendar, 
+  CheckCircle2, 
+  AlertTriangle, 
+  RefreshCw, 
+  Camera, 
+  CameraOff,
+  X, 
+  FileSpreadsheet, 
+  ShieldCheck, 
+  Navigation,
+  Info,
+  Upload,
+  ExternalLink,
+  ChevronRight,
+  Sun,
+  Layers,
+  Sparkles
 } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
-import QRScannerModal, { DEFAULT_SCHOOL_COORDS, DEFAULT_STATIC_QR_TOKEN } from "./QRScannerModal";
-import StationQRPrintModal from "./StationQRPrintModal";
+import { 
+  DayName, 
+  JadwalHari, 
+  DEFAULT_JADWAL_HARIAN, 
+  DAY_NAMES_ORDER,
+  PengaturanAbsensiData 
+} from "./PengaturanAbsensiPanel";
 
 const MySwal = withReactContent(Swal);
 
-// --- KONFIGURASI DEFAULT LOKASI SEKOLAH (Al-Muttaqin) ---
+// ==============================================================================
+// KONFIGURASI PUSAT KOORDINAT & RADIUS SEKOLAH (SMP IT / PONDOK AL-MUTTAQIN)
+// ==============================================================================
 const DEFAULT_SCHOOL_LOCATION = {
-  latitude: -7.227800, 
-  longitude: 111.534500,
-  radiusMeters: 50 // Toleransi 50 meter sesuai spesifikasi geofencing
+  latitude: -7.629810,
+  longitude: 111.523910,
+  radiusMeters: 50 // Toleransi geofencing maksimal 50 meter
 };
 
-// Jarak antara 2 titik koordinat bumi (Haversine formula)
-function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
+// Token QR Code Stasiun Presensi Sekolah yang Valid
+const VALID_QR_TOKENS = [
+  "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+  "ALMUTTAQIN_STATION_UTAMA",
+  "ALMUTTAQIN_QR_PRESENSI_GURU",
+  "ALMUTTAQIN_PRESENSI_GURU"
+];
+
+export const HARI_NAMES_MAP: DayName[] = ["Ahad", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+export function getDayNameFromDate(date: Date): DayName {
+  const dayIdx = date.getDay();
+  return HARI_NAMES_MAP[dayIdx] || "Senin";
+}
+
+// Helper: Memuat konfigurasi stasiun dan jadwal harian dari admin settings jika ada
+export function getActiveSchoolConfig() {
+  try {
+    // 1. Cek data dari Plotting Jam Absensi Guru jika ada
+    const savedPlotting = localStorage.getItem("plotting_jam_absensi_data");
+    if (savedPlotting) {
+      const parsedList = JSON.parse(savedPlotting);
+      if (Array.isArray(parsedList) && parsedList.length > 0) {
+        const mappedJadwal: JadwalHari[] = parsedList.map((item: any) => ({
+          hari: item.hari,
+          aktif: item.is_aktif !== false,
+          jam_masuk: item.jam_masuk || "07:00",
+          toleransi_terlambat: Number(item.toleransi_menit ?? 15),
+          jam_pulang: item.jam_pulang || "14:00",
+          keterangan: item.keterangan || (item.hari === "Ahad" ? "Hari Libur" : (item.hari === "Jumat" ? "KBM Singkat & Sholat Jumat" : "KBM Reguler"))
+        }));
+
+        return {
+          ...DEFAULT_SCHOOL_LOCATION,
+          qrToken: "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+          namaSekolah: "SMP IT Al-Muttaqin",
+          alamatPos: "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
+          jamMasuk: mappedJadwal[0]?.jam_masuk || "07:00",
+          toleransiTerlambat: mappedJadwal[0]?.toleransi_terlambat || 15,
+          jamPulang: mappedJadwal[0]?.jam_pulang || "14:00",
+          jadwalHarian: mappedJadwal
+        };
+      }
+    }
+
+    const saved = localStorage.getItem("pengaturan_absensi");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const jadwalHarian: JadwalHari[] = parsed.jadwal_harian && Array.isArray(parsed.jadwal_harian) && parsed.jadwal_harian.length === 7
+        ? parsed.jadwal_harian
+        : DEFAULT_JADWAL_HARIAN;
+
+      return {
+        latitude: typeof parsed.latitude === "number" ? parsed.latitude : (parseFloat(parsed.latitude) || DEFAULT_SCHOOL_LOCATION.latitude),
+        longitude: typeof parsed.longitude === "number" ? parsed.longitude : (parseFloat(parsed.longitude) || DEFAULT_SCHOOL_LOCATION.longitude),
+        radiusMeters: typeof parsed.radius_gps === "number" ? parsed.radius_gps : (parseInt(parsed.radius_gps) || DEFAULT_SCHOOL_LOCATION.radiusMeters),
+        qrToken: parsed.qr_token || "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+        namaSekolah: parsed.nama_sekolah || "SMP IT Al-Muttaqin",
+        alamatPos: parsed.alamat_pos || "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
+        jamMasuk: parsed.jam_masuk || "07:00",
+        toleransiTerlambat: Number(parsed.toleransi_terlambat) || 15,
+        jamPulang: parsed.jam_pulang || "14:00",
+        jadwalHarian
+      };
+    }
+  } catch {}
+  return {
+    ...DEFAULT_SCHOOL_LOCATION,
+    qrToken: "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+    namaSekolah: "SMP IT Al-Muttaqin",
+    alamatPos: "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
+    jamMasuk: "07:00",
+    toleransiTerlambat: 15,
+    jamPulang: "14:00",
+    jadwalHarian: DEFAULT_JADWAL_HARIAN
+  };
+}
+
+// Rumus Haversine: Menghitung jarak antara 2 titik koordinat bumi (dalam meter)
+export function calculateHaversineDistance(
+  lat1: number, 
+  lon1: number, 
+  lat2: number, 
+  lon2: number
+): number {
   const R = 6371e3; // Radius bumi dalam meter
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
+  const toRad = (angle: number) => (angle * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
-function deg2rad(deg: number) {
-  return deg * (Math.PI / 180);
+export interface AbsensiGuruRecord {
+  id?: string;
+  username: string;
+  nama_guru: string;
+  waktu_absen: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  status_lokasi?: string | null;
+  keterangan?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
-// Format waktu HH:mm WIB
-function formatTimeHHmm(dateInput?: string | Date | null) {
-  if (!dateInput) return "-";
-  try {
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (isNaN(d.getTime())) return String(dateInput);
-    const hours = String(d.getHours()).padStart(2, "0");
-    const minutes = String(d.getMinutes()).padStart(2, "0");
-    return `${hours}:${minutes} WIB`;
-  } catch (_) {
-    return String(dateInput);
-  }
-}
-
-// Format tanggal lengkap Indonesia (e.g. "Jumat, 18 September 2026")
-function formatDateIndo(dateInput?: string | Date | null) {
-  if (!dateInput) return "-";
-  try {
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (isNaN(d.getTime())) return String(dateInput);
-    return d.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
-  } catch (_) {
-    return String(dateInput);
-  }
+export interface DayAttendanceSummary {
+  dateStr: string; // YYYY-MM-DD
+  displayDate: string; // e.g. "Jumat, 18 Sep 2026"
+  dayName: DayName;
+  masukTime: string | null;
+  pulangTime: string | null;
+  masukRecord?: AbsensiGuruRecord;
+  pulangRecord?: AbsensiGuruRecord;
+  statusRadius: "Dalam Radius (<50m)" | "Luar Radius" | "Tidak Ada Data";
+  statusHadir: "Hadir" | "Terlambat" | "Pulang Awal" | "Belum Absen" | "Hadir (Hari Libur)";
+  isHoliday?: boolean;
 }
 
 interface AbsensiGuruPanelProps {
-  currentUser?: { username: string; role: string; name: string; id?: string; gender?: string } | null;
-  initialSubTab?: "absensi" | "mengajar" | "semua_guru";
-  onSubTabChange?: (tab: "absensi" | "mengajar" | "semua_guru") => void;
-}
-
-interface AttendanceRecord {
-  id?: string | number;
-  guru_id?: string | null;
-  username: string;
-  nama_guru: string;
-  tanggal: string; // YYYY-MM-DD
-  waktu_absen: string; // ISO
-  jam_masuk?: string | null;
-  jam_pulang?: string | null;
-  latitude?: number;
-  longitude?: number;
-  status_lokasi?: string;
-  status?: string;
-  keterangan?: string;
-  jarak_meter?: number;
+  currentUser?: { 
+    username: string; 
+    role: string; 
+    name: string; 
+    id?: string; 
+    gender?: string;
+  } | null;
+  initialSubTab?: string;
+  onSubTabChange?: (tab: any) => void;
 }
 
 export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps) {
-  // 1. Live Clock State
-  const [currentDateTime, setCurrentDateTime] = useState<Date>(new Date());
+  const resolvedGuruNama = currentUser?.name || currentUser?.username || "Ustadz / Guru";
+  const resolvedUsername = currentUser?.username || "guru";
 
+  // Realtime digital clock state
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Data history state
+  const [records, setRecords] = useState<AbsensiGuruRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Modal 7-Day Schedule Viewer
+  const [showScheduleModal, setShowScheduleModal] = useState<boolean>(false);
+
+  // Month & Year Filter for History Table
+  const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth());
+  const [filterYear, setFilterYear] = useState<number>(new Date().getFullYear());
+
+  // Scanner Modal & Type State
+  const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
+  const [scanType, setScanType] = useState<"Masuk" | "Pulang">("Masuk");
+  const [isProcessingScan, setIsProcessingScan] = useState<boolean>(false);
+  const [isStartingCamera, setIsStartingCamera] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isPermissionDenied, setIsPermissionDenied] = useState<boolean>(false);
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+
+  // Current Live GPS tracking inside modal
+  const [currentGps, setCurrentGps] = useState<{ lat: number; lng: number; accuracy: number; distance: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<"searching" | "connected" | "error">("searching");
+  const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
+
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const isProcessingScanRef = useRef<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const isIframe = useMemo(() => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  }, []);
+
+  // Update clock every second
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentDateTime(new Date());
+      setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Format Jam Realtime: "07:15:30 WIB - Jumat, 18 September 2026"
-  const formattedRealtimeClock = useMemo(() => {
-    const hours = String(currentDateTime.getHours()).padStart(2, "0");
-    const minutes = String(currentDateTime.getMinutes()).padStart(2, "0");
-    const seconds = String(currentDateTime.getSeconds()).padStart(2, "0");
-    const timePart = `${hours}:${minutes}:${seconds} WIB`;
-    const datePart = currentDateTime.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
-    return `${timePart} - ${datePart}`;
-  }, [currentDateTime]);
+  // Active School & Schedule Configuration
+  const schoolConfig = useMemo(() => {
+    return getActiveSchoolConfig();
+  }, []);
 
-  // Today string YYYY-MM-DD
-  const todayStr = useMemo(() => {
+  // Current Day Info & Today's Specific Schedule
+  const todayDayName = useMemo<DayName>(() => {
+    return getDayNameFromDate(currentTime);
+  }, [currentTime]);
+
+  const todaySchedule = useMemo<JadwalHari>(() => {
+    const found = schoolConfig.jadwalHarian.find(j => j.hari === todayDayName);
+    return found || {
+      hari: todayDayName,
+      aktif: todayDayName !== "Ahad",
+      jam_masuk: schoolConfig.jamMasuk || "07:00",
+      toleransi_terlambat: schoolConfig.toleransiTerlambat || 15,
+      jam_pulang: schoolConfig.jamPulang || "14:00",
+      keterangan: todayDayName === "Ahad" ? "Hari Libur" : (todayDayName === "Jumat" ? "KBM Singkat & Sholat Jumat" : "KBM Reguler")
+    };
+  }, [schoolConfig, todayDayName]);
+
+  // Today's YYYY-MM-DD
+  const todayYMD = useMemo(() => {
     const d = new Date();
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -128,1393 +267,1104 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     return `${year}-${month}-${day}`;
   }, []);
 
-  // 2. Guru Profile & Database Session State
-  const [resolvedGuruId, setResolvedGuruId] = useState<string | null>(null);
-  const [resolvedGuruNama, setResolvedGuruNama] = useState<string>(currentUser?.name || "Guru");
+  // Fetch Attendance Records
+  const fetchMyAttendance = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) setIsRefreshing(true);
+    else setIsLoading(true);
 
-  // 3. Location & School Config State
-  const [schoolLocation, setSchoolLocation] = useState(DEFAULT_SCHOOL_LOCATION);
-  const [location, setLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
-  const [distance, setDistance] = useState<number | null>(null);
-  const [isLocating, setIsLocating] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
-
-  // QR Code & Geofencing Modal State
-  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
-  const [isStationQrModalOpen, setIsStationQrModalOpen] = useState(false);
-
-  // 4. Attendance Actions & History State
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [history, setHistory] = useState<AttendanceRecord[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [selectedDetail, setSelectedDetail] = useState<AttendanceRecord | null>(null);
-
-  // Tab State: 1. Riwayat Kehadiran, 2. Form Pengajuan Izin / Sakit
-  const [activeTabSection, setActiveTabSection] = useState<"riwayat" | "izin">("riwayat");
-
-  // Month & Year Filter State for Riwayat Kehadiran
-  const [filterBulan, setFilterBulan] = useState<number>(new Date().getMonth());
-  const [filterTahun, setFilterTahun] = useState<number>(new Date().getFullYear());
-
-  // Form Pengajuan Izin / Sakit State
-  const [izinJenis, setIzinJenis] = useState<"Sakit" | "Izin" | "Dinas Luar">("Sakit");
-  const [izinTanggalMulai, setIzinTanggalMulai] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [izinTanggalSelesai, setIzinTanggalSelesai] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [izinAlasan, setIzinAlasan] = useState<string>("");
-  const [izinBuktiFile, setIzinBuktiFile] = useState<string | null>(null);
-  const [isSubmittingIzin, setIsSubmittingIzin] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Resolve active guru_id and name from Supabase
-  useEffect(() => {
-    const resolveGuruSession = async () => {
-      if (!currentUser?.username) return;
-
-      try {
-        let penggunaId: string | undefined = undefined;
-        let guruName = currentUser.name || currentUser.username;
-
-        // Cari di tabel 'pengguna'
-        const { data: dbUser } = await supabase
-          .from("pengguna")
-          .select("id, nama, nama_lengkap, username")
-          .eq("username", currentUser.username)
-          .maybeSingle();
-
-        if (dbUser) {
-          penggunaId = dbUser.id;
-          if (dbUser.nama_lengkap) guruName = dbUser.nama_lengkap;
-          else if (dbUser.nama) guruName = dbUser.nama;
-        }
-
-        // Cari di tabel 'guru'
-        let dbGuru: any = null;
-        if (penggunaId) {
-          const { data } = await supabase
-            .from("guru")
-            .select("id, nama_lengkap, pengguna_id")
-            .eq("pengguna_id", penggunaId)
-            .maybeSingle();
-          if (data) dbGuru = data;
-        }
-
-        if (!dbGuru && guruName) {
-          const { data } = await supabase
-            .from("guru")
-            .select("id, nama_lengkap, pengguna_id")
-            .ilike("nama_lengkap", guruName.trim())
-            .maybeSingle();
-          if (data) dbGuru = data;
-        }
-
-        if (dbGuru) {
-          setResolvedGuruId(dbGuru.id);
-          if (dbGuru.nama_lengkap) setResolvedGuruNama(dbGuru.nama_lengkap);
-        } else {
-          setResolvedGuruNama(guruName);
-        }
-      } catch (err) {
-        console.warn("Gagal mendapatkan relasi guru_id:", err);
-      }
-    };
-
-    resolveGuruSession();
-  }, [currentUser]);
-
-  // Fetch school location from 'pengaturan_sekolah'
-  useEffect(() => {
-    const fetchSchoolLocation = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("pengaturan_sekolah")
-          .select("*")
-          .eq("id", 1)
-          .maybeSingle();
-
-        if (data && !error) {
-          const loc = {
-            latitude: Number(data.latitude) || DEFAULT_SCHOOL_LOCATION.latitude,
-            longitude: Number(data.longitude) || DEFAULT_SCHOOL_LOCATION.longitude,
-            radiusMeters: Number(data.radius_meters) || DEFAULT_SCHOOL_LOCATION.radiusMeters
-          };
-          setSchoolLocation(loc);
-          localStorage.setItem("absensi_school_location", JSON.stringify(loc));
-        } else {
-          const savedLoc = localStorage.getItem("absensi_school_location");
-          if (savedLoc) setSchoolLocation(JSON.parse(savedLoc));
-        }
-      } catch (e) {
-        console.warn("Notice checking school location:", e);
-      }
-    };
-
-    fetchSchoolLocation();
-  }, []);
-
-  // Fetch attendance history
-  const fetchAttendanceHistory = async () => {
-    setIsLoadingHistory(true);
     try {
       let query = supabase
         .from("absensi_guru")
         .select("*")
         .order("waktu_absen", { ascending: false });
 
-      if (currentUser?.role !== "admin" && currentUser?.role !== "super admin" && currentUser?.role !== "superadmin") {
-        query = query.eq("username", currentUser?.username || "");
+      if (resolvedUsername && resolvedUsername !== "admin") {
+        query = query.eq("username", resolvedUsername);
       }
 
       const { data, error } = await query;
-
-      if (!error && data) {
-        setHistory(data);
-        localStorage.setItem("absensi_guru_history", JSON.stringify(data));
-      } else {
-        const saved = localStorage.getItem("absensi_guru_history");
-        if (saved) setHistory(JSON.parse(saved));
+      if (error) throw error;
+      if (data) {
+        setRecords(data as AbsensiGuruRecord[]);
       }
-    } catch (err) {
-      console.warn("Gagal memuat riwayat presensi:", err);
-      const saved = localStorage.getItem("absensi_guru_history");
-      if (saved) setHistory(JSON.parse(saved));
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAttendanceHistory();
-  }, [currentUser]);
-
-  // Today's attendance record for active user
-  const todayRecord = useMemo(() => {
-    return history.find(r => {
-      const matchUser = r.username === currentUser?.username || (resolvedGuruId && r.guru_id === resolvedGuruId);
-      if (!matchUser) return false;
-
-      if (r.tanggal === todayStr) return true;
-      if (r.waktu_absen) {
-        const dStr = new Date(r.waktu_absen).toISOString().split("T")[0];
-        return dStr === todayStr;
-      }
-      return false;
-    });
-  }, [history, currentUser, resolvedGuruId, todayStr]);
-
-  // Status radius check
-  const isWithinRadius = distance !== null && distance <= schoolLocation.radiusMeters;
-  const isOutsideRadius = distance !== null && distance > schoolLocation.radiusMeters;
-
-  // Trigger GPS Geolocation
-  const handleCheckLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError("Perangkat atau peramban ini tidak mendukung Geolocation.");
-      return;
-    }
-
-    setIsLocating(true);
-    setLocationError(null);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
-        setLocation({ lat: latitude, lng: longitude, accuracy });
-
-        const dist = getDistanceFromLatLonInM(
-          schoolLocation.latitude,
-          schoolLocation.longitude,
-          latitude,
-          longitude
-        );
-        setDistance(dist);
-        setIsLocating(false);
-      },
-      (err) => {
-        setIsLocating(false);
-        switch (err.code) {
-          case err.PERMISSION_DENIED:
-            setLocationError("Izin akses lokasi (GPS) ditolak. Silakan aktifkan izin lokasi di browser Anda.");
-            break;
-          case err.POSITION_UNAVAILABLE:
-            setLocationError("Informasi lokasi tidak tersedia saat ini.");
-            break;
-          case err.TIMEOUT:
-            setLocationError("Waktu permintaan lokasi habis (timeout). Silakan coba lagi.");
-            break;
-          default:
-            setLocationError("Terjadi kesalahan saat mendeteksi koordinat GPS.");
-            break;
+    } catch (err: any) {
+      console.warn("Gagal memuat riwayat absensi guru dari Supabase:", err?.message || err);
+      // Fallback local memory storage if DB is empty or offline
+      try {
+        const localSaved = localStorage.getItem(`absensi_local_${resolvedUsername}`);
+        if (localSaved) {
+          setRecords(JSON.parse(localSaved));
         }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0
-      }
-    );
+      } catch {}
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [resolvedUsername]);
+
+  // Realtime Supabase Subscription & initial load
+  useEffect(() => {
+    isMountedRef.current = true;
+    fetchMyAttendance();
+
+    const channel = supabase
+      .channel("absensi_guru_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "absensi_guru" },
+        () => {
+          fetchMyAttendance();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMountedRef.current = false;
+      supabase.removeChannel(channel);
+    };
+  }, [fetchMyAttendance]);
+
+  // Today's Attendance Summary (Jam Masuk & Jam Pulang)
+  const todayAttendance = useMemo(() => {
+    const todayLogs = records.filter(r => {
+      if (!r.waktu_absen) return false;
+      const d = new Date(r.waktu_absen);
+      if (isNaN(d.getTime())) return false;
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      const da = String(d.getDate()).padStart(2, "0");
+      return `${yr}-${mo}-${da}` === todayYMD;
+    });
+
+    let masukLog = todayLogs.find(r => (r.keterangan || "").toLowerCase().includes("masuk"));
+    let pulangLog = todayLogs.find(r => (r.keterangan || "").toLowerCase().includes("pulang"));
+
+    if (!masukLog && todayLogs.length > 0) {
+      masukLog = todayLogs[todayLogs.length - 1];
+    }
+    if (!pulangLog && todayLogs.length > 1) {
+      pulangLog = todayLogs[0];
+    }
+
+    const formatTimeOnly = (isoStr?: string) => {
+      if (!isoStr) return null;
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }) + " WIB";
+    };
+
+    return {
+      masukTime: formatTimeOnly(masukLog?.waktu_absen),
+      pulangTime: formatTimeOnly(pulangLog?.waktu_absen),
+      hasMasuk: !!masukLog,
+      hasPulang: !!pulangLog,
+      masukLog,
+      pulangLog
+    };
+  }, [records, todayYMD]);
+
+  // Handle open scanner modal with intelligent auto-type
+  const handleOpenScanner = () => {
+    if (!todayAttendance.hasMasuk) {
+      setScanType("Masuk");
+    } else {
+      setScanType("Pulang");
+    }
+    setCameraError(null);
+    setIsPermissionDenied(false);
+    setIsProcessingScan(false);
+    isProcessingScanRef.current = false;
+    setIsScannerOpen(true);
   };
 
-  // Kirim Presensi (Masuk atau Pulang)
-  const handleSubmitPresensi = async (tipe: "Masuk" | "Pulang") => {
-    if (!location || distance === null) {
-      MySwal.fire({
-        icon: "warning",
-        title: "Lokasi Belum Terdeteksi",
-        text: "Silakan tekan tombol Cek Titik Lokasi terlebih dahulu."
-      });
-      return;
+  // Safe Camera Stop / Cleanup
+  const cleanupScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        const scanner = scannerRef.current;
+        scannerRef.current = null;
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
+        await scanner.clear();
+      } catch (err) {
+        console.warn("Camera cleanup warning:", err);
+      }
     }
-
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, "0");
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    const timeFormatted = `${hours}:${minutes} WIB`;
-    const statusLokasi = isWithinRadius ? "Dalam Radius" : "Di Luar Radius";
-
-    if (!isWithinRadius) {
-      const confirm = await MySwal.fire({
-        icon: "warning",
-        title: "Di Luar Radius Sekolah",
-        text: `Anda terdeteksi berada ${Math.round(distance)} meter dari sekolah (Radius valid: ${schoolLocation.radiusMeters} meter). Apakah Anda ingin tetap mengirim presensi?`,
-        showCancelButton: true,
-        confirmButtonText: "Tetap Kirim",
-        cancelButtonText: "Batal",
-        confirmButtonColor: "#f59e0b"
-      });
-      if (!confirm.isConfirmed) return;
+    if (isMountedRef.current) {
+      setIsCameraActive(false);
+      setIsStartingCamera(false);
     }
+  }, []);
 
-    setIsSubmitting(true);
+  // Safe Camera Start Lifecycle
+  const startCamera = async () => {
+    if (isCameraActive || isStartingCamera) return;
+    setIsStartingCamera(true);
+    setCameraError(null);
+    setIsPermissionDenied(false);
 
     try {
-      if (tipe === "Pulang" && todayRecord && todayRecord.id) {
-        // Update jam_pulang pada catatan yang sudah ada hari ini
-        const updatePayload: any = {
-          jam_pulang: timeFormatted,
-          keterangan: "Hadir Lengkap"
-        };
+      const element = document.getElementById("qr-camera-viewport");
+      if (!element) {
+        throw new Error("Elemen kamera tidak ditemukan di layar.");
+      }
 
-        const { error: updateErr } = await supabase
-          .from("absensi_guru")
-          .update(updatePayload)
-          .eq("id", todayRecord.id);
+      await cleanupScanner();
 
-        if (updateErr) {
-          // Fallback insert baris baru jika kolom tidak kompatibel
-          console.warn("Update existing row failed, inserting separate checkout row:", updateErr);
-          await supabase.from("absensi_guru").insert([{
-            guru_id: resolvedGuruId || null,
-            username: currentUser?.username || "guru",
-            nama_guru: resolvedGuruNama,
-            tanggal: todayStr,
-            jam_masuk: todayRecord.jam_masuk || null,
-            jam_pulang: timeFormatted,
-            waktu_absen: now.toISOString(),
-            latitude: location.lat,
-            longitude: location.lng,
-            status_lokasi: statusLokasi,
-            status: "Hadir",
-            keterangan: "Presensi Pulang"
-          }]);
+      const html5QrCode = new Html5Qrcode("qr-camera-viewport");
+      scannerRef.current = html5QrCode;
+
+      const config = {
+        fps: 10,
+        qrbox: { width: 220, height: 220 },
+        aspectRatio: 1.0
+      };
+
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          if (decodedText && !isProcessingScanRef.current) {
+            handleQrCodeDetected(decodedText);
+          }
+        },
+        () => {
+          // ignore frame decode noise
         }
+      );
+
+      if (isMountedRef.current) {
+        setIsCameraActive(true);
+        setIsStartingCamera(false);
+      }
+    } catch (err: any) {
+      console.warn("Camera start warning:", err);
+      if (isMountedRef.current) {
+        setIsStartingCamera(false);
+        setIsCameraActive(false);
+        const errMsg = String(err?.message || err || "");
+        if (errMsg.includes("NotAllowedError") || errMsg.includes("Permission denied")) {
+          setIsPermissionDenied(true);
+          setCameraError("Izin akses kamera belum diizinkan pada browser ini. Silakan izinkan akses kamera di pengaturan browser atau gunakan opsi Upload Foto QR / Presensi GPS.");
+        } else if (errMsg.includes("NotFoundError") || errMsg.includes("Requested device not found")) {
+          setCameraError("Kamera tidak terdeteksi pada perangkat ini. Anda dapat mengunggah file foto QR Code.");
+        } else {
+          setCameraError("Tidak dapat mengakses kamera secara langsung. Silakan gunakan opsi Upload Foto QR Code atau Presensi GPS Geofencing.");
+        }
+      }
+    }
+  };
+
+  // Re-request camera permissions using user gesture
+  const handleRequestCameraPermission = async () => {
+    try {
+      if (navigator?.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    } catch (err: any) {
+      console.warn("Izin user gesture:", err?.message || err);
+    }
+    await startCamera();
+  };
+
+  // Handle QR code scanning from an uploaded image file
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsProcessingScan(true);
+      isProcessingScanRef.current = true;
+
+      const html5QrCode = new Html5Qrcode("qr-file-upload-temp");
+      const decodedText = await html5QrCode.scanFile(file, true);
+      await html5QrCode.clear();
+
+      if (decodedText) {
+        handleQrCodeDetected(decodedText);
+      }
+    } catch (err: any) {
+      console.error("Gagal membaca QR dari file:", err);
+      MySwal.fire({
+        icon: "error",
+        title: "QR Code Tidak Terbaca",
+        text: "Pastikan gambar yang diunggah memuat QR Code stasiun presensi dengan jelas.",
+        confirmButtonColor: "#2563eb"
+      });
+    } finally {
+      setIsProcessingScan(false);
+      isProcessingScanRef.current = false;
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Modal open/close lifecycle
+  useEffect(() => {
+    if (!isScannerOpen) {
+      cleanupScanner();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      startCamera();
+    }, 350);
+
+    return () => {
+      clearTimeout(timer);
+      cleanupScanner();
+    };
+  }, [isScannerOpen]);
+
+  // Obtain High-Accuracy GPS Position
+  const fetchGpsCoordinates = (): Promise<{ lat: number; lng: number; accuracy: number; distance: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Perangkat Anda tidak mendukung fitur Geolocation GPS."));
+        return;
+      }
+
+      const activeConfig = getActiveSchoolConfig();
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const accuracy = pos.coords.accuracy || 10;
+          const distance = calculateHaversineDistance(
+            activeConfig.latitude,
+            activeConfig.longitude,
+            lat,
+            lng
+          );
+
+          const result = { lat, lng, accuracy, distance };
+          if (isMountedRef.current) {
+            setCurrentGps(result);
+            setGpsStatus("connected");
+          }
+          resolve(result);
+        },
+        (err) => {
+          let msg = "Gagal membaca lokasi GPS.";
+          if (err.code === 1) msg = "Izin akses lokasi GPS belum diaktifkan di browser Anda.";
+          else if (err.code === 2) msg = "Sinyal GPS tidak tersedia atau tidak akurat.";
+          else if (err.code === 3) msg = "Waktu permintaan sinyal GPS habis (Timeout).";
+          if (isMountedRef.current) {
+            setGpsStatus("error");
+            setGpsErrorMsg(msg);
+          }
+          reject(new Error(msg));
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  };
+
+  // Core Processing: Dual-Check (QR String Validation + GPS Geofencing Distance)
+  const handleQrCodeDetected = async (rawQrString: string) => {
+    if (isProcessingScanRef.current) return;
+    isProcessingScanRef.current = true;
+    setIsProcessingScan(true);
+
+    try {
+      // ----------------------------------------------------
+      // CEK 1: Validasi Nilai Token QR Code
+      // ----------------------------------------------------
+      const activeConfig = getActiveSchoolConfig();
+      const trimmedQr = rawQrString.trim();
+      let isValidQrToken = false;
+
+      if (
+        VALID_QR_TOKENS.includes(trimmedQr) ||
+        trimmedQr === activeConfig.qrToken ||
+        trimmedQr.startsWith("ALMUTTAQIN_")
+      ) {
+        isValidQrToken = true;
       } else {
-        // Insert presensi masuk baru
-        const newRecordPayload = {
-          guru_id: resolvedGuruId || null,
-          username: currentUser?.username || "guru",
-          nama_guru: resolvedGuruNama,
-          tanggal: todayStr,
-          jam_masuk: tipe === "Masuk" ? timeFormatted : null,
-          jam_pulang: tipe === "Pulang" ? timeFormatted : null,
-          waktu_absen: now.toISOString(),
-          latitude: location.lat,
-          longitude: location.lng,
-          status_lokasi: statusLokasi,
-          status: "Hadir",
-          keterangan: `Presensi ${tipe}`
-        };
-
-        const { error: insertErr } = await supabase
-          .from("absensi_guru")
-          .insert([newRecordPayload]);
-
-        if (insertErr) {
-          console.warn("Supabase insert absensi_guru warning:", insertErr.message);
+        try {
+          const parsed = JSON.parse(trimmedQr);
+          if (
+            parsed.station ||
+            parsed.type === "PRESENSI_SEKOLAH" ||
+            parsed.code?.startsWith("ALMUTTAQIN") ||
+            parsed.code === activeConfig.qrToken ||
+            parsed.token === activeConfig.qrToken
+          ) {
+            isValidQrToken = true;
+          }
+        } catch {
+          // not JSON
         }
+      }
+
+      if (!isValidQrToken) {
+        await MySwal.fire({
+          icon: "error",
+          title: "QR Code Tidak Valid!",
+          text: `QR Code yang dipindai bukan merupakan QR Code resmi stasiun presensi ${activeConfig.namaSekolah}.`,
+          confirmButtonColor: "#2563eb",
+          confirmButtonText: "Coba Lagi"
+        });
+        isProcessingScanRef.current = false;
+        setIsProcessingScan(false);
+        return;
+      }
+
+      // ----------------------------------------------------
+      // CEK 2: Dapatkan Koordinat GPS & Hitung Jarak Geofence
+      // ----------------------------------------------------
+      let gpsData;
+      try {
+        gpsData = await fetchGpsCoordinates();
+      } catch (gpsErr: any) {
+        await MySwal.fire({
+          icon: "warning",
+          title: "Lokasi GPS Tidak Terdeteksi",
+          text: gpsErr?.message || "Gagal mendapatkan koordinat GPS. Pastikan izin lokasi aktif pada browser Anda.",
+          confirmButtonColor: "#2563eb",
+          confirmButtonText: "Tutup"
+        });
+        isProcessingScanRef.current = false;
+        setIsProcessingScan(false);
+        return;
+      }
+
+      const distanceMeters = Math.round(gpsData.distance);
+
+      // Cek apakah berada dalam batas toleransi radius sekolah
+      if (distanceMeters > activeConfig.radiusMeters) {
+        await MySwal.fire({
+          icon: "error",
+          title: "Presensi Ditolak",
+          html: `
+            <div class="text-left text-sm space-y-2">
+              <p class="text-rose-600 font-semibold">Anda berada ${distanceMeters} meter di luar radius sekolah.</p>
+              <p class="text-slate-600">Presensi hanya dapat dilakukan jika Anda berada maksimal <b>${activeConfig.radiusMeters} meter</b> dari pusat sekolah (${activeConfig.namaSekolah}).</p>
+              <div class="p-3 bg-slate-50 rounded-lg text-xs text-slate-500 space-y-1">
+                <div>Lokasi Anda: ${gpsData.lat.toFixed(5)}, ${gpsData.lng.toFixed(5)}</div>
+                <div>Akurasi GPS: &plusmn;${Math.round(gpsData.accuracy)} meter</div>
+              </div>
+            </div>
+          `,
+          confirmButtonColor: "#e11d48",
+          confirmButtonText: "Mengerti"
+        });
+        isProcessingScanRef.current = false;
+        setIsProcessingScan(false);
+        return;
+      }
+
+      // ----------------------------------------------------
+      // JIKA VALID (QR Benar & Jarak <= Radius) -> SIMPAN KE DATABASE
+      // ----------------------------------------------------
+      const nowIso = new Date().toISOString();
+      const payload: AbsensiGuruRecord = {
+        username: resolvedUsername,
+        nama_guru: resolvedGuruNama,
+        waktu_absen: nowIso,
+        latitude: gpsData.lat,
+        longitude: gpsData.lng,
+        status_lokasi: "Dalam Jangkauan",
+        keterangan: scanType
+      };
+
+      // Save locally as backup cache
+      try {
+        const localKey = `absensi_local_${resolvedUsername}`;
+        const existing = JSON.parse(localStorage.getItem(localKey) || "[]");
+        localStorage.setItem(localKey, JSON.stringify([payload, ...existing]));
+      } catch {}
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("absensi_guru")
+        .insert([payload])
+        .select();
+
+      if (insertError) {
+        console.warn("Gagal simpan absensi ke Supabase table, dicatat lokal:", insertError);
+      }
+
+      // Close scanner modal immediately on success
+      setIsScannerOpen(false);
+
+      // Update state locally & refresh
+      if (inserted && inserted.length > 0) {
+        setRecords(prev => [inserted[0] as AbsensiGuruRecord, ...prev]);
+      } else {
+        setRecords(prev => [payload, ...prev]);
+      }
+
+      const waktuFormatted = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
+      
+      // Calculate timely or late status based on today's schedule
+      let statusNote = "Tepat Waktu";
+      if (scanType === "Masuk" && todaySchedule.aktif) {
+        const [h, m] = todaySchedule.jam_masuk.split(":").map(Number);
+        const targetMins = (h || 7) * 60 + (m || 0);
+        const limitMins = targetMins + (todaySchedule.toleransi_terlambat || 15);
+        const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+        if (nowMins > limitMins) {
+          const lateMins = nowMins - targetMins;
+          statusNote = `Terlambat ${lateMins} Menit (Jadwal Masuk ${todayDayName}: ${todaySchedule.jam_masuk})`;
+        } else {
+          statusNote = `Tepat Waktu (Jadwal Masuk ${todayDayName}: ${todaySchedule.jam_masuk})`;
+        }
+      } else if (scanType === "Pulang" && todaySchedule.aktif) {
+        statusNote = `Presensi Pulang (Jadwal Pulang ${todayDayName}: ${todaySchedule.jam_pulang})`;
       }
 
       await MySwal.fire({
         icon: "success",
-        title: `Presensi ${tipe} Berhasil!`,
-        text: `Kehadiran Anda pada pukul ${timeFormatted} telah berhasil dicatat.`,
-        timer: 2000,
-        showConfirmButton: false
+        title: `Presensi ${scanType} Berhasil!`,
+        html: `
+          <div class="text-center text-sm space-y-2">
+            <p class="text-slate-700">Terima kasih, <b>${resolvedGuruNama}</b>.</p>
+            <div class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 font-semibold rounded-full text-xs">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Pukul ${waktuFormatted} (${distanceMeters}m dari sekolah)
+            </div>
+            <p class="text-xs text-slate-500 pt-1">
+              ${statusNote}
+            </p>
+          </div>
+        `,
+        confirmButtonColor: "#10b981",
+        confirmButtonText: "Selesai"
       });
 
-      // Refresh list
-      fetchAttendanceHistory();
-    } catch (err: any) {
-      console.error("Gagal mengirim presensi:", err);
-      MySwal.fire({
+    } catch (error: any) {
+      console.error("Proses presensi gagal:", error);
+      await MySwal.fire({
         icon: "error",
-        title: "Gagal Mengirim Presensi",
-        text: err.message || "Terjadi kendala saat menyimpan data ke server."
+        title: "Gagal Mencatat Presensi",
+        text: error?.message || "Terjadi kesalahan saat menyimpan data ke database.",
+        confirmButtonColor: "#2563eb"
       });
     } finally {
-      setIsSubmitting(false);
+      isProcessingScanRef.current = false;
+      setIsProcessingScan(false);
     }
   };
 
-  // Bulan-bulan dalam Bahasa Indonesia
-  const daftarBulan = [
-    "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+  // Direct GPS Verification Option (Radius Valid)
+  const handleDirectGpsAttendance = () => {
+    handleQrCodeDetected(VALID_QR_TOKENS[0]);
+  };
+
+  // Group attendance records by Day for the selected Month & Year
+  const monthlySummaryList: DayAttendanceSummary[] = useMemo(() => {
+    const monthRecords = records.filter(r => {
+      if (!r.waktu_absen) return false;
+      const d = new Date(r.waktu_absen);
+      if (isNaN(d.getTime())) return false;
+      return d.getMonth() === filterMonth && d.getFullYear() === filterYear;
+    });
+
+    const mapByDate = new Map<string, AbsensiGuruRecord[]>();
+    monthRecords.forEach(r => {
+      const d = new Date(r.waktu_absen);
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      const da = String(d.getDate()).padStart(2, "0");
+      const key = `${yr}-${mo}-${da}`;
+      const list = mapByDate.get(key) || [];
+      list.push(r);
+      mapByDate.set(key, list);
+    });
+
+    const results: DayAttendanceSummary[] = [];
+    const sortedDates = Array.from(mapByDate.keys()).sort((a, b) => b.localeCompare(a));
+
+    sortedDates.forEach(dateStr => {
+      const dayLogs = mapByDate.get(dateStr) || [];
+      dayLogs.sort((a, b) => new Date(a.waktu_absen).getTime() - new Date(b.waktu_absen).getTime());
+
+      let masukRecord = dayLogs.find(r => (r.keterangan || "").toLowerCase().includes("masuk"));
+      let pulangRecord = dayLogs.find(r => (r.keterangan || "").toLowerCase().includes("pulang"));
+
+      if (!masukRecord && dayLogs.length > 0) {
+        masukRecord = dayLogs[0];
+      }
+      if (!pulangRecord && dayLogs.length > 1) {
+        pulangRecord = dayLogs[dayLogs.length - 1];
+      }
+
+      const formatTime = (iso?: string) => {
+        if (!iso) return null;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return null;
+        return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }) + " WIB";
+      };
+
+      const dateObj = new Date(dateStr + "T00:00:00");
+      const dayName = getDayNameFromDate(dateObj);
+      const displayDate = dateObj.toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+      });
+
+      // Match the specific day's schedule from config
+      const daySchedule = schoolConfig.jadwalHarian.find(j => j.hari === dayName) || {
+        hari: dayName,
+        aktif: dayName !== "Ahad",
+        jam_masuk: "07:00",
+        toleransi_terlambat: 15,
+        jam_pulang: "14:00",
+        keterangan: "-"
+      };
+
+      let statusRadius: "Dalam Radius (<50m)" | "Luar Radius" | "Tidak Ada Data" = "Tidak Ada Data";
+      const primaryRec = masukRecord || pulangRecord;
+      if (primaryRec?.latitude && primaryRec?.longitude) {
+        const dist = calculateHaversineDistance(
+          schoolConfig.latitude,
+          schoolConfig.longitude,
+          primaryRec.latitude,
+          primaryRec.longitude
+        );
+        statusRadius = dist <= schoolConfig.radiusMeters ? "Dalam Radius (<50m)" : "Luar Radius";
+      } else if (primaryRec?.status_lokasi === "Dalam Jangkauan") {
+        statusRadius = "Dalam Radius (<50m)";
+      }
+
+      let statusHadir: "Hadir" | "Terlambat" | "Pulang Awal" | "Belum Absen" | "Hadir (Hari Libur)" = "Hadir";
+      
+      if (!daySchedule.aktif) {
+        statusHadir = "Hadir (Hari Libur)";
+      } else if (masukRecord) {
+        const d = new Date(masukRecord.waktu_absen);
+        const actualMins = d.getHours() * 60 + d.getMinutes();
+        const [h, m] = daySchedule.jam_masuk.split(":").map(Number);
+        const targetMins = (h || 7) * 60 + (m || 0);
+        const limitMins = targetMins + (daySchedule.toleransi_terlambat || 15);
+
+        if (actualMins > limitMins) {
+          statusHadir = "Terlambat";
+        } else {
+          statusHadir = "Hadir";
+        }
+      }
+
+      results.push({
+        dateStr,
+        displayDate,
+        dayName,
+        masukTime: formatTime(masukRecord?.waktu_absen),
+        pulangTime: formatTime(pulangRecord?.waktu_absen),
+        masukRecord,
+        pulangRecord,
+        statusRadius,
+        statusHadir,
+        isHoliday: !daySchedule.aktif
+      });
+    });
+
+    return results;
+  }, [records, filterMonth, filterYear, schoolConfig]);
+
+  // Months List for Filter
+  const monthNames = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
     "Juli", "Agustus", "September", "Oktober", "November", "Desember"
   ];
 
-  // Filter history based on selected month and year
-  const filteredHistory = useMemo(() => {
-    return history.filter(item => {
-      const dateStr = item.tanggal || item.waktu_absen;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      return !isNaN(d.getTime()) && d.getFullYear() === filterTahun && d.getMonth() === filterBulan;
-    });
-  }, [history, filterBulan, filterTahun]);
-
-  // Statistik Ringkasan Bulan Terpilih (Total Hadir, Terlambat, Izin/Sakit)
-  const statsSummary = useMemo(() => {
-    let hadir = 0;
-    let terlambat = 0;
-    let izinSakit = 0;
-
-    filteredHistory.forEach(item => {
-      const st = (item.status || "Hadir").toLowerCase();
-      if (st.includes("izin") || st.includes("sakit") || st.includes("dinas")) {
-        izinSakit++;
-      } else {
-        hadir++;
-        // Cek jika jam masuk lebih dari 07:15 dianggap terlambat
-        if (item.jam_masuk) {
-          const parts = item.jam_masuk.split(":");
-          if (parts.length >= 2) {
-            const h = parseInt(parts[0], 10);
-            const m = parseInt(parts[1], 10);
-            if (h > 7 || (h === 7 && m > 15)) {
-              terlambat++;
-            }
-          }
-        }
-      }
-    });
-
-    return { hadir, terlambat, izinSakit, total: filteredHistory.length };
-  }, [filteredHistory]);
-
-  // Handler Unduh Rekap Presensi (CSV Format)
-  const handleDownloadRekap = () => {
-    if (filteredHistory.length === 0) {
+  // Export CSV
+  const handleExportCsv = () => {
+    if (monthlySummaryList.length === 0) {
       MySwal.fire({
         icon: "info",
         title: "Tidak Ada Data",
-        text: `Belum ada data presensi pada bulan ${daftarBulan[filterBulan]} ${filterTahun}.`,
+        text: `Belum ada data presensi pada bulan ${monthNames[filterMonth]} ${filterYear}.`,
         confirmButtonColor: "#2563eb"
       });
       return;
     }
 
-    const headers = ["No", "Tanggal", "Jam Masuk", "Jam Pulang", "Status", "Status Lokasi", "Koordinat", "Keterangan"];
-    const rows = filteredHistory.map((row, idx) => [
-      idx + 1,
-      row.tanggal || row.waktu_absen || "-",
-      row.jam_masuk || "-",
-      row.jam_pulang || "-",
-      row.status || "Hadir",
-      row.status_lokasi || "-",
-      row.latitude ? `"${row.latitude}, ${row.longitude}"` : "-",
-      row.keterangan ? `"${row.keterangan.replace(/"/g, '""')}"` : "-"
+    const headers = ["Tanggal", "Hari", "Jam Masuk", "Jam Pulang", "Status Radius", "Status Hadir"];
+    const rows = monthlySummaryList.map(item => [
+      `"${item.dateStr}"`,
+      `"${item.displayDate}"`,
+      `"${item.masukTime || "-"}"`,
+      `"${item.pulangTime || "-"}"`,
+      `"${item.statusRadius}"`,
+      `"${item.statusHadir}"`
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," + 
-      [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Rekap_Presensi_${resolvedGuruNama.replace(/\s+/g, "_")}_${daftarBulan[filterBulan]}_${filterTahun}.csv`);
+    link.setAttribute("download", `Riwayat_Presensi_${resolvedUsername}_${monthNames[filterMonth]}_${filterYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Handler Submit Form Izin / Sakit
-  const handleSubmitIzin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!izinAlasan.trim()) {
-      MySwal.fire({
-        icon: "warning",
-        title: "Alasan Wajib Diisi",
-        text: "Mohon tuliskan keterangan atau alasan pengajuan izin/sakit.",
-        confirmButtonColor: "#2563eb"
-      });
-      return;
-    }
-
-    setIsSubmittingIzin(true);
-    try {
-      const now = new Date();
-      const payload: any = {
-        username: currentUser?.username || "guru",
-        nama_guru: resolvedGuruNama,
-        tanggal: izinTanggalMulai,
-        waktu_absen: now.toISOString(),
-        jam_masuk: "-",
-        jam_pulang: "-",
-        status: izinJenis,
-        status_lokasi: "Pengajuan Izin",
-        keterangan: `[${izinJenis}] ${izinAlasan} (${izinTanggalMulai} s/d ${izinTanggalSelesai})${izinBuktiFile ? " [Ada Bukti Lampiran]" : ""}`
-      };
-
-      // Simpan ke tabel absensi_guru
-      const { error } = await supabase.from("absensi_guru").upsert(payload, { onConflict: "username,tanggal" });
-      if (error) {
-        console.warn("Supabase upsert izin info:", error);
-      }
-
-      // Update riwayat lokal
-      setHistory(prev => [payload, ...prev]);
-
-      // Reset form
-      setIzinAlasan("");
-      setIzinBuktiFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-
-      MySwal.fire({
-        icon: "success",
-        title: "Pengajuan Terkirim",
-        text: `Pengajuan ${izinJenis} Anda telah berhasil dicatat untuk tanggal ${izinTanggalMulai}.`,
-        confirmButtonColor: "#2563eb"
-      });
-
-      // Pindahkan ke tab riwayat
-      setActiveTabSection("riwayat");
-      fetchAttendanceHistory();
-    } catch (err: any) {
-      MySwal.fire({
-        icon: "error",
-        title: "Gagal Mengirim Pengajuan",
-        text: err?.message || "Terjadi kesalahan koneksi.",
-        confirmButtonColor: "#2563eb"
-      });
-    } finally {
-      setIsSubmittingIzin(false);
-    }
-  };
-
-  // Handle File Upload Bukti
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        MySwal.fire({
-          icon: "error",
-          title: "Ukuran File Terlalu Besar",
-          text: "Maksimal ukuran dokumen atau foto bukti adalah 5MB.",
-          confirmButtonColor: "#2563eb"
-        });
-        return;
-      }
-      setIzinBuktiFile(file.name);
-    }
-  };
-
   return (
-    <div className="space-y-6">
-      {/* 1. HEADER HALAMAN STANDAR REUSABLE */}
-      <PageHeader 
-        category="Sekolah & Presensi" 
-        title="Absensi Kehadiran Guru" 
-        description="Lakukan presensi masuk dan pulang berdasarkan lokasi radius sekolah yang valid." 
+    <div className="w-full max-w-6xl mx-auto space-y-6 animate-fade-in" id="presensi_kehadiran_guru">
+      {/* Hidden container for QR file scanning */}
+      <div id="qr-file-upload-temp" className="hidden" />
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileUpload}
       />
 
-      {/* 2. UTAMA - KARTU AKSI ABSENSI (PRESENSI CARD) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        {/* Header Widget Waktu & Radius (Minimalist Style) */}
-        <div className="bg-white dark:bg-slate-900 px-6 py-5 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
-                <span className="h-2 w-2 bg-emerald-500 rounded-full inline-block mr-1.5 shrink-0" />
-                <span>Waktu Server & Perangkat Terkini</span>
-              </div>
-              <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                {formattedRealtimeClock}
-              </p>
-            </div>
+      {/* ========================================================================= */}
+      {/* 1. HEADER HALAMAN STANDAR                                                 */}
+      {/* ========================================================================= */}
+      <PageHeader 
+        category="Sekolah & Presensi" 
+        title="Presensi Kehadiran Guru" 
+        description="Lakukan presensi masuk dan pulang sesuai jadwal harian menggunakan Scan QR Code & GPS di area sekolah." 
+      />
 
-            <div className="inline-flex items-center gap-1.5 self-start sm:self-auto bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              <span>
-                Pusat Radius: {schoolLocation.radiusMeters} Meter
+      {/* ========================================================================= */}
+      {/* 2. CARD JADWAL PRESENSI HARI INI (SESUAI HARI SENIN - AHAD)               */}
+      {/* ========================================================================= */}
+      <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-5 sm:p-6 shadow-sm border border-blue-800/60 relative overflow-hidden">
+        {/* Background Subtle Pattern */}
+        <div className="absolute -right-8 -bottom-8 w-44 h-44 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30 text-[11px] font-bold tracking-wide uppercase">
+                <Calendar className="w-3 h-3" />
+                Jadwal Hari {todayDayName}
               </span>
-            </div>
-          </div>
-        </div>
 
-        <div className="p-6 space-y-6">
-          {/* Status Presensi Hari Ini: 3 Cards Grid */}
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-              Status Presensi Hari Ini
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Card 1: Jam Masuk */}
-              <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 sm:p-5 border border-slate-100 dark:border-slate-800/60 transition-all">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    Jam Masuk
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 flex items-center justify-center">
-                    <LogIn className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-
-                <div className="mt-1">
-                  {todayRecord?.jam_masuk ? (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                        {todayRecord.jam_masuk}
-                      </span>
-                      <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800/50">
-                        Tercatat
-                      </span>
-                    </div>
-                  ) : todayRecord?.waktu_absen ? (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                        {formatTimeHHmm(todayRecord.waktu_absen)}
-                      </span>
-                      <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800/50">
-                        Tercatat
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-200/70 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300">
-                      Belum Absen
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Card 2: Jam Pulang */}
-              <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 sm:p-5 border border-slate-100 dark:border-slate-800/60 transition-all">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    Jam Pulang
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 flex items-center justify-center">
-                    <LogOut className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-
-                <div className="mt-1">
-                  {todayRecord?.jam_pulang ? (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                        {todayRecord.jam_pulang}
-                      </span>
-                      <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200/60 dark:border-blue-800/50">
-                        Tercatat
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-200/70 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300">
-                      Belum Absen
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Card 3: Status Radius */}
-              <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 sm:p-5 border border-slate-100 dark:border-slate-800/60 transition-all">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    Status Radius
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 flex items-center justify-center">
-                    <Crosshair className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-
-                <div className="mt-1">
-                  {isWithinRadius ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60">
-                        <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                        Dalam Radius
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        ({Math.round(distance!)} m)
-                      </span>
-                    </div>
-                  ) : isOutsideRadius ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/70 dark:border-rose-800/60">
-                        <XCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                        Di Luar Radius
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        ({Math.round(distance!)} m)
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-200/70 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300">
-                      Belum Cek Lokasi
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* HERO SECTION: SCAN QR PRESENSI (METODE STATIC QR + GPS 50M) */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800/60 dark:to-slate-800/40 p-5 rounded-2xl border border-blue-100 dark:border-blue-900/30 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/50 px-2.5 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3 text-blue-600" />
-                  Metode Terverifikasi: Static QR + GPS Geofencing
+              {todaySchedule.aktif ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  Hari Aktif Presensi
                 </span>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                  Radius &le; {schoolLocation.radiusMeters} Meter
-                </span>
-              </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Presensi Digital Menggunakan Papan QR Sekolah
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xl">
-                Arahkan kamera ke QR Code resmi yang ditempel pada stasiun presensi sekolah. Sistem akan memvalidasi keaslian token serta radius GPS 50m secara otomatis.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsQrScannerOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm hover:shadow transition-all cursor-pointer"
-              >
-                <Camera className="w-4 h-4 text-white" />
-                <span>Scan QR Presensi</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsStationQrModalOpen(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                title="Lihat / Cetak QR Code Stasiun Sekolah"
-              >
-                <QrCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>QR Stasiun</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Area Tombol Aksi GPS & Pengiriman Presensi Manual */}
-          <div>
-            {/* STATE WARNING (Luar Radius Alert) */}
-            {isOutsideRadius && (
-              <div className="mb-4 p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-xs sm:text-sm">
-                  <p className="font-semibold">
-                    Anda berada di luar radius lokasi sekolah (Jarak: {Math.round(distance!)} meter).
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Batas toleransi radius sekolah adalah {schoolLocation.radiusMeters} meter.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Error Geolocation Alert */}
-            {locationError && (
-              <div className="mb-4 p-3.5 rounded-xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-rose-900 dark:text-rose-200 flex items-start gap-3">
-                <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-xs sm:text-sm">
-                  <p className="font-semibold">Gagal Mendapatkan Lokasi</p>
-                  <p className="text-xs text-rose-700 dark:text-rose-300">{locationError}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Tombol Utama Dinamis Berdasarkan State */}
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              {/* STATE PROCESSING: Loading spinner */}
-              {isLocating ? (
-                <button
-                  type="button"
-                  disabled
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600/80 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm cursor-not-allowed"
-                >
-                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  <span>Mendapatkan Koordinat GPS...</span>
-                </button>
-              ) : !location ? (
-                /* STATE INITIAL: Tombol Solid Blue Cek Titik Lokasi */
-                <button
-                  type="button"
-                  onClick={handleCheckLocation}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm hover:shadow transition-colors cursor-pointer"
-                >
-                  <MapPin className="w-4 h-4 text-white" />
-                  <span>Cek Titik Lokasi Saat Ini</span>
-                </button>
-              ) : isWithinRadius ? (
-                /* STATE SUCCESS (Lolos Radius): Kirim Presensi Masuk / Pulang */
-                <div className="w-full flex flex-col sm:flex-row items-center gap-2.5">
-                  {!todayRecord?.jam_masuk && !todayRecord?.waktu_absen ? (
-                    <button
-                      type="button"
-                      onClick={() => handleSubmitPresensi("Masuk")}
-                      disabled={isSubmitting}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm hover:shadow transition-colors cursor-pointer"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      <span>{isSubmitting ? "Menyimpan..." : "Kirim Presensi Masuk"}</span>
-                    </button>
-                  ) : !todayRecord?.jam_pulang ? (
-                    <button
-                      type="button"
-                      onClick={() => handleSubmitPresensi("Pulang")}
-                      disabled={isSubmitting}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm hover:shadow transition-colors cursor-pointer"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>{isSubmitting ? "Menyimpan..." : "Kirim Presensi Pulang"}</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Presensi Hari Ini Lengkap</span>
-                    </div>
-                  )}
-
-                  {/* Tombol Cek Ulang GPS */}
-                  <button
-                    type="button"
-                    onClick={handleCheckLocation}
-                    disabled={isLocating}
-                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin" : ""}`} />
-                    <span>Cek Ulang GPS</span>
-                  </button>
-                </div>
               ) : (
-                /* Di Luar Radius: Pilihan Cek Ulang atau Tetap Kirim */
-                <div className="w-full flex flex-col sm:flex-row items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={handleCheckLocation}
-                    disabled={isLocating}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
-                    <span>Coba Deteksi Ulang Lokasi</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitPresensi(!todayRecord?.jam_masuk ? "Masuk" : "Pulang")}
-                    disabled={isSubmitting}
-                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Tetap Kirim Presensi</span>
-                  </button>
-                </div>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold">
+                  <Sun className="w-3 h-3 text-amber-400" />
+                  Hari Libur Mingguan
+                </span>
               )}
             </div>
 
-            {/* Informasi Koordinat Terdeteksi */}
-            {location && (
-              <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-                <div className="flex items-center gap-2">
-                  <Compass className="w-3.5 h-3.5 text-slate-400" />
-                  <span>
-                    Koordinat: <span className="font-mono text-slate-700 dark:text-slate-300">{location.lat.toFixed(6)}, {location.lng.toFixed(6)}</span>
-                  </span>
-                  <span className="text-slate-300 dark:text-slate-700">•</span>
-                  <span>
-                    Akurasi GPS: <span className="text-slate-700 dark:text-slate-300">±{Math.round(location.accuracy)} m</span>
-                  </span>
-                </div>
-
-                <a
-                  href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-medium"
-                >
-                  <span>Buka di Google Maps</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 3. TABS NAVIGASI: RIWAYAT KEHADIRAN & PENGAJUAN IZIN */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-1">
-        <button
-          type="button"
-          onClick={() => setActiveTabSection("riwayat")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
-            activeTabSection === "riwayat"
-              ? "bg-blue-600 text-white shadow-xs"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
-          }`}
-        >
-          <Calendar className="w-4 h-4" />
-          <span>Riwayat Kehadiran</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
-            activeTabSection === "riwayat" ? "bg-blue-700 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
-          }`}>
-            {filteredHistory.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTabSection("izin")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
-            activeTabSection === "izin"
-              ? "bg-blue-600 text-white shadow-xs"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Form Pengajuan Izin / Sakit</span>
-        </button>
-      </div>
-
-      {/* TAB 1: RIWAYAT KEHADIRAN */}
-      {activeTabSection === "riwayat" && (
-        <div className="space-y-6">
-          {/* STATS CARDS: TOTAL HADIR, TERLAMBAT, IZIN/SAKIT */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Total Hadir */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Total Hadir
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                    {statsSummary.hadir}
-                  </span>
-                  <span className="text-xs text-slate-400">Hari</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
-                <UserCheck className="w-5 h-5" />
-              </div>
-            </div>
-
-            {/* Terlambat */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Terlambat
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                    {statsSummary.terlambat}
-                  </span>
-                  <span className="text-xs text-slate-400">Kali</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
-                <Clock className="w-5 h-5" />
-              </div>
-            </div>
-
-            {/* Izin / Sakit */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Izin / Sakit
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {statsSummary.izinSakit}
-                  </span>
-                  <span className="text-xs text-slate-400">Hari</span>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
-                <FileText className="w-5 h-5" />
-              </div>
-            </div>
-          </div>
-
-          {/* FILTER BULAN, TAHUN & TOMBOL UNDUH REKAP */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Filter Bulan */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Bulan:</span>
-                  <select
-                    value={filterBulan}
-                    onChange={(e) => setFilterBulan(parseInt(e.target.value, 10))}
-                    className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {daftarBulan.map((bln, idx) => (
-                      <option key={bln} value={idx}>
-                        {bln}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Filter Tahun */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tahun:</span>
-                  <select
-                    value={filterTahun}
-                    onChange={(e) => setFilterTahun(parseInt(e.target.value, 10))}
-                    className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {[2025, 2026, 2027, 2028].map((yr) => (
-                      <option key={yr} value={yr}>
-                        {yr}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Tombol Unduh Rekap & Segarkan */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadRekap}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Unduh Rekap</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={fetchAttendanceHistory}
-                  disabled={isLoadingHistory}
-                  className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 rounded-xl cursor-pointer transition-colors shadow-2xs"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? "animate-spin" : ""}`} />
-                  <span>Segarkan</span>
-                </button>
-              </div>
-            </div>
-
-            {/* TABEL LENGKAP RIWAYAT KEHADIRAN */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50/75 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="py-3.5 px-6">Tanggal</th>
-                    <th className="py-3.5 px-6">Jam Masuk</th>
-                    <th className="py-3.5 px-6">Jam Pulang</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6">Lokasi & Keterangan</th>
-                    <th className="py-3.5 px-6 text-center">Aksi / Detail</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {filteredHistory.length > 0 ? (
-                    filteredHistory.map((row, index) => {
-                      const displayDate = formatDateIndo(row.tanggal || row.waktu_absen);
-                      const displayJamMasuk = row.jam_masuk || (row.waktu_absen ? formatTimeHHmm(row.waktu_absen) : "-");
-                      const displayJamPulang = row.jam_pulang || "-";
-                      const hasCoords = row.latitude !== undefined && row.longitude !== undefined;
-                      const isIzin = (row.status || "").toLowerCase().includes("izin") || (row.status || "").toLowerCase().includes("sakit");
-
-                      return (
-                        <tr 
-                          key={`history-${row.id || index}`}
-                          className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
-                        >
-                          {/* Tanggal */}
-                          <td className="py-4 px-6 text-slate-800 dark:text-slate-200 font-semibold whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
-                              <span>{displayDate}</span>
-                            </div>
-                          </td>
-
-                          {/* Jam Masuk */}
-                          <td className="py-4 px-6 text-slate-700 dark:text-slate-300 font-mono whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <LogIn className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                              <span>{displayJamMasuk}</span>
-                            </div>
-                          </td>
-
-                          {/* Jam Pulang */}
-                          <td className="py-4 px-6 text-slate-700 dark:text-slate-300 font-mono whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <LogOut className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                              <span>{displayJamPulang}</span>
-                            </div>
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-4 px-6 whitespace-nowrap">
-                            {isIzin ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50">
-                                <FileText className="w-3 h-3 text-amber-600" />
-                                {row.status || "Izin"}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/50">
-                                <Check className="w-3 h-3 text-emerald-600" />
-                                {row.status || "Hadir"}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Lokasi & Keterangan */}
-                          <td className="py-4 px-6 text-slate-600 dark:text-slate-400 max-w-xs truncate">
-                            {hasCoords ? (
-                              <a
-                                href={`https://www.google.com/maps?q=${row.latitude},${row.longitude}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline font-mono bg-blue-50/50 dark:bg-blue-950/30 px-2 py-1 rounded-md border border-blue-100 dark:border-blue-900/40"
-                              >
-                                <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
-                                <span>{Number(row.latitude).toFixed(5)}, {Number(row.longitude).toFixed(5)}</span>
-                              </a>
-                            ) : row.keterangan ? (
-                              <span className="text-xs text-slate-600 dark:text-slate-400 italic">
-                                {row.keterangan}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 text-xs">-</span>
-                            )}
-                          </td>
-
-                          {/* Aksi / Detail */}
-                          <td className="py-4 px-6 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedDetail(row)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Detail</span>
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400 dark:text-slate-500">
-                        <Clock className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2.5" />
-                        <p className="font-semibold text-slate-600 dark:text-slate-300 text-sm">
-                          Belum ada catatan presensi pada bulan {daftarBulan[filterBulan]} {filterTahun}.
-                        </p>
-                        <p className="text-xs text-slate-400 mt-1">
-                          Catatan kehadiran Anda akan otomatis tampil di tabel ini setelah melakukan presensi.
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: FORM PENGAJUAN IZIN / SAKIT */}
-      {activeTabSection === "izin" && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 sm:p-8 max-w-3xl">
-          <div className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-6">
-            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base sm:text-lg flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-600" />
-              <span>Form Pengajuan Izin / Sakit Guru</span>
+            <h3 className="text-lg sm:text-xl font-extrabold text-white">
+              {todaySchedule.keterangan || `KBM Hari ${todayDayName}`}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Gunakan formulir ini untuk mengajukan permohonan ketidakhadiran resmi kepada pihak sekolah.
+
+            <p className="text-xs text-blue-200/90 leading-relaxed max-w-xl">
+              {todaySchedule.aktif ? (
+                <>
+                  Batas Jam Masuk: <b className="text-white font-mono">{todaySchedule.jam_masuk} WIB</b> (Toleransi ±{todaySchedule.toleransi_terlambat} mnt) • Jam Pulang: <b className="text-white font-mono">{todaySchedule.jam_pulang} WIB</b>.
+                </>
+              ) : (
+                "Hari ini tidak ada kewajiban jam presensi reguler. Anda tetap dapat mencatat kehadiran jika ada kegiatan khusus."
+              )}
             </p>
           </div>
 
-          <form onSubmit={handleSubmitIzin} className="space-y-5">
-            {/* Jenis Izin */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Jenis Pengajuan
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                {(["Sakit", "Izin", "Dinas Luar"] as const).map((tipe) => (
-                  <button
-                    key={tipe}
-                    type="button"
-                    onClick={() => setIzinJenis(tipe)}
-                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer text-center ${
-                      izinJenis === tipe
-                        ? "border-blue-600 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-2xs"
-                        : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300"
+          {/* Action to view full 7-day schedule */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowScheduleModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all backdrop-blur-xs cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Lihat Jadwal 7 Hari</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 3. RINGKASAN PRESENSI HARI INI (CARD TOP - 2 KOLOM)                       */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Kolom 1: Jam Masuk */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs rounded-xl p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
+              Presensi Masuk Hari Ini
+            </span>
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-slate-500 shrink-0" />
+              <div className="text-lg font-bold text-slate-800 dark:text-white">
+                {todayAttendance.masukTime || "Belum Absen"}
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Target Masuk: <span className="font-semibold text-slate-600 dark:text-slate-300">{todaySchedule.jam_masuk} WIB</span>
+            </div>
+          </div>
+          <div>
+            {todayAttendance.hasMasuk ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold rounded-full">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                Sudah Masuk
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 text-xs font-medium rounded-full">
+                Belum Absen
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Kolom 2: Jam Pulang */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs rounded-xl p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
+              Presensi Pulang Hari Ini
+            </span>
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-slate-500 shrink-0" />
+              <div className="text-lg font-bold text-slate-800 dark:text-white">
+                {todayAttendance.pulangTime || "Belum Absen"}
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Target Pulang: <span className="font-semibold text-slate-600 dark:text-slate-300">{todaySchedule.jam_pulang} WIB</span>
+            </div>
+          </div>
+          <div>
+            {todayAttendance.hasPulang ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-semibold rounded-full">
+                <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                Sudah Pulang
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 text-xs font-medium rounded-full">
+                Belum Absen
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. KARTU UTAMA PRESENSI GEO-QR (HERO ACTION)                              */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs rounded-xl p-6 sm:p-8 flex flex-col items-center text-center space-y-6">
+        {/* Realtime Time & Date Display */}
+        <div className="space-y-1.5">
+          <div className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-800 dark:text-white font-mono">
+            {currentTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })} <span className="text-xl font-medium text-slate-400">WIB</span>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-sm sm:text-base font-medium text-slate-500 dark:text-slate-400">
+            <Calendar className="w-4 h-4 text-slate-400" />
+            <span>
+              {currentTime.toLocaleDateString("id-ID", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric"
+              })}
+            </span>
+          </div>
+        </div>
+
+        {/* Radius Info Badge */}
+        <div className="inline-flex items-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-medium px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700">
+          <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+          <span>Pusat Radius Sekolah: Max {schoolConfig.radiusMeters} Meter</span>
+        </div>
+
+        {/* Scan Selection (Masuk vs Pulang) */}
+        <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setScanType("Masuk")}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              scanType === "Masuk"
+                ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            Presensi Masuk ({todaySchedule.jam_masuk})
+          </button>
+          <button
+            type="button"
+            onClick={() => setScanType("Pulang")}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              scanType === "Pulang"
+                ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-400 shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            Presensi Pulang ({todaySchedule.jam_pulang})
+          </button>
+        </div>
+
+        {/* Hero Scan Button */}
+        <div className="w-full max-w-md">
+          <button
+            type="button"
+            onClick={handleOpenScanner}
+            className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-base rounded-xl shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-3 cursor-pointer active:scale-98"
+          >
+            <QrCode className="w-6 h-6" />
+            <span>Scan QR Presensi Sekolah ({scanType})</span>
+          </button>
+          <p className="text-xs text-slate-400 mt-2">
+            Arahkan kamera HP ke QR Code resmi di stasiun presensi {schoolConfig.namaSekolah}.
+          </p>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 5. TABEL RIWAYAT PRESENSI MANDIRI (BAGIAN BAWAH)                          */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs rounded-xl overflow-hidden">
+        {/* Table Header & Controls */}
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-800 dark:text-white">
+              Riwayat Kehadiran Bulan Ini
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Catatan kehadiran mandiri Anda di {schoolConfig.namaSekolah}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Filter Bulan */}
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(Number(e.target.value))}
+              className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              {monthNames.map((name, idx) => (
+                <option key={idx} value={idx}>{name}</option>
+              ))}
+            </select>
+
+            {/* Filter Tahun */}
+            <select
+              value={filterYear}
+              onChange={(e) => setFilterYear(Number(e.target.value))}
+              className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              {[2024, 2025, 2026, 2027].map(yr => (
+                <option key={yr} value={yr}>{yr}</option>
+              ))}
+            </select>
+
+            {/* Tombol Refresh */}
+            <button
+              type="button"
+              onClick={() => fetchMyAttendance(true)}
+              disabled={isRefreshing}
+              className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              title="Segarkan Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-blue-600" : ""}`} />
+            </button>
+
+            {/* Tombol Export CSV */}
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Table Content */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                <th className="px-5 py-3.5">Tanggal & Hari</th>
+                <th className="px-5 py-3.5">Jam Masuk</th>
+                <th className="px-5 py-3.5">Jam Pulang</th>
+                <th className="px-5 py-3.5">Status Radius</th>
+                <th className="px-5 py-3.5">Status Hadir</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-12 text-center text-slate-400">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-500 mb-2" />
+                    <p className="text-xs">Memuat data presensi...</p>
+                  </td>
+                </tr>
+              ) : monthlySummaryList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-12 text-center text-slate-400">
+                    <Info className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Belum Ada Riwayat Presensi</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Tidak ada catatan kehadiran pada bulan {monthNames[filterMonth]} {filterYear}.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                monthlySummaryList.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span>{item.displayDate}</span>
+                        {item.isHoliday && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-normal">
+                            Libur
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {item.masukTime ? (
+                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-slate-700 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 px-2 py-0.5 rounded text-xs">
+                          {item.masukTime}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {item.pulangTime ? (
+                        <span className="inline-flex items-center gap-1 font-mono font-semibold text-slate-700 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5 rounded text-xs">
+                          {item.pulangTime}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {item.statusRadius === "Dalam Radius (<50m)" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-medium rounded-full">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                          &le; {schoolConfig.radiusMeters}m (Valid)
+                        </span>
+                      ) : item.statusRadius === "Luar Radius" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-medium rounded-full">
+                          <AlertTriangle className="w-3 h-3 text-rose-500" />
+                          Luar Radius
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {item.statusHadir === "Hadir" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 text-xs font-semibold rounded-md">
+                          Hadir Tepat Waktu
+                        </span>
+                      ) : item.statusHadir === "Terlambat" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200 text-xs font-semibold rounded-md">
+                          Terlambat
+                        </span>
+                      ) : item.statusHadir === "Hadir (Hari Libur)" ? (
+                        <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200 text-xs font-medium rounded-md">
+                          Hadir (Hari Libur)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-xs font-medium rounded-md">
+                          {item.statusHadir}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL 7-DAY SCHEDULE VIEWER                                               */}
+      {/* ========================================================================= */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white">
+                  Jadwal Presensi Guru (Senin - Ahad)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto space-y-2">
+              {DAY_NAMES_ORDER.map(day => {
+                const item = schoolConfig.jadwalHarian.find(j => j.hari === day);
+                const isToday = todayDayName === day;
+                const isAktif = item ? item.aktif : day !== "Ahad";
+
+                return (
+                  <div
+                    key={day}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                      isToday
+                        ? "bg-blue-50/80 dark:bg-blue-950/50 border-blue-300 dark:border-blue-700 ring-2 ring-blue-500/20"
+                        : "bg-slate-50/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    {tipe}
-                  </button>
-                ))}
-              </div>
-            </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-800 dark:text-white">{day}</span>
+                        {isToday && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-600 text-white">
+                            Hari Ini
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                          isAktif 
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                            : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                        }`}>
+                          {isAktif ? "Aktif" : "Libur"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        {item?.keterangan || (isAktif ? "KBM Reguler" : "Hari Libur")}
+                      </p>
+                    </div>
 
-            {/* Tanggal Mulai & Tanggal Selesai */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                  Tanggal Mulai
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    value={izinTanggalMulai}
-                    onChange={(e) => setIzinTanggalMulai(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                  Tanggal Selesai
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    value={izinTanggalSelesai}
-                    onChange={(e) => setIzinTanggalSelesai(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Alasan / Keterangan */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Alasan / Keterangan Rinci
-              </label>
-              <textarea
-                required
-                rows={4}
-                value={izinAlasan}
-                onChange={(e) => setIzinAlasan(e.target.value)}
-                placeholder="Contoh: Mengalami demam dan disarankan dokter istirahat selama 2 hari..."
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed placeholder:text-slate-400"
-              />
-            </div>
-
-            {/* Upload Bukti / Surat Dokter */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Lampiran Bukti / Surat Dokter (Opsional)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept="image/*,.pdf"
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium cursor-pointer transition-colors"
-                >
-                  <UploadCloud className="w-4 h-4 text-slate-400" />
-                  <span>{izinBuktiFile ? "Ganti File Lampiran" : "Pilih Dokumen / Foto"}</span>
-                </button>
-                {izinBuktiFile && (
-                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 truncate max-w-xs">
-                    ✓ {izinBuktiFile}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                Format yang didukung: JPG, PNG, atau PDF (Maksimal 5MB).
-              </p>
-            </div>
-
-            {/* Tombol Kirim */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setIzinAlasan("");
-                  setIzinBuktiFile(null);
-                  setActiveTabSection("riwayat");
-                }}
-                className="px-5 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-              >
-                Batal
-              </button>
-
-              <button
-                type="submit"
-                disabled={isSubmittingIzin}
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors cursor-pointer disabled:opacity-70"
-              >
-                {isSubmittingIzin ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span>Mengirim...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 text-white" />
-                    <span>Kirim Pengajuan Izin</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* MODAL DETAIL PRESENSI */}
-      {selectedDetail && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-lg w-full overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <Eye className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                    Detail Presensi Kehadiran
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
-                    Informasi lengkap koordinat dan waktu presensi
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDetail(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Nama Guru</span>
-                  <p className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                    {selectedDetail.nama_guru || currentUser?.name || "-"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Username / Akun</span>
-                  <p className="font-bold font-mono text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                    {selectedDetail.username || currentUser?.username || "-"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Tanggal</span>
-                  <p className="font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
-                    {formatDateIndo(selectedDetail.tanggal || selectedDetail.waktu_absen)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Status Kehadiran</span>
-                  <p className="font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    {selectedDetail.status || "Hadir"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 rounded-2xl">
-                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <LogIn className="w-3 h-3" /> Jam Masuk
-                  </span>
-                  <p className="text-base font-extrabold font-mono text-slate-800 dark:text-slate-100 mt-1">
-                    {selectedDetail.jam_masuk || (selectedDetail.waktu_absen ? formatTimeHHmm(selectedDetail.waktu_absen) : "-")}
-                  </p>
-                </div>
-
-                <div className="p-3.5 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl">
-                  <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                    <LogOut className="w-3 h-3" /> Jam Pulang
-                  </span>
-                  <p className="text-base font-extrabold font-mono text-slate-800 dark:text-slate-100 mt-1">
-                    {selectedDetail.jam_pulang || "-"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400 font-medium">Validasi Lokasi:</span>
-                  <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
-                    selectedDetail.status_lokasi === "Dalam Radius" || selectedDetail.status_lokasi === "Dalam Jangkauan"
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
-                      : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
-                  }`}>
-                    {selectedDetail.status_lokasi || "Dalam Radius"}
-                  </span>
-                </div>
-
-                {selectedDetail.latitude !== undefined && selectedDetail.longitude !== undefined && (
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700">
-                    <span className="text-slate-400 font-medium">Titik Koordinat:</span>
-                    <span className="font-mono text-slate-700 dark:text-slate-300">
-                      {selectedDetail.latitude}, {selectedDetail.longitude}
-                    </span>
+                    <div className="text-right">
+                      {isAktif ? (
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                            {item?.jam_masuk} - {item?.jam_pulang} WIB
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Toleransi: ±{item?.toleransi_terlambat} mnt
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">Libur</span>
+                      )}
+                    </div>
                   </div>
-                )}
-
-                {selectedDetail.keterangan && (
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700">
-                    <span className="text-slate-400 font-medium">Keterangan:</span>
-                    <span className="text-slate-700 dark:text-slate-300">{selectedDetail.keterangan}</span>
-                  </div>
-                )}
-              </div>
-
-              {selectedDetail.latitude !== undefined && selectedDetail.longitude !== undefined && (
-                <a
-                  href={`https://www.google.com/maps?q=${selectedDetail.latitude},${selectedDetail.longitude}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full py-2.5 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-                >
-                  <Navigation className="w-3.5 h-3.5" />
-                  <span>Lihat di Google Maps</span>
-                </a>
-              )}
+                );
+              })}
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex justify-end">
               <button
                 type="button"
-                onClick={() => setSelectedDetail(null)}
-                className="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer"
               >
                 Tutup
               </button>
@@ -1523,27 +1373,184 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         </div>
       )}
 
-      {/* Modal Scanner QR Presensi (Static QR + GPS Geofencing 50m) */}
-      <QRScannerModal
-        isOpen={isQrScannerOpen}
-        onClose={() => setIsQrScannerOpen(false)}
-        onSuccess={() => {
-          fetchAttendanceHistory();
-        }}
-        currentUser={currentUser}
-        guruId={resolvedGuruId}
-        guruNama={resolvedGuruNama}
-        defaultJenis={!todayRecord?.jam_masuk ? "Masuk" : "Pulang"}
-        schoolCoords={schoolLocation}
-        expectedQrToken={DEFAULT_STATIC_QR_TOKEN}
-      />
+      {/* ========================================================================= */}
+      {/* MODAL SCANNER QR & GEOFENCING DUAL-CHECK                                  */}
+      {/* ========================================================================= */}
+      {isScannerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Scan QR Presensi ({scanType})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Arahkan kamera ke QR Code stasiun presensi
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScannerOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-      {/* Modal Cetak / Tampilkan QR Stasiun Sekolah */}
-      <StationQRPrintModal
-        isOpen={isStationQrModalOpen}
-        onClose={() => setIsStationQrModalOpen(false)}
-        token={DEFAULT_STATIC_QR_TOKEN}
-      />
+            {/* GPS Live Geofence Status Header */}
+            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Navigation className="w-3.5 h-3.5 text-blue-600" />
+                <span className="text-slate-600 font-medium">GPS Geofencing:</span>
+              </div>
+              <div>
+                {gpsStatus === "searching" && (
+                  <span className="text-amber-600 font-medium inline-flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Mencari koordinat...
+                  </span>
+                )}
+                {gpsStatus === "connected" && currentGps && (
+                  <span className={`font-semibold inline-flex items-center gap-1 ${
+                    currentGps.distance <= schoolConfig.radiusMeters
+                      ? "text-emerald-700"
+                      : "text-rose-600"
+                  }`}>
+                    <MapPin className="w-3 h-3" />
+                    {Math.round(currentGps.distance)}m dari sekolah {currentGps.distance <= schoolConfig.radiusMeters ? "(Valid)" : `(> ${schoolConfig.radiusMeters}m)`}
+                  </span>
+                )}
+                {gpsStatus === "error" && (
+                  <span className="text-rose-600 font-medium">GPS Tidak Aktif</span>
+                )}
+              </div>
+            </div>
+
+            {/* Viewfinder Camera Area */}
+            <div className="relative p-4 bg-slate-900 flex flex-col items-center justify-center min-h-[300px]">
+              {cameraError ? (
+                <div className="text-center text-white p-6 space-y-3 flex flex-col items-center">
+                  <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400">
+                    <CameraOff className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">
+                      {isPermissionDenied ? "Izin Kamera Dibutuhkan" : "Kamera Tidak Tersedia"}
+                    </h4>
+                    <p className="text-xs text-slate-300 mt-1 max-w-[280px] leading-relaxed">
+                      {cameraError}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 w-full max-w-[240px] pt-1">
+                    <button
+                      type="button"
+                      onClick={handleRequestCameraPermission}
+                      className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>{isPermissionDenied ? "Minta Izin Kamera" : "Coba Nyalakan Lagi"}</span>
+                    </button>
+
+                    {isIframe && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(window.location.href, "_blank")}
+                        className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Buka di Tab Baru</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Upload Foto QR</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDirectGpsAttendance}
+                      className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Presensi Lokasi GPS (&le;{schoolConfig.radiusMeters}m)</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full relative flex items-center justify-center">
+                  <div id="qr-camera-viewport" className="w-full max-w-[300px] rounded-xl overflow-hidden bg-black aspect-square" />
+                  
+                  {isStartingCamera && !cameraError && (
+                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-2xs flex flex-col items-center justify-center text-white space-y-2 rounded-xl">
+                      <RefreshCw className="w-8 h-8 animate-spin text-blue-400" />
+                      <p className="text-xs font-semibold">Menghubungkan kamera...</p>
+                    </div>
+                  )}
+
+                  {isProcessingScan && (
+                    <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center text-white space-y-2 rounded-xl">
+                      <RefreshCw className="w-8 h-8 animate-spin text-blue-400" />
+                      <p className="text-xs font-semibold">Memverifikasi QR & Lokasi GPS...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Quick Actions & Info Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 space-y-3">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Foto QR</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDirectGpsAttendance}
+                  className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-semibold cursor-pointer"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Presensi GPS (&le;{schoolConfig.radiusMeters}m)</span>
+                </button>
+              </div>
+
+              <div className="flex items-start gap-2 pt-1 border-t border-slate-200/60">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  Presensi akan otomatis tervalidasi jika QR Code sesuai dan posisi Anda berada dalam radius &le; {schoolConfig.radiusMeters} meter dari sekolah.
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsScannerOpen(false)}
+                  className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Tutup Scanner
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

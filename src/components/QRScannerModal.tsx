@@ -428,73 +428,45 @@ export default function QRScannerModal({
 
     const effectiveUsername = currentUser?.username || "guru";
     const effectiveNama = guruNama || currentUser?.name || "Guru Al-Muttaqin";
+    const statusLokasiDb = dist <= 50 ? "Dalam Jangkauan" : "Luar Jangkauan";
 
-    // 1. Simpan ke tabel absensi_guru
-    const payload: any = {
-      guru_id: guruId || null,
+    // 1. Simpan ke tabel absensi_guru (skema database sesuai tabel Supabase)
+    const dbPayload = {
       username: effectiveUsername,
       nama_guru: effectiveNama,
-      tanggal: todayStr,
       waktu_absen: now.toISOString(),
-      waktu_presensi: now.toISOString(),
-      jenis: selectedJenis.toLowerCase(),
       latitude: lat,
       longitude: lng,
-      lat_long: latLongStr,
-      jarak_meter: Math.round(dist),
-      status_lokasi: "Dalam Radius",
-      status: "Hadir",
-      keterangan: `Presensi ${selectedJenis} via QR + Geofencing`
+      status_lokasi: statusLokasiDb,
+      keterangan: selectedJenis === "Masuk" ? "Masuk" : "Pulang"
     };
 
-    if (selectedJenis === "Masuk") {
-      payload.jam_masuk = timeFormatted;
-    } else {
-      payload.jam_pulang = timeFormatted;
-    }
-
-    // Cari apakah sudah ada data hari ini untuk di-update (jika jenis Pulang)
-    const { data: existingData } = await supabase
+    const { data: insertedData, error: insertError } = await supabase
       .from("absensi_guru")
-      .select("id, jam_masuk")
-      .eq("username", effectiveUsername)
-      .eq("tanggal", todayStr)
-      .maybeSingle();
+      .insert([dbPayload])
+      .select();
 
-    if (existingData && selectedJenis === "Pulang") {
-      await supabase
-        .from("absensi_guru")
-        .update({
-          jam_pulang: timeFormatted,
-          lat_long: latLongStr,
-          latitude: lat,
-          longitude: lng,
-          jarak_meter: Math.round(dist),
-          keterangan: "Hadir Lengkap"
-        })
-        .eq("id", existingData.id);
-    } else {
-      await supabase.from("absensi_guru").upsert(payload, { onConflict: "username,tanggal" });
+    if (insertError) {
+      console.error("Gagal simpan absensi_guru ke database Supabase:", insertError);
+      throw new Error(`Database error: ${insertError.message}`);
     }
+
+    console.log("Berhasil mencatat absensi ke tabel absensi_guru:", insertedData);
 
     // Update penyimpanan cadangan di localStorage
     const localKey = `absensi_guru_${effectiveUsername}_${todayStr}`;
+    const localPayload = {
+      ...dbPayload,
+      id: insertedData?.[0]?.id,
+      jarak_meter: Math.round(dist),
+      lat_long: latLongStr,
+      jam_masuk: selectedJenis === "Masuk" ? timeFormatted : undefined,
+      jam_pulang: selectedJenis === "Pulang" ? timeFormatted : undefined,
+      tanggal: todayStr
+    };
     const existingLocal = localStorage.getItem(localKey);
-    const merged = existingLocal ? { ...JSON.parse(existingLocal), ...payload } : payload;
+    const merged = existingLocal ? { ...JSON.parse(existingLocal), ...localPayload } : localPayload;
     localStorage.setItem(localKey, JSON.stringify(merged));
-
-    // Opsional simpan juga ke presensi_guru jika tabelnya tersedia
-    try {
-      await supabase.from("presensi_guru").insert([{
-        tanggal: todayStr,
-        guru_id: guruId ? Number(guruId) : null,
-        nama_guru: effectiveNama,
-        status_kehadiran: "Hadir",
-        materi: `Presensi ${selectedJenis} (QR+GPS)`
-      }]);
-    } catch (_) {
-      // Abaikan jika tabel presensi_guru menggunakan skema berbeda
-    }
   };
 
   // Fallback: Scan gambar QR via file upload (berguna jika kamera iframe bermasalah)
