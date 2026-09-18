@@ -4,8 +4,10 @@ import RegistrationForm from "./components/RegistrationForm";
 import SantriList from "./components/SantriList";
 import Dashboard from "./components/Dashboard";
 import DashboardGuruSekolah from "./components/DashboardGuruSekolah";
+import DashboardGuru from "./components/DashboardGuru";
 import DashboardGuruPondok from "./components/DashboardGuruPondok";
 import AbsensiGuruPanel from "./components/AbsensiGuruPanel";
+import DaftarGuruSekolahPanel from "./components/DaftarGuruSekolahPanel";
 import JurnalMengajarBaruPanel from "./components/JurnalMengajarBaruPanel";
 import LoginForm from "./components/LoginForm";
 import ManagementPanel from "./components/ManagementPanel";
@@ -99,7 +101,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -1264,7 +1266,8 @@ export default function App() {
     { id: "form", group: "UTAMA", label: editingStudent ? "Edit Siswa" : "Pendaftaran", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["super admin", "admin", "guru pondok"] },
     { id: "absensi", group: "UTAMA", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "siswa"] },
 
-    // SEKOLAH GROUP WITH SUBMENUS (Presensi Guru, Jurnal Mengajar, Daftar Guru Sekolah)
+    // SEKOLAH GROUP WITH SUBMENUS (Dashboard Guru, Presensi Guru, Jurnal Mengajar, Daftar Guru Sekolah)
+    { id: "dashboard_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Dashboard Guru", label: "Dashboard Guru", shortLabel: "Dashboard Guru", icon: LayoutDashboard, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pondok"] },
     { id: "presensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Presensi Guru", label: "Presensi Guru", shortLabel: "Presensi Guru", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
     { id: "jurnal_mengajar", group: "SEKOLAH", isSubmenu: true, subLabel: "Jurnal Mengajar", label: "Jurnal Mengajar", shortLabel: "Jurnal Mengajar", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
     { id: "daftar_guru_sekolah", group: "SEKOLAH", isSubmenu: true, subLabel: "Daftar Guru", label: "Daftar Guru Sekolah", shortLabel: "Daftar Guru", icon: Search, roles: ["super admin", "admin", "guru SMP", "pengurus"] },
@@ -1347,7 +1350,7 @@ export default function App() {
     if (tabId === "list" || tabId.startsWith("warga_")) return "data_warga";
     if (tabId === "kantin_input") return "kas_kantin";
     if (tabId === "kantin_rekap") return "rekap_pembukuan";
-    if (tabId === "absensi_guru" || tabId === "presensi_guru" || tabId === "jurnal_mengajar" || tabId === "daftar_guru_sekolah") return "guru_sekolah";
+    if (tabId === "absensi_guru" || tabId === "presensi_guru" || tabId === "jurnal_mengajar" || tabId === "daftar_guru_sekolah" || tabId === "dashboard_guru") return "guru_sekolah";
     if (tabId === "rekap_sekolah") return "rekap_sekolah";
     if (["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(tabId)) return "pengajian";
     if (tabId === "pengguna") return "admin_only";
@@ -1695,7 +1698,7 @@ export default function App() {
               })}
 
             {/* SEKOLAH GROUP (ACCORDION) */}
-            {accessibleTabs.some(t => t.group === "SEKOLAH") && (!sidebarSearchQuery || "sekolah presensi guru jurnal mengajar absensi siswa daftar guru".includes(sidebarSearchQuery.toLowerCase())) && (
+            {accessibleTabs.some(t => t.group === "SEKOLAH") && (!sidebarSearchQuery || "sekolah dashboard guru presensi jurnal mengajar absensi siswa daftar guru".includes(sidebarSearchQuery.toLowerCase())) && (
               <div 
                 className="w-full pt-1.5 relative group/flyout"
                 onMouseEnter={() => setHoveredFlyout("sekolah")}
@@ -1718,7 +1721,7 @@ export default function App() {
                     <button
                       onClick={() => setIsSekolahExpanded(!isSekolahExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["absensi_guru", "presensi_guru", "jurnal_mengajar", "daftar_guru_sekolah"].includes(activeTab)
+                        ["absensi_guru", "presensi_guru", "jurnal_mengajar", "daftar_guru_sekolah", "dashboard_guru"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
@@ -2773,26 +2776,12 @@ export default function App() {
           <div className="flex-1 w-full flex flex-col">
             <ErrorBoundary key={activeTab}>
             {activeTab === "dashboard" && userRole === "guru SMP" && (
-              <DashboardGuruSekolah
-                students={displayedStudents}
-                onNavigateToForm={() => {
-                  setEditingStudent(null);
-                  setActiveTab("form");
-                }}
-                onNavigateToList={(filters) => {
-                  setListFilters(filters || {});
-                  setActiveTab("list");
-                }}
-                onNavigateToAbsensiGuru={() => setActiveTab("presensi_guru")}
-                isDarkMode={isDarkMode}
-                setIsDarkMode={setIsDarkMode}
+              <DashboardGuru
                 currentUser={currentUser}
-                onLogout={() => {
-                  localStorage.removeItem("admin_token");
-                  localStorage.removeItem("admin_user");
-                  setCurrentUser(null);
-                  triggerNotification("Berhasil keluar dari sesi admin", "warning");
-                }}
+                onNavigateToPresensi={() => setActiveTab("presensi_guru")}
+                onNavigateToJurnal={() => setActiveTab("jurnal_mengajar")}
+                onNavigateToAbsensiGuru={() => setActiveTab("presensi_guru")}
+                onNavigateToJurnalMengajar={() => setActiveTab("jurnal_mengajar")}
               />
             )}
 
@@ -2977,18 +2966,27 @@ export default function App() {
               </div>
             )}
 
-            {(activeTab === "absensi_guru" || activeTab === "presensi_guru" || activeTab === "daftar_guru_sekolah") && (
+            {activeTab === "dashboard_guru" && (
               <div className="w-full">
-                <AbsensiGuruPanel 
-                  currentUser={currentUser} 
-                  initialSubTab={
-                    activeTab === "daftar_guru_sekolah" ? "semua_guru" : "absensi"
-                  }
-                  onSubTabChange={(sub) => {
-                    if (sub === "semua_guru") setActiveTab("daftar_guru_sekolah");
-                    else if (sub === "absensi") setActiveTab("presensi_guru");
-                  }}
+                <DashboardGuru
+                  currentUser={currentUser}
+                  onNavigateToPresensi={() => setActiveTab("presensi_guru")}
+                  onNavigateToJurnal={() => setActiveTab("jurnal_mengajar")}
+                  onNavigateToAbsensiGuru={() => setActiveTab("presensi_guru")}
+                  onNavigateToJurnalMengajar={() => setActiveTab("jurnal_mengajar")}
                 />
+              </div>
+            )}
+
+            {(activeTab === "absensi_guru" || activeTab === "presensi_guru") && (
+              <div className="w-full">
+                <AbsensiGuruPanel currentUser={currentUser} />
+              </div>
+            )}
+
+            {activeTab === "daftar_guru_sekolah" && (
+              <div className="w-full">
+                <DaftarGuruSekolahPanel currentUser={currentUser} />
               </div>
             )}
 

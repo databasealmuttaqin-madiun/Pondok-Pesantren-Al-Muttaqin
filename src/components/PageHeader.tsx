@@ -4,10 +4,11 @@ import { ChevronRight } from "lucide-react";
 interface PageHeaderProps {
   category: string;
   title: string;
+  description?: string;
   actionButton?: React.ReactNode;
 }
 
-export const PageHeader: React.FC<PageHeaderProps> = ({ category, title, actionButton }) => {
+export const PageHeader: React.FC<PageHeaderProps> = ({ category, title, description, actionButton }) => {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <div className="space-y-1">
@@ -19,6 +20,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({ category, title, actionB
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
           {title}
         </h1>
+        {description && (
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            {description}
+          </p>
+        )}
       </div>
       {actionButton && <div className="shrink-0">{actionButton}</div>}
     </div>

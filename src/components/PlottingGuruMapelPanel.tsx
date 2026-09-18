@@ -28,9 +28,14 @@ export interface GuruMapelItem {
   mapel_id?: string;
   mapel_kode?: string;
   mapel_nama: string;
-  kelas_id?: string;
+  kelas_id?: number | string;
   kelas_nama: string;
   created_at?: string;
+}
+
+export interface ClassItem {
+  id: number | string;
+  nama: string;
 }
 
 interface PlottingGuruMapelPanelProps {
@@ -46,7 +51,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
     return [];
   });
 
-  const [availableClasses, setAvailableClasses] = useState<string[]>(schoolClasses);
+  const [availableClasses, setAvailableClasses] = useState<ClassItem[]>([]);
   const [guruList, setGuruList] = useState<{ id: string; nama: string; no_hp?: string }[]>([]);
   const [mapelList, setMapelList] = useState<MataPelajaranItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -60,7 +65,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
   const [editingItem, setEditingItem] = useState<GuruMapelItem | null>(null);
   const [formGuruId, setFormGuruId] = useState("");
   const [formMapelId, setFormMapelId] = useState("");
-  const [formKelas, setFormKelas] = useState("");
+  const [formKelasId, setFormKelasId] = useState<string | number>("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
     setFeedback({ type, text });
@@ -70,54 +75,64 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch Classes
-      const classSet = new Set<string>(schoolClasses);
+      // 1. Fetch Classes from 'plotting' table (kolom jenis = 'kelas sekolah')
+      const classesList: ClassItem[] = [];
       try {
         const { data: plotClasses } = await supabase
           .from("plotting")
-          .select("nama")
+          .select("id, nama")
           .eq("jenis", "kelas sekolah");
-        if (plotClasses) {
-          plotClasses.forEach((c: any) => { if (c.nama) classSet.add(c.nama); });
-        }
-      } catch (err) {
-        console.warn("Error fetching classes:", err);
-      }
-      const sortedClasses = Array.from(classSet).sort();
-      setAvailableClasses(sortedClasses);
-
-      // 2. Fetch Teachers
-      const gList: { id: string; nama: string; no_hp?: string }[] = [];
-      try {
-        const { data: dbGuru } = await supabase
-          .from("guru")
-          .select("id, nama_lengkap, nomor_hp");
-        if (dbGuru) {
-          dbGuru.forEach((g: any) => {
-            gList.push({ id: String(g.id), nama: g.nama_lengkap, no_hp: g.nomor_hp });
-          });
-        }
-      } catch (err) {
-        console.warn("Notice when fetching guru:", err);
-      }
-
-      try {
-        const { data: dbPengguna } = await supabase
-          .from("pengguna")
-          .select("id, username, nama_lengkap, no_hp, peran_utama");
-        if (dbPengguna) {
-          dbPengguna.forEach((u: any) => {
-            const role = String(u.peran_utama || "").toLowerCase();
-            if (role.includes("guru") || role.includes("smp") || role.includes("sekolah")) {
-              const displayName = u.nama_lengkap || u.username;
-              if (!gList.some(g => g.nama.toLowerCase() === displayName.toLowerCase())) {
-                gList.push({ id: String(u.id), nama: displayName, no_hp: u.no_hp });
-              }
+        if (plotClasses && plotClasses.length > 0) {
+          plotClasses.forEach((c: any) => {
+            if (c.nama) {
+              classesList.push({
+                id: c.id ? Number(c.id) : c.nama,
+                nama: c.nama
+              });
             }
           });
         }
       } catch (err) {
-        console.warn("Notice when fetching pengguna for guru mapel:", err);
+        console.warn("Error fetching classes from plotting table:", err);
+      }
+
+      // Fallback jika kosong menggunakan schoolClasses prop
+      if (classesList.length === 0 && schoolClasses && schoolClasses.length > 0) {
+        schoolClasses.forEach((clsName, index) => {
+          classesList.push({
+            id: 1000 + index,
+            nama: clsName
+          });
+        });
+      }
+
+      const sortedClasses = classesList.sort((a, b) => a.nama.localeCompare(b.nama));
+      setAvailableClasses(sortedClasses);
+
+      // 2. Fetch Teachers from 'guru' and map with 'pengguna' (nama_lengkap)
+      const gList: { id: string; nama: string; no_hp?: string }[] = [];
+      try {
+        const { data: dbGuru } = await supabase
+          .from("guru")
+          .select("id, pengguna_id, nama_lengkap, nomor_hp");
+        
+        const { data: dbPengguna } = await supabase
+          .from("pengguna")
+          .select("id, username, nama_lengkap, no_hp");
+        
+        if (dbGuru) {
+          dbGuru.forEach((g: any) => {
+            const matchedUser = dbPengguna?.find((u: any) => String(u.id) === String(g.pengguna_id));
+            const displayName = matchedUser?.nama_lengkap || g.nama_lengkap || matchedUser?.username || "Guru";
+            gList.push({
+              id: String(g.id),
+              nama: displayName,
+              no_hp: matchedUser?.no_hp || g.nomor_hp || ""
+            });
+          });
+        }
+      } catch (err) {
+        console.warn("Notice when fetching guru and pengguna for guru mapel:", err);
       }
 
       if (gList.length === 0) {
@@ -165,16 +180,27 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
       }
       setMapelList(mList);
 
-      // 4. Fetch plotting_guru_mapel from Supabase
+      // 4. Fetch plotting_guru_mapel from Supabase (including kelas_id & kelas_nama)
       try {
         const { data: dbPlot, error } = await supabase
           .from("plotting_guru_mapel")
-          .select("id, guru_id, mapel_id, kelas_id, created_at");
+          .select("id, guru_id, mapel_id, kelas_id, kelas_nama, created_at");
 
         if (!error && dbPlot && dbPlot.length > 0) {
           const mapped: GuruMapelItem[] = dbPlot.map((item: any) => {
             const matchedGuru = gList.find(g => g.id === String(item.guru_id));
             const matchedMapel = mList.find(m => m.id === String(item.mapel_id));
+            
+            // Resolve kelas_nama jika di record db null tapi ada kelas_id
+            let resolvedKelasNama = item.kelas_nama;
+            if (!resolvedKelasNama && item.kelas_id) {
+              const matchedCls = sortedClasses.find(c => String(c.id) === String(item.kelas_id));
+              if (matchedCls) resolvedKelasNama = matchedCls.nama;
+            }
+            if (!resolvedKelasNama) {
+              resolvedKelasNama = "Kelas";
+            }
+
             return {
               id: String(item.id),
               guru_id: item.guru_id,
@@ -183,7 +209,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
               mapel_kode: matchedMapel?.kode_mapel,
               mapel_nama: matchedMapel ? matchedMapel.nama_mapel : "Mata Pelajaran",
               kelas_id: item.kelas_id,
-              kelas_nama: item.kelas_nama || item.kelas_id || "Kelas",
+              kelas_nama: resolvedKelasNama,
               created_at: item.created_at
             };
           });
@@ -209,7 +235,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
     setEditingItem(null);
     setFormGuruId(guruList[0]?.id || "");
     setFormMapelId(mapelList[0]?.id || "");
-    setFormKelas(availableClasses[0] || "");
+    setFormKelasId(availableClasses[0]?.id !== undefined ? String(availableClasses[0]?.id) : "");
     setIsModalOpen(true);
   };
 
@@ -217,35 +243,44 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
     setEditingItem(item);
     const matchedGuru = guruList.find(g => g.nama.toLowerCase() === item.guru_nama.toLowerCase() || g.id === item.guru_id);
     const matchedMapel = mapelList.find(m => m.nama_mapel.toLowerCase() === item.mapel_nama.toLowerCase() || m.id === item.mapel_id);
+    
+    const matchedClass = availableClasses.find(c => 
+      (item.kelas_id && String(c.id) === String(item.kelas_id)) ||
+      c.nama.toLowerCase() === item.kelas_nama.toLowerCase()
+    );
+
     setFormGuruId(matchedGuru?.id || guruList[0]?.id || "");
     setFormMapelId(matchedMapel?.id || mapelList[0]?.id || "");
-    setFormKelas(item.kelas_nama);
+    setFormKelasId(matchedClass ? String(matchedClass.id) : (availableClasses[0]?.id !== undefined ? String(availableClasses[0]?.id) : ""));
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formGuruId || !formMapelId || !formKelas) {
-      showFeedback("error", "Harap lengkapi pilihan Guru, Mata Pelajaran, dan Kelas!");
+    if (!formGuruId || !formMapelId || formKelasId === "") {
+      showFeedback("error", "Harap lengkapi pilihan Kelas, Mata Pelajaran, dan Guru!");
       return;
     }
 
     const selectedGuru = guruList.find(g => g.id === formGuruId);
     const selectedMapel = mapelList.find(m => m.id === formMapelId);
+    const selectedClass = availableClasses.find(c => String(c.id) === String(formKelasId));
 
     const guruNama = selectedGuru ? selectedGuru.nama : "Guru";
     const mapelNama = selectedMapel ? selectedMapel.nama_mapel : "Mata Pelajaran";
     const mapelKode = selectedMapel ? selectedMapel.kode_mapel : "";
+    const kelasNama = selectedClass ? selectedClass.nama : "Kelas";
+    const kelasId = selectedClass && !isNaN(Number(selectedClass.id)) ? Number(selectedClass.id) : null;
 
-    // Check duplicate: UNIQUE(mapel_id, kelas_id) -> 1 Mapel in 1 Kelas only has 1 Guru
+    // Check duplicate: 1 Mapel in 1 Kelas only has 1 Guru
     const duplicate = items.find(
       it =>
-        it.kelas_nama.toLowerCase() === formKelas.toLowerCase() &&
+        it.kelas_nama.toLowerCase() === kelasNama.toLowerCase() &&
         it.mapel_nama.toLowerCase() === mapelNama.toLowerCase() &&
         (!editingItem || it.id !== editingItem.id)
     );
     if (duplicate) {
-      showFeedback("error", `Mata pelajaran "${mapelNama}" di kelas "${formKelas}" sudah diampu oleh ${duplicate.guru_nama}!`);
+      showFeedback("error", `Mata pelajaran "${mapelNama}" di kelas "${kelasNama}" sudah diampu oleh ${duplicate.guru_nama}!`);
       return;
     }
 
@@ -261,7 +296,8 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
             mapel_id: formMapelId,
             mapel_kode: mapelKode,
             mapel_nama: mapelNama,
-            kelas_nama: formKelas
+            kelas_id: kelasId !== null ? kelasId : undefined,
+            kelas_nama: kelasNama
           };
         }
         return it;
@@ -270,18 +306,24 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
       localStorage.setItem("plotting_guru_mapel_data", JSON.stringify(updatedList));
 
       try {
-        await supabase
+        const { error: updateErr } = await supabase
           .from("plotting_guru_mapel")
           .update({
             guru_id: formGuruId,
-            mapel_id: formMapelId
+            mapel_id: formMapelId,
+            kelas_id: kelasId,
+            kelas_nama: kelasNama
           })
           .eq("id", editingItem.id);
+
+        if (updateErr) {
+          console.warn("Supabase update error:", updateErr.message);
+        }
       } catch (err: any) {
         console.warn("Supabase update error:", err?.message);
       }
 
-      showFeedback("success", `Penugasan "${mapelNama}" di kelas "${formKelas}" berhasil diperbarui!`);
+      showFeedback("success", `Penugasan "${mapelNama}" di kelas "${kelasNama}" berhasil diperbarui!`);
     } else {
       const newItem: GuruMapelItem = {
         id: "gm_" + Date.now(),
@@ -290,7 +332,8 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
         mapel_id: formMapelId,
         mapel_kode: mapelKode,
         mapel_nama: mapelNama,
-        kelas_nama: formKelas,
+        kelas_id: kelasId !== null ? kelasId : undefined,
+        kelas_nama: kelasNama,
         created_at: new Date().toISOString()
       };
       const nextList = [...items, newItem];
@@ -298,17 +341,25 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
       localStorage.setItem("plotting_guru_mapel_data", JSON.stringify(nextList));
 
       try {
-        await supabase
+        const { data: inserted, error: insertError } = await supabase
           .from("plotting_guru_mapel")
           .insert([{
             guru_id: formGuruId,
-            mapel_id: formMapelId
-          }]);
+            mapel_id: formMapelId,
+            kelas_id: kelasId,
+            kelas_nama: kelasNama
+          }])
+          .select();
+
+        if (!insertError && inserted && inserted[0]) {
+          newItem.id = String(inserted[0].id);
+          localStorage.setItem("plotting_guru_mapel_data", JSON.stringify(nextList));
+        }
       } catch (err: any) {
         console.warn("Supabase insert error:", err?.message);
       }
 
-      showFeedback("success", `Penugasan "${guruNama}" mengampu "${mapelNama}" (${formKelas}) berhasil disimpan!`);
+      showFeedback("success", `Penugasan "${guruNama}" mengampu "${mapelNama}" (${kelasNama}) berhasil disimpan!`);
     }
 
     setIsSubmitting(false);
@@ -396,7 +447,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
               <GraduationCap className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Guru Pengampu</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Guru</p>
               <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 {new Set(items.map(i => i.guru_nama)).size} Guru
               </p>
@@ -444,7 +495,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
               >
                 <option value="All">Semua Kelas</option>
                 {availableClasses.map(cls => (
-                  <option key={cls} value={cls}>{cls}</option>
+                  <option key={cls.id} value={cls.nama}>{cls.nama}</option>
                 ))}
               </select>
             </div>
@@ -466,9 +517,9 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
                 <th className="py-3 px-4 w-12 text-center">No</th>
-                <th className="py-3 px-4">Kelas / Rombel</th>
+                <th className="py-3 px-4">Kelas</th>
                 <th className="py-3 px-4">Mata Pelajaran</th>
-                <th className="py-3 px-4">Guru Pengampu</th>
+                <th className="py-3 px-4">Guru</th>
                 <th className="py-3 px-4 text-center w-28">Aksi</th>
               </tr>
             </thead>
@@ -559,7 +610,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
                     {editingItem ? "Ubah Penugasan Guru Mapel" : "Tugaskan Guru Mata Pelajaran"}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Plotting guru pengampu mata pelajaran untuk kelas/rombel tertentu.
+                    Plotting guru pengampu mata pelajaran untuk kelas tertentu.
                   </p>
                 </div>
               </div>
@@ -574,18 +625,18 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
             <form onSubmit={handleSave} className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Kelas / Rombel <span className="text-rose-500">*</span>
+                  Kelas <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  value={formKelas}
-                  onChange={(e) => setFormKelas(e.target.value)}
+                  value={formKelasId}
+                  onChange={(e) => setFormKelasId(e.target.value)}
                   className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   required
                 >
-                  <option value="" disabled>-- Pilih Kelas / Rombel --</option>
+                  <option value="" disabled>-- Pilih Kelas --</option>
                   {availableClasses.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
+                    <option key={cls.id} value={cls.id}>
+                      {cls.nama}
                     </option>
                   ))}
                 </select>
@@ -612,7 +663,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Guru Pengampu <span className="text-rose-500">*</span>
+                  Guru <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={formGuruId}

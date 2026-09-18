@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS public.plotting_guru_mapel (
     kelas_nama TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.plotting_guru_mapel ADD COLUMN IF NOT EXISTS kelas_id BIGINT;
+ALTER TABLE public.plotting_guru_mapel ADD COLUMN IF NOT EXISTS kelas_nama TEXT;
 
 -- 6. Plotting Guru Sekolah
 DROP TABLE IF EXISTS public.plotting_guru_sekolah CASCADE;
