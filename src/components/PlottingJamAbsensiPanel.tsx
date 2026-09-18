@@ -104,7 +104,7 @@ export default function PlottingJamAbsensiPanel() {
   };
 
   // Fetch from Supabase
-  const fetchData = async () => {
+  const fetchData = async (isManual = false) => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -113,8 +113,10 @@ export default function PlottingJamAbsensiPanel() {
         .order("id", { ascending: true });
 
       if (error) {
-        // Fallback gracefully to localStorage or default
         console.warn("Info: tabel plotting_jam_absensi menggunakan local cache:", error.message);
+        if (isManual) {
+          showFeedback("error", `Gagal memuat data dari database: ${error.message}`);
+        }
       } else if (data && data.length > 0) {
         const mapped: JamAbsensiItem[] = data.map((d: any) => ({
           id: String(d.id),
@@ -136,6 +138,47 @@ export default function PlottingJamAbsensiPanel() {
 
         setItems(sorted);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sorted));
+        if (isManual) {
+          showFeedback("success", "Data berhasil disinkronkan dengan database Supabase");
+        }
+      } else if (data && data.length === 0) {
+        // Tabel di database masih kosong (seperti baru dibuat) -> otomatis inisialisasi 7 hari ke Supabase
+        const defaultPayload = DEFAULT_JAM_ABSENSI.map(d => ({
+          hari: d.hari,
+          jam_masuk: d.jam_masuk,
+          toleransi_menit: d.toleransi_menit,
+          jam_pulang: d.jam_pulang,
+          is_aktif: d.is_aktif,
+          keterangan: d.keterangan || ""
+        }));
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from("plotting_jam_absensi")
+          .insert(defaultPayload)
+          .select();
+
+        if (!insertError && insertedData && insertedData.length > 0) {
+          const mapped: JamAbsensiItem[] = insertedData.map((d: any) => ({
+            id: String(d.id),
+            hari: d.hari || "Senin",
+            jam_masuk: d.jam_masuk || "07:00",
+            toleransi_menit: Number(d.toleransi_menit ?? 15),
+            jam_pulang: d.jam_pulang || "14:00",
+            is_aktif: d.is_aktif !== false,
+            keterangan: d.keterangan || "",
+            created_at: d.created_at
+          }));
+
+          const sorted = [...mapped].sort((a, b) => {
+            const idxA = HARI_OPTIONS.indexOf(a.hari);
+            const idxB = HARI_OPTIONS.indexOf(b.hari);
+            return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+          });
+
+          setItems(sorted);
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sorted));
+          showFeedback("success", "Tabel database berhasil dihubungkan dan diinisialisasi 7 hari");
+        }
       }
     } catch (err: any) {
       console.warn("Gagal membaca plotting_jam_absensi:", err.message);
@@ -221,8 +264,36 @@ export default function PlottingJamAbsensiPanel() {
     try {
       if (editingItem) {
         // UPDATE
+        let updatedId = editingItem.id;
+        try {
+          let updateQuery = supabase
+            .from("plotting_jam_absensi")
+            .update({
+              hari: formHari,
+              jam_masuk: formJamMasuk,
+              toleransi_menit: Number(formToleransi),
+              jam_pulang: formJamPulang,
+              is_aktif: formIsAktif,
+              keterangan: formKeterangan
+            });
+
+          if (editingItem.id && !isNaN(Number(editingItem.id))) {
+            updateQuery = updateQuery.eq("id", Number(editingItem.id));
+          } else {
+            updateQuery = updateQuery.eq("hari", editingItem.hari);
+          }
+
+          const { data: updatedData, error: updateErr } = await updateQuery.select();
+          if (!updateErr && updatedData && updatedData[0]) {
+            updatedId = String(updatedData[0].id);
+          }
+        } catch (dbErr: any) {
+          console.warn("Update Supabase error:", dbErr.message);
+        }
+
         const updatedItem: JamAbsensiItem = {
           ...editingItem,
+          id: updatedId,
           hari: formHari,
           jam_masuk: formJamMasuk,
           toleransi_menit: Number(formToleransi),
@@ -233,12 +304,14 @@ export default function PlottingJamAbsensiPanel() {
 
         const newItems = items.map(i => i.id === editingItem.id ? updatedItem : i);
         await persistItems(newItems);
-
-        // Try supabase update
+        showFeedback("success", `Jadwal absensi hari ${formHari} berhasil diperbarui di database`);
+      } else {
+        // CREATE
+        let newId = Date.now().toString();
         try {
-          await supabase
+          const { data: insertedData, error: insertError } = await supabase
             .from("plotting_jam_absensi")
-            .update({
+            .insert({
               hari: formHari,
               jam_masuk: formJamMasuk,
               toleransi_menit: Number(formToleransi),
@@ -246,13 +319,15 @@ export default function PlottingJamAbsensiPanel() {
               is_aktif: formIsAktif,
               keterangan: formKeterangan
             })
-            .eq("id", editingItem.id);
-        } catch {}
+            .select();
 
-        showFeedback("success", `Jadwal absensi hari ${formHari} berhasil diperbarui`);
-      } else {
-        // CREATE
-        const newId = Date.now().toString();
+          if (!insertError && insertedData && insertedData[0]) {
+            newId = String(insertedData[0].id);
+          }
+        } catch (dbErr: any) {
+          console.warn("Insert Supabase error:", dbErr.message);
+        }
+
         const newItem: JamAbsensiItem = {
           id: newId,
           hari: formHari,
@@ -266,22 +341,7 @@ export default function PlottingJamAbsensiPanel() {
 
         const newItems = [...items.filter(i => i.hari !== formHari), newItem];
         await persistItems(newItems);
-
-        // Try supabase insert
-        try {
-          await supabase
-            .from("plotting_jam_absensi")
-            .insert({
-              hari: formHari,
-              jam_masuk: formJamMasuk,
-              toleransi_menit: Number(formToleransi),
-              jam_pulang: formJamPulang,
-              is_aktif: formIsAktif,
-              keterangan: formKeterangan
-            });
-        } catch {}
-
-        showFeedback("success", `Jadwal absensi hari ${formHari} berhasil dibuat`);
+        showFeedback("success", `Jadwal absensi hari ${formHari} berhasil disimpan ke database`);
       }
 
       setIsFormModalOpen(false);
@@ -314,15 +374,18 @@ export default function PlottingJamAbsensiPanel() {
         const newItems = items.filter(i => i.id !== item.id);
         await persistItems(newItems);
 
-        // Try supabase delete
+        // Delete from Supabase
         try {
-          await supabase
-            .from("plotting_jam_absensi")
-            .delete()
-            .eq("id", item.id);
-        } catch {}
+          if (item.id && !isNaN(Number(item.id))) {
+            await supabase.from("plotting_jam_absensi").delete().eq("id", Number(item.id));
+          } else {
+            await supabase.from("plotting_jam_absensi").delete().eq("hari", item.hari);
+          }
+        } catch (dbErr: any) {
+          console.warn("Delete Supabase error:", dbErr.message);
+        }
 
-        showFeedback("success", `Jadwal absensi hari ${item.hari} telah dihapus`);
+        showFeedback("success", `Jadwal absensi hari ${item.hari} telah dihapus dari database`);
       } catch (err: any) {
         showFeedback("error", `Gagal menghapus data: ${err.message}`);
       }
@@ -576,7 +639,7 @@ export default function PlottingJamAbsensiPanel() {
 
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
-              onClick={fetchData}
+              onClick={() => fetchData(true)}
               disabled={isLoading}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
               title="Segarkan data dari database"
