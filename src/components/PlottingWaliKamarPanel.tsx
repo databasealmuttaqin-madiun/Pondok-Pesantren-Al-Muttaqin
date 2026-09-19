@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
 import { 
   Home, 
   UserCheck, 
@@ -16,6 +18,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+
+const MySwal = withReactContent(Swal);
 
 export interface WaliKamarItem {
   id: string;
@@ -49,7 +53,6 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -58,8 +61,13 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
   const [formPenggunaId, setFormPenggunaId] = useState("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
-    setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
+    if (type === "error") {
+      MySwal.fire({
+        icon: "error",
+        title: "Perhatian",
+        text: text,
+      });
+    }
   };
 
   // Fetch Pengguna & Rooms & Wali Kamar
@@ -202,6 +210,13 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
       }
 
       showFeedback("success", `Wali kamar untuk "${formKamar}" berhasil diperbarui!`);
+      MySwal.fire({
+        icon: "success",
+        title: "Berhasil Disimpan!",
+        text: `Wali kamar untuk "${formKamar}" berhasil diperbarui.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
     } else {
       // Create new
       const newItem: WaliKamarItem = {
@@ -234,6 +249,13 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
       }
 
       showFeedback("success", `Penugasan Wali Kamar untuk "${formKamar}" berhasil disimpan!`);
+      MySwal.fire({
+        icon: "success",
+        title: "Berhasil Ditugaskan!",
+        text: `Penugasan Wali Kamar untuk "${formKamar}" berhasil disimpan ke database.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
     }
 
     setIsSubmitting(false);
@@ -241,7 +263,18 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
   };
 
   const handleDelete = async (id: string, kamarNama: string) => {
-    if (!confirm(`Hapus penugasan Wali Kamar untuk kamar ${kamarNama}?`)) return;
+    const res = await MySwal.fire({
+      title: "Hapus Penugasan?",
+      text: `Apakah Anda yakin ingin menghapus penugasan Wali Kamar untuk kamar "${kamarNama}"?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal"
+    });
+
+    if (!res.isConfirmed) return;
 
     const filtered = items.filter(it => it.id !== id);
     setItems(filtered);
@@ -254,6 +287,13 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
     }
 
     showFeedback("success", `Penugasan Wali Kamar untuk "${kamarNama}" berhasil dihapus.`);
+    MySwal.fire({
+      icon: "success",
+      title: "Berhasil Dihapus",
+      text: `Penugasan Wali Kamar untuk kamar "${kamarNama}" telah dihapus.`,
+      timer: 1800,
+      showConfirmButton: false
+    });
   };
 
   const filteredItems = useMemo(() => {
@@ -279,23 +319,6 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
           </button>
         }
       />
-
-      {feedback && (
-        <div
-          className={`p-3.5 rounded-xl flex items-center gap-2.5 text-xs font-semibold ${
-            feedback.type === "success"
-              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-              : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
-          }`}
-        >
-          {feedback.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          )}
-          <span>{feedback.text}</span>
-        </div>
-      )}
 
       {/* Stats and Controls */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

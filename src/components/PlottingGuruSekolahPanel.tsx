@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
 import { 
   GraduationCap, 
   Plus, 
@@ -15,6 +17,8 @@ import {
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
 
+const MySwal = withReactContent(Swal);
+
 export interface GuruSekolahItem {
   id: string;
   guru_id: string;
@@ -24,6 +28,8 @@ export interface GuruSekolahItem {
 
 interface PenggunaUser {
   id: string;
+  guru_id?: string | number;
+  pengguna_id?: string | number;
   nama: string;
   username?: string;
 }
@@ -41,68 +47,254 @@ export default function PlottingGuruSekolahPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<GuruSekolahItem | null>(null);
+  const [inputMode, setInputMode] = useState<"select" | "new">("select");
   const [formGuruId, setFormGuruId] = useState("");
+  const [newNama, setNewNama] = useState("");
+  const [newUsername, setNewUsername] = useState("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
-    setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
+    if (type === "error") {
+      MySwal.fire({
+        icon: "error",
+        title: "Perhatian",
+        text: text,
+      });
+    }
+  };
+
+  /**
+   * Memastikan data guru terdaftar di tabel `guru` di database Supabase
+   * dan mengembalikan ID numerik dari tabel `guru` agar Foreign Key terpenuhi.
+   */
+  const resolveOrCreateGuruId = async (options: {
+    nama: string;
+    username?: string;
+    penggunaId?: string | number;
+    knownGuruId?: string | number;
+  }): Promise<number | string | null> => {
+    const { nama, username, penggunaId, knownGuruId } = options;
+
+    // 1. Cek jika knownGuruId ada di tabel `guru`
+    if (knownGuruId && !isNaN(Number(knownGuruId))) {
+      try {
+        const { data: checkId } = await supabase
+          .from("guru")
+          .select("id")
+          .eq("id", Number(knownGuruId))
+          .limit(1);
+        if (checkId && checkId.length > 0) {
+          return checkId[0].id;
+        }
+      } catch (e) {
+        console.warn("Check guru by id notice:", e);
+      }
+    }
+
+    // 2. Cek di tabel `guru` berdasarkan pengguna_id
+    if (penggunaId && !isNaN(Number(penggunaId))) {
+      try {
+        const { data: byPengguna } = await supabase
+          .from("guru")
+          .select("id")
+          .eq("pengguna_id", Number(penggunaId))
+          .limit(1);
+        if (byPengguna && byPengguna.length > 0) {
+          return byPengguna[0].id;
+        }
+      } catch (e) {
+        console.warn("Check guru by pengguna_id notice:", e);
+      }
+    }
+
+    // 3. Cek di tabel `guru` berdasarkan username
+    if (username && username.trim()) {
+      try {
+        const { data: byUname } = await supabase
+          .from("guru")
+          .select("id")
+          .eq("username", username.trim())
+          .limit(1);
+        if (byUname && byUname.length > 0) {
+          return byUname[0].id;
+        }
+      } catch (e) {
+        console.warn("Check guru by username notice:", e);
+      }
+    }
+
+    // 4. Cek di tabel `guru` berdasarkan nama_lengkap atau nama
+    if (nama && nama.trim()) {
+      try {
+        const { data: byName } = await supabase
+          .from("guru")
+          .select("id, nama_lengkap, nama");
+        if (byName && byName.length > 0) {
+          const found = byName.find(
+            (g: any) =>
+              (g.nama_lengkap && g.nama_lengkap.trim().toLowerCase() === nama.trim().toLowerCase()) ||
+              (g.nama && g.nama.trim().toLowerCase() === nama.trim().toLowerCase())
+          );
+          if (found) {
+            return found.id;
+          }
+        }
+      } catch (e) {
+        console.warn("Check guru by name notice:", e);
+      }
+    }
+
+    // 5. Jika belum ada di tabel `guru`, buat baris baru di tabel `guru`
+    try {
+      const payload: any = {
+        nama_lengkap: nama.trim(),
+        nama: nama.trim(),
+        bagian: "Sekolah"
+      };
+      if (username && username.trim()) payload.username = username.trim();
+      if (penggunaId && !isNaN(Number(penggunaId))) payload.pengguna_id = Number(penggunaId);
+
+      const { data: inserted, error: insErr } = await supabase
+        .from("guru")
+        .insert([payload])
+        .select("id");
+
+      if (!insErr && inserted && inserted.length > 0) {
+        return inserted[0].id;
+      }
+
+      // Fallback minimal insert
+      if (insErr) {
+        const { data: minInserted } = await supabase
+          .from("guru")
+          .insert([{ nama_lengkap: nama.trim() }])
+          .select("id");
+        if (minInserted && minInserted.length > 0) {
+          return minInserted[0].id;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to insert into guru table:", err);
+    }
+
+    return null;
   };
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch data guru dan pengguna untuk digabungkan
+      // 1. Fetch data SEMUA pengguna dari tabel 'pengguna' & 'guru'
       const gList: PenggunaUser[] = [];
+      let dbPenggunaList: any[] = [];
+      let dbGuruList: any[] = [];
+
+      try {
+        const { data: dbPengguna, error: pErr } = await supabase
+          .from("pengguna")
+          .select("*")
+          .order("nama_lengkap", { ascending: true });
+        
+        if (!pErr && dbPengguna) {
+          dbPenggunaList = dbPengguna;
+        } else {
+          const { data: pFallback } = await supabase.from("pengguna").select("*");
+          if (pFallback) dbPenggunaList = pFallback;
+        }
+      } catch (errP) {
+        console.warn("Notice when fetching pengguna table:", errP);
+      }
+
       try {
         const { data: dbGuru } = await supabase.from("guru").select("*");
-        const { data: dbPengguna } = await supabase.from("pengguna").select("*");
+        if (dbGuru) dbGuruList = dbGuru;
+      } catch (errG) {
+        console.warn("Notice when fetching guru table:", errG);
+      }
 
-        if (dbGuru && dbGuru.length > 0) {
-          dbGuru.forEach((g: any) => {
-            const matchedUser = dbPengguna?.find((u: any) => String(u.id) === String(g.pengguna_id));
-            const resolvedName = matchedUser?.nama_lengkap || g.nama_lengkap || matchedUser?.nama || "Guru";
-            gList.push({
-              id: String(g.id),
-              nama: resolvedName,
-              username: matchedUser?.username
-            });
+      // Masukkan guru dari tabel guru terlebih dahulu
+      dbGuruList.forEach((g: any) => {
+        const matchedUser = dbPenggunaList.find(
+          (u: any) =>
+            (g.pengguna_id && String(u.id) === String(g.pengguna_id)) ||
+            (g.username && u.username && u.username.toLowerCase() === g.username.toLowerCase())
+        );
+        const resolvedName = (g.nama_lengkap || g.nama || matchedUser?.nama_lengkap || matchedUser?.nama || "Guru").trim();
+        gList.push({
+          id: `guru_${g.id}`,
+          guru_id: g.id,
+          pengguna_id: g.pengguna_id || matchedUser?.id,
+          nama: resolvedName,
+          username: g.username || matchedUser?.username
+        });
+      });
+
+      // Masukkan pengguna yang belum ada di tabel guru
+      dbPenggunaList.forEach((u: any) => {
+        const resolvedName = (u.nama_lengkap || u.nama || u.username || "Pengguna").trim();
+        const alreadyInList = gList.some(
+          item =>
+            (item.pengguna_id && String(item.pengguna_id) === String(u.id)) ||
+            (item.username && u.username && item.username.toLowerCase() === u.username.toLowerCase()) ||
+            item.nama.toLowerCase() === resolvedName.toLowerCase()
+        );
+        if (!alreadyInList) {
+          gList.push({
+            id: `pengguna_${u.id}`,
+            pengguna_id: u.id,
+            nama: resolvedName,
+            username: u.username
           });
         }
-      } catch (err) {
-        console.warn("Notice when fetching guru or pengguna table:", err);
-      }
+      });
 
       // Fallback jika kosong untuk demo/testing local
       if (gList.length === 0) {
         gList.push(
-          { id: "1", nama: "Drs. Bambang Sudarsono M.Pd", username: "bambang" },
-          { id: "2", nama: "Siti Rahmawati S.Pd", username: "siti" },
-          { id: "3", nama: "Ahmad Fauzi S.Si", username: "ahmad" },
-          { id: "4", nama: "Ustaz H. Abdullah S.Pd.I", username: "abdullah" }
+          { id: "1", guru_id: 1, nama: "Drs. Bambang Sudarsono M.Pd", username: "bambang" },
+          { id: "2", guru_id: 2, nama: "Siti Rahmawati S.Pd", username: "siti" },
+          { id: "3", guru_id: 3, nama: "Ahmad Fauzi S.Si", username: "ahmad" },
+          { id: "4", guru_id: 4, nama: "Ustaz H. Abdullah S.Pd.I", username: "abdullah" }
         );
       }
 
       const sortedGurus = gList.sort((a, b) => a.nama.localeCompare(b.nama));
       setPenggunaList(sortedGurus);
 
-      // 2. Fetch plotting_guru_sekolah from Supabase (id, guru_id, created_at)
+      // 2. Fetch plotting_guru_sekolah from Supabase
       try {
         const { data: dbPlot, error } = await supabase
           .from("plotting_guru_sekolah")
-          .select("id, guru_id, created_at");
+          .select("*")
+          .order("id", { ascending: true });
 
         if (!error && dbPlot) {
           const mapped: GuruSekolahItem[] = dbPlot.map((item: any) => {
-            const matchedGuru = sortedGurus.find(g => g.id === String(item.guru_id));
+            const rawId = String(item.guru_id || "");
+            const explicitName = item.guru_nama || item.nama;
+
+            // Cari dari guru list
+            const matchedGuru = sortedGurus.find(
+              g => String(g.guru_id) === rawId ||
+                   String(g.pengguna_id) === rawId ||
+                   g.id === rawId ||
+                   (g.username && g.username.toLowerCase() === rawId.toLowerCase()) ||
+                   g.nama.toLowerCase() === rawId.toLowerCase()
+            );
+
+            // Coba cari dari dbGuru jika guru_id mereferensikan tabel guru
+            const matchedDbGuru = dbGuruList.find(
+              g => String(g.id) === rawId || 
+                   (g.pengguna_id && String(g.pengguna_id) === rawId)
+            );
+            const fallbackName = matchedDbGuru ? (matchedDbGuru.nama_lengkap || matchedDbGuru.nama) : null;
+
             return {
               id: String(item.id),
-              guru_id: String(item.guru_id),
-              nama: matchedGuru ? matchedGuru.nama : "Guru Sekolah",
+              guru_id: rawId,
+              nama: explicitName || (matchedGuru ? matchedGuru.nama : (fallbackName || "Guru Sekolah")),
               created_at: item.created_at
             };
           });
@@ -126,101 +318,203 @@ export default function PlottingGuruSekolahPanel() {
 
   const openAddModal = () => {
     setEditingItem(null);
+    setInputMode("select");
     setFormGuruId(penggunaList[0]?.id || "");
+    setNewNama("");
+    setNewUsername("");
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: GuruSekolahItem) => {
     setEditingItem(item);
-    setFormGuruId(item.guru_id || penggunaList[0]?.id || "");
+    setInputMode("select");
+    const matched = penggunaList.find(
+      u => String(u.guru_id) === String(item.guru_id) || u.nama.toLowerCase() === item.nama.toLowerCase()
+    );
+    setFormGuruId(matched?.id || penggunaList[0]?.id || "");
+    setNewNama(item.nama);
+    setNewUsername("");
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formGuruId) {
-      showFeedback("error", "Harap pilih nama!");
-      return;
-    }
+    
+    let targetGuruNama = "";
+    let targetUsername = "";
+    let targetPenggunaId: string | number | undefined = undefined;
+    let targetKnownGuruId: string | number | undefined = undefined;
 
-    const selectedPengguna = penggunaList.find(u => u.id === formGuruId);
-    const guruNama = selectedPengguna ? selectedPengguna.nama : "Guru Sekolah";
+    if (inputMode === "new") {
+      if (!newNama.trim()) {
+        showFeedback("error", "Harap isi Nama Guru baru!");
+        return;
+      }
+      targetGuruNama = newNama.trim();
+      targetUsername = (newUsername.trim() || targetGuruNama.toLowerCase().replace(/[^a-z0-9]/g, "")).toLowerCase();
+    } else {
+      if (!formGuruId) {
+        showFeedback("error", "Harap pilih nama guru dari daftar!");
+        return;
+      }
+      const selectedPengguna = penggunaList.find(u => u.id === formGuruId);
+      targetGuruNama = selectedPengguna ? selectedPengguna.nama : "Guru Sekolah";
+      targetUsername = selectedPengguna?.username || "";
+      targetPenggunaId = selectedPengguna?.pengguna_id;
+      targetKnownGuruId = selectedPengguna?.guru_id;
+    }
 
     // Prevent duplicate teacher assignment
     const duplicate = items.find(
-      it => it.guru_id === formGuruId && (!editingItem || it.id !== editingItem.id)
+      it => (it.nama.toLowerCase() === targetGuruNama.toLowerCase() || (targetKnownGuruId && String(it.guru_id) === String(targetKnownGuruId))) && 
+            (!editingItem || it.id !== editingItem.id)
     );
     if (duplicate) {
-      showFeedback("error", `"${guruNama}" sudah terdaftar sebagai Guru Sekolah.`);
+      showFeedback("error", `"${targetGuruNama}" sudah terdaftar sebagai Guru Sekolah.`);
       return;
     }
 
     setIsSubmitting(true);
 
-    if (editingItem) {
-      // Update
-      const updatedList = items.map(it => {
-        if (it.id === editingItem.id) {
-          return {
-            ...it,
-            guru_id: formGuruId,
-            nama: guruNama
-          };
+    try {
+      // 1. Jika mode tambah baru, simpan akun ke tabel `pengguna` jika belum ada
+      if (inputMode === "new") {
+        try {
+          const { data: newP } = await supabase
+            .from("pengguna")
+            .insert([{
+              nama: targetGuruNama,
+              nama_lengkap: targetGuruNama,
+              username: targetUsername,
+              role: "guru smp",
+              peran_utama: "guru_sekolah",
+              bagian: "Sekolah",
+              status_akun: "aktif"
+            }])
+            .select("id");
+
+          if (newP && newP[0]) {
+            targetPenggunaId = newP[0].id;
+          }
+        } catch (eP) {
+          console.warn("Notice insert pengguna:", eP);
         }
-        return it;
+      }
+
+      // 2. Dapatkan atau buat baris di tabel `guru` (KUNCI FOREIGN KEY CONSTRAINT)
+      const resolvedGuruId = await resolveOrCreateGuruId({
+        nama: targetGuruNama,
+        username: targetUsername,
+        penggunaId: targetPenggunaId,
+        knownGuruId: targetKnownGuruId
       });
-      setItems(updatedList);
-      localStorage.setItem("plotting_guru_sekolah_data", JSON.stringify(updatedList));
 
-      try {
-        await supabase
-          .from("plotting_guru_sekolah")
-          .update({
-            guru_id: formGuruId
-          })
-          .eq("id", editingItem.id);
-      } catch (err: any) {
-        console.warn("Supabase update error:", err?.message);
+      if (!resolvedGuruId) {
+        showFeedback("error", "Gagal menghubungkan data ke tabel Guru di database.");
+        setIsSubmitting(false);
+        return;
       }
 
-      showFeedback("success", `Data Guru Sekolah "${guruNama}" berhasil diperbarui!`);
-    } else {
-      // Create new
-      const newItem: GuruSekolahItem = {
-        id: "gs_" + Date.now(),
-        guru_id: formGuruId,
-        nama: guruNama,
-        created_at: new Date().toISOString()
-      };
-      const nextList = [...items, newItem];
-      setItems(nextList);
-      localStorage.setItem("plotting_guru_sekolah_data", JSON.stringify(nextList));
+      const foreignKeyGuruId = !isNaN(Number(resolvedGuruId)) ? Number(resolvedGuruId) : resolvedGuruId;
 
-      try {
-        const { data: inserted, error: insertError } = await supabase
-          .from("plotting_guru_sekolah")
-          .insert([{
-            guru_id: formGuruId
-          }])
-          .select();
+      // 3. Simpan ke database Supabase tabel 'plotting_guru_sekolah'
+      if (editingItem) {
+        let updateSuccess = false;
+        let lastErrorMsg = "";
 
-        if (!insertError && inserted && inserted[0]) {
-          newItem.id = String(inserted[0].id);
-          localStorage.setItem("plotting_guru_sekolah_data", JSON.stringify(nextList));
+        // Update dengan guru_id
+        try {
+          const { error: err1 } = await supabase
+            .from("plotting_guru_sekolah")
+            .update({
+              guru_id: foreignKeyGuruId
+            })
+            .eq("id", editingItem.id);
+          if (!err1) {
+            updateSuccess = true;
+          } else {
+            lastErrorMsg = err1.message;
+          }
+        } catch (e1: any) {
+          lastErrorMsg = e1?.message || "";
         }
-      } catch (err: any) {
-        console.warn("Supabase insert error:", err?.message);
+
+        if (!updateSuccess && lastErrorMsg) {
+          showFeedback("error", `Gagal memperbarui di database: ${lastErrorMsg}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        showFeedback("success", `Data Guru Sekolah "${targetGuruNama}" berhasil diperbarui di database!`);
+        MySwal.fire({
+          icon: "success",
+          title: "Berhasil Disimpan!",
+          text: `Data Guru Sekolah "${targetGuruNama}" berhasil diperbarui di database.`,
+          timer: 2000,
+          showConfirmButton: false
+        });
+      } else {
+        // Insert new record
+        let insertSuccess = false;
+        let lastErrorMsg = "";
+
+        try {
+          const { data: ins1, error: err1 } = await supabase
+            .from("plotting_guru_sekolah")
+            .insert([{
+              guru_id: foreignKeyGuruId
+            }])
+            .select();
+
+          if (!err1 && ins1 && ins1.length > 0) {
+            insertSuccess = true;
+          } else if (err1) {
+            lastErrorMsg = err1.message;
+          }
+        } catch (e1: any) {
+          lastErrorMsg = e1?.message || "";
+        }
+
+        if (!insertSuccess && lastErrorMsg) {
+          showFeedback("error", `Gagal menyimpan ke database Supabase: ${lastErrorMsg}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        showFeedback("success", `Guru Sekolah "${targetGuruNama}" berhasil disimpan ke database!`);
+        MySwal.fire({
+          icon: "success",
+          title: "Berhasil Ditugaskan!",
+          text: `Guru Sekolah "${targetGuruNama}" berhasil disimpan ke database.`,
+          timer: 2000,
+          showConfirmButton: false
+        });
       }
 
-      showFeedback("success", `Guru Sekolah "${guruNama}" berhasil ditugaskan!`);
-    }
+      setIsModalOpen(false);
+      // Re-fetch straight from Supabase database
+      await fetchData();
 
-    setIsSubmitting(false);
-    setIsModalOpen(false);
+    } catch (err: any) {
+      showFeedback("error", `Terjadi kesalahan saat menyimpan: ${err?.message || "Koneksi database bermasalah"}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = async (id: string, guruNama: string) => {
-    if (!confirm(`Hapus penugasan Guru Sekolah "${guruNama}"?`)) return;
+    const res = await MySwal.fire({
+      title: "Hapus Penugasan?",
+      text: `Apakah Anda yakin ingin menghapus penugasan Guru Sekolah "${guruNama}"?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal"
+    });
+
+    if (!res.isConfirmed) return;
 
     const filtered = items.filter(it => it.id !== id);
     setItems(filtered);
@@ -233,6 +527,13 @@ export default function PlottingGuruSekolahPanel() {
     }
 
     showFeedback("success", `Guru Sekolah "${guruNama}" berhasil dihapus.`);
+    MySwal.fire({
+      icon: "success",
+      title: "Berhasil Dihapus",
+      text: `Penugasan Guru Sekolah "${guruNama}" telah dihapus.`,
+      timer: 1800,
+      showConfirmButton: false
+    });
   };
 
   const filteredItems = useMemo(() => {
@@ -256,23 +557,6 @@ export default function PlottingGuruSekolahPanel() {
           </button>
         }
       />
-
-      {feedback && (
-        <div
-          className={`p-3.5 rounded-xl flex items-center gap-2.5 text-xs font-semibold ${
-            feedback.type === "success"
-              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-              : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
-          }`}
-        >
-          {feedback.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          )}
-          <span>{feedback.text}</span>
-        </div>
-      )}
 
       {/* Main Table Card */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
@@ -397,24 +681,83 @@ export default function PlottingGuruSekolahPanel() {
 
             {/* Modal Body / Form */}
             <form onSubmit={handleSave} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Nama <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={formGuruId}
-                  onChange={(e) => setFormGuruId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  required
-                >
-                  <option value="" disabled>-- Pilih Nama --</option>
-                  {penggunaList.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.nama}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!editingItem && (
+                <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("select")}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      inputMode === "select"
+                        ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                    }`}
+                  >
+                    Pilih dari Pengguna
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("new")}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      inputMode === "new"
+                        ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                    }`}
+                  >
+                    + Input Nama Baru
+                  </button>
+                </div>
+              )}
+
+              {inputMode === "select" && !editingItem ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Nama Guru <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={formGuruId}
+                    onChange={(e) => setFormGuruId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    required
+                  >
+                    <option value="" disabled>-- Pilih Nama Guru --</option>
+                    {penggunaList.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.nama}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Nama Lengkap Guru <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newNama}
+                      onChange={(e) => setNewNama(e.target.value)}
+                      placeholder="Contoh: Drs. Bambang Sudarsono, M.Pd"
+                      className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                  {!editingItem && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Username ID (Opsional)
+                      </label>
+                      <input
+                        type="text"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        placeholder="Contoh: bambang_s"
+                        className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Modal Footer */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800 mt-5">
@@ -431,7 +774,7 @@ export default function PlottingGuruSekolahPanel() {
                   className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{isSubmitting ? "Menyimpan..." : "Simpan Penugasan"}</span>
+                  <span>{isSubmitting ? "Menyimpan ke Database..." : "Simpan Penugasan"}</span>
                 </button>
               </div>
             </form>

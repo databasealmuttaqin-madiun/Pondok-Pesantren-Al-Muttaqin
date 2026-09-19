@@ -41,20 +41,43 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
       
       const loadedJurnals = data || [];
       
-      // Manually fetch and attach pengguna names since relation might not be strictly defined in Postgres
+      // Manually fetch and attach ustaz/pengguna names
       if (loadedJurnals.length > 0) {
         const ustazIds = Array.from(new Set(loadedJurnals.map(j => j.ustaz_id).filter(id => id)));
         if (ustazIds.length > 0) {
-           const { data: usersData } = await supabase.from("pengguna").select("id, nama").in("id", ustazIds);
-           if (usersData) {
-             const userMap = {};
-             usersData.forEach(u => userMap[u.id] = u.nama);
-             loadedJurnals.forEach(j => {
-               if (j.ustaz_id && userMap[j.ustaz_id]) {
-                 j.pengguna = { nama: userMap[j.ustaz_id] };
-               }
-             });
-           }
+          const userMap: Record<string, string> = {};
+
+          try {
+            const { data: usersData } = await supabase.from("pengguna").select("id, nama, nama_lengkap");
+            if (usersData) {
+              usersData.forEach((u: any) => {
+                userMap[String(u.id)] = u.nama_lengkap || u.nama;
+              });
+            }
+          } catch (eU) {
+            console.warn("Notice fetch pengguna:", eU);
+          }
+
+          try {
+            const { data: guruData } = await supabase.from("guru").select("id, pengguna_id, nama, nama_lengkap");
+            if (guruData) {
+              guruData.forEach((g: any) => {
+                const name = g.nama_lengkap || g.nama;
+                userMap[String(g.id)] = name;
+                if (g.pengguna_id && !userMap[String(g.pengguna_id)]) {
+                  userMap[String(g.pengguna_id)] = name;
+                }
+              });
+            }
+          } catch (eG) {
+            console.warn("Notice fetch guru:", eG);
+          }
+
+          loadedJurnals.forEach(j => {
+            if (j.ustaz_id && userMap[String(j.ustaz_id)]) {
+              j.pengguna = { nama: userMap[String(j.ustaz_id)] };
+            }
+          });
         }
       }
 

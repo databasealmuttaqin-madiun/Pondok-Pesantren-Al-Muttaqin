@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
 import { 
   Users, 
   UserCheck, 
@@ -17,6 +19,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+
+const MySwal = withReactContent(Swal);
 
 export interface WaliKelasItem {
   id: string;
@@ -46,7 +50,6 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -55,8 +58,13 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
   const [formGuruId, setFormGuruId] = useState("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
-    setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
+    if (type === "error") {
+      MySwal.fire({
+        icon: "error",
+        title: "Perhatian",
+        text: text,
+      });
+    }
   };
 
   const fetchData = async () => {
@@ -254,6 +262,13 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
         localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(updatedList));
 
         showFeedback("success", `Wali Kelas untuk "${kelasNama}" berhasil diperbarui!`);
+        MySwal.fire({
+          icon: "success",
+          title: "Berhasil Disimpan!",
+          text: `Wali Kelas untuk "${kelasNama}" berhasil diperbarui.`,
+          timer: 2000,
+          showConfirmButton: false
+        });
         setIsModalOpen(false);
       } catch (err: any) {
         showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
@@ -290,6 +305,13 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
           localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(nextList));
 
           showFeedback("success", `Penugasan Wali Kelas untuk "${kelasNama}" berhasil disimpan!`);
+          MySwal.fire({
+            icon: "success",
+            title: "Berhasil Ditugaskan!",
+            text: `Penugasan Wali Kelas untuk "${kelasNama}" berhasil disimpan ke database.`,
+            timer: 2000,
+            showConfirmButton: false
+          });
           setIsModalOpen(false);
         }
       } catch (err: any) {
@@ -301,7 +323,18 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
   };
 
   const handleDelete = async (id: string, kelasNama: string) => {
-    if (!confirm(`Hapus penugasan Wali Kelas untuk ${kelasNama}?`)) return;
+    const res = await MySwal.fire({
+      title: "Hapus Penugasan?",
+      text: `Apakah Anda yakin ingin menghapus penugasan Wali Kelas untuk "${kelasNama}"?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal"
+    });
+
+    if (!res.isConfirmed) return;
 
     try {
       const { error } = await supabase.from("plotting_wali_kelas").delete().eq("id", id);
@@ -314,6 +347,13 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
       setItems(filtered);
       localStorage.setItem("plotting_wali_kelas_data", JSON.stringify(filtered));
       showFeedback("success", `Penugasan Wali Kelas untuk "${kelasNama}" berhasil dihapus.`);
+      MySwal.fire({
+        icon: "success",
+        title: "Berhasil Dihapus",
+        text: `Penugasan Wali Kelas untuk "${kelasNama}" telah dihapus.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
     } catch (err: any) {
       showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
     }
@@ -342,23 +382,6 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
           </button>
         }
       />
-
-      {feedback && (
-        <div
-          className={`p-3.5 rounded-xl flex items-center gap-2.5 text-xs font-semibold ${
-            feedback.type === "success"
-              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-              : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
-          }`}
-        >
-          {feedback.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          )}
-          <span>{feedback.text}</span>
-        </div>
-      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

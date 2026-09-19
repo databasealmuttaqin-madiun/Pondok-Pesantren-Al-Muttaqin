@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
 import { 
   Save, AlertCircle, Plus, Edit, Trash2, Calendar, BookOpen, 
@@ -6,6 +8,8 @@ import {
   User as UserIcon, Search
 } from "lucide-react";
 import { SantriData } from "../supabaseClient";
+
+const MySwal = withReactContent(Swal);
 
 interface Props {
   currentUserRole: string;
@@ -66,25 +70,88 @@ export default function JurnalPengajianPanel({
 
       // Fetch Ustaz (Plotted Guru Pondok joined with Guru & Pengguna)
       try {
-        const { data: dbPlot } = await supabase.from("plotting_guru_pondok").select("*");
-        const { data: dbGuru } = await supabase.from("guru").select("*");
-        const { data: dbPengguna } = await supabase.from("pengguna").select("*");
+        let dbPlot: any[] = [];
+        let dbGuru: any[] = [];
+        let dbPengguna: any[] = [];
 
-        if (dbPlot && dbGuru && dbPengguna) {
+        try {
+          const { data: pData } = await supabase.from("plotting_guru_pondok").select("*").order("id", { ascending: true });
+          if (pData && pData.length > 0) {
+            dbPlot = pData;
+          } else {
+            const cached = localStorage.getItem("plotting_guru_pondok_data");
+            if (cached) {
+              dbPlot = JSON.parse(cached);
+            }
+          }
+        } catch (ePlot) {
+          console.warn("Notice fetch plotting_guru_pondok:", ePlot);
+          const cached = localStorage.getItem("plotting_guru_pondok_data");
+          if (cached) dbPlot = JSON.parse(cached);
+        }
+
+        try {
+          const { data: gData } = await supabase.from("guru").select("*");
+          if (gData) dbGuru = gData;
+        } catch (eGuru) {
+          console.warn("Notice fetch guru table:", eGuru);
+        }
+
+        try {
+          const { data: uData } = await supabase.from("pengguna").select("*");
+          if (uData) dbPengguna = uData;
+        } catch (eUser) {
+          console.warn("Notice fetch pengguna table:", eUser);
+        }
+
+        if (dbPlot && dbPlot.length > 0) {
           const mappedUstaz: any[] = [];
+          const seenNames = new Set<string>();
+
           dbPlot.forEach(plot => {
-            const matchedGuru = dbGuru.find(g => String(g.id) === String(plot.guru_id));
-            if (matchedGuru) {
-              const matchedUser = dbPengguna.find(u => String(u.id) === String(matchedGuru.pengguna_id));
-              const resolvedName = matchedUser?.nama_lengkap || matchedGuru.nama_lengkap || matchedUser?.nama || "Guru Pondok";
-              const penggunaId = matchedUser?.id || matchedGuru.pengguna_id;
-              if (penggunaId) {
-                mappedUstaz.push({
-                  id: String(penggunaId),
-                  nama: resolvedName,
-                  username: matchedUser?.username || ""
-                });
-              }
+            const rawId = String(plot.guru_id || plot.id || "");
+            const explicitName = (plot.guru_nama || plot.nama || "").trim();
+
+            // Match from table `guru`
+            const matchedGuru = dbGuru.find(
+              g =>
+                String(g.id) === rawId ||
+                (g.pengguna_id && String(g.pengguna_id) === rawId) ||
+                (g.username && rawId && g.username.toLowerCase() === rawId.toLowerCase()) ||
+                (explicitName && g.nama_lengkap && g.nama_lengkap.trim().toLowerCase() === explicitName.toLowerCase()) ||
+                (explicitName && g.nama && g.nama.trim().toLowerCase() === explicitName.toLowerCase())
+            );
+
+            // Match from table `pengguna`
+            const matchedUser = dbPengguna.find(
+              u =>
+                (matchedGuru?.pengguna_id && String(u.id) === String(matchedGuru.pengguna_id)) ||
+                String(u.id) === rawId ||
+                (matchedGuru?.username && u.username && u.username.toLowerCase() === matchedGuru.username.toLowerCase()) ||
+                (explicitName && u.nama_lengkap && u.nama_lengkap.trim().toLowerCase() === explicitName.toLowerCase()) ||
+                (explicitName && u.nama && u.nama.trim().toLowerCase() === explicitName.toLowerCase())
+            );
+
+            const resolvedName = (
+              matchedUser?.nama_lengkap ||
+              matchedUser?.nama ||
+              matchedGuru?.nama_lengkap ||
+              matchedGuru?.nama ||
+              explicitName ||
+              "Guru Pondok"
+            ).trim();
+
+            const primaryId = String(matchedUser?.id || matchedGuru?.pengguna_id || matchedGuru?.id || plot.guru_id || plot.id);
+
+            if (resolvedName && !seenNames.has(resolvedName.toLowerCase())) {
+              seenNames.add(resolvedName.toLowerCase());
+              mappedUstaz.push({
+                id: primaryId,
+                pengguna_id: matchedUser?.id,
+                guru_id: matchedGuru?.id,
+                nama: resolvedName,
+                username: matchedUser?.username || matchedGuru?.username || ""
+              });
             }
           });
 
@@ -93,29 +160,17 @@ export default function JurnalPengajianPanel({
           
           if (mappedUstaz.length > 0) {
             setUstazList(mappedUstaz);
-          } else {
-            // Fallback to pengguna if mapping is empty
-            const filteredUstaz = dbPengguna.filter(u => {
-              const r = String(u.peran_utama || u.role || "").toLowerCase();
-              const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
-              return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
-            }).map(u => ({
-              id: String(u.id),
-              nama: u.nama_lengkap || u.nama || u.username,
-              username: u.username
-            }));
-            filteredUstaz.sort((a, b) => a.nama.localeCompare(b.nama));
-            setUstazList(filteredUstaz);
           }
-        } else if (dbPengguna) {
-          // Fallback if plot/guru tables aren't accessible or empty
+        } else if (dbPengguna && dbPengguna.length > 0) {
+          // Fallback if no plotted guru pondok yet
           const filteredUstaz = dbPengguna.filter(u => {
             const r = String(u.peran_utama || u.role || "").toLowerCase();
+            const b = String(u.bagian || "").toLowerCase();
             const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
-            return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || tt.some(x => x.includes("guru"));
+            return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || b.includes("pondok") || tt.some(x => x.includes("guru"));
           }).map(u => ({
             id: String(u.id),
-            nama: u.nama_lengkap || u.nama || u.username,
+            nama: (u.nama_lengkap || u.nama || u.username).trim(),
             username: u.username
           }));
           filteredUstaz.sort((a, b) => a.nama.localeCompare(b.nama));
@@ -130,8 +185,17 @@ export default function JurnalPengajianPanel({
   
   // Set default selectedUstaz when ustazList or currentUser changes
   useEffect(() => {
-    if (currentUser?.id && !selectedUstaz) {
-      setSelectedUstaz(currentUser.id.toString());
+    if (currentUser?.id && ustazList.length > 0 && !selectedUstaz) {
+      const matched = ustazList.find(
+        u =>
+          String(u.id) === String(currentUser.id) ||
+          String(u.pengguna_id) === String(currentUser.id) ||
+          (currentUser.nama && u.nama.toLowerCase() === currentUser.nama.toLowerCase()) ||
+          (currentUser.username && u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
+      );
+      if (matched) {
+        setSelectedUstaz(matched.id);
+      }
     }
   }, [currentUser, ustazList]);
 
@@ -332,6 +396,13 @@ export default function JurnalPengajianPanel({
       }
 
       onTriggerNotification("Jurnal dan absensi berhasil disimpan", "success");
+      MySwal.fire({
+        icon: "success",
+        title: "Berhasil Disimpan!",
+        text: "Jurnal mengaji dan data absensi santri berhasil disimpan ke database.",
+        timer: 2000,
+        showConfirmButton: false
+      });
       loadData(); // reload to get status_capaian from trigger
     } catch (e: any) {
       console.error(e);

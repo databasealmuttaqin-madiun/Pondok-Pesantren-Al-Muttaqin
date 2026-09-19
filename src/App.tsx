@@ -7,7 +7,6 @@ import DashboardGuruSekolah from "./components/DashboardGuruSekolah";
 import DashboardGuru from "./components/DashboardGuru";
 import DashboardGuruPondok from "./components/DashboardGuruPondok";
 import AbsensiGuruPanel from "./components/AbsensiGuruPanel";
-import DaftarGuruSekolahPanel from "./components/DaftarGuruSekolahPanel";
 import JurnalMengajarBaruPanel from "./components/JurnalMengajarBaruPanel";
 import LoginForm from "./components/LoginForm";
 import ManagementPanel from "./components/ManagementPanel";
@@ -103,7 +102,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "daftar_guru_sekolah" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -1268,12 +1267,11 @@ export default function App() {
     { id: "form", group: "UTAMA", label: editingStudent ? "Edit Siswa" : "Pendaftaran", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["super admin", "admin", "guru pondok"] },
     { id: "absensi", group: "UTAMA", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "siswa"] },
 
-    // SEKOLAH GROUP WITH SUBMENUS (Dashboard Guru, Presensi Guru, Jurnal Mengajar, Rekap Guru, Daftar Guru Sekolah)
+    // SEKOLAH GROUP WITH SUBMENUS (Dashboard Guru, Presensi Guru, Jurnal Mengajar, Rekap Guru)
     { id: "dashboard_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Dashboard Guru", label: "Dashboard Guru", shortLabel: "Dashboard Guru", icon: LayoutDashboard, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pondok"] },
     { id: "presensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Presensi Guru", label: "Presensi Guru", shortLabel: "Presensi Guru", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
     { id: "jurnal_mengajar", group: "SEKOLAH", isSubmenu: true, subLabel: "Jurnal Mengajar", label: "Jurnal Mengajar", shortLabel: "Jurnal Mengajar", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
     { id: "rekap_absensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Rekap Absensi Guru", label: "Rekap Absensi Guru", shortLabel: "Rekap Guru", icon: FileSpreadsheet, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pimpinan", "pengurus"] },
-    { id: "daftar_guru_sekolah", group: "SEKOLAH", isSubmenu: true, subLabel: "Daftar Guru", label: "Daftar Guru Sekolah", shortLabel: "Daftar Guru", icon: Search, roles: ["super admin", "admin", "guru SMP", "pengurus"] },
 
     // PERIZINAN GROUP WITH SUBMENUS (Sakit, Sambang, Haid)
     { id: "perizinan_sakit", group: "PERIZINAN", isSubmenu: true, subLabel: "Sakit", label: "Izin Sakit", shortLabel: "Sakit", icon: HeartPulse, roles: ["super admin", "admin", "guru pondok"] },
@@ -2992,12 +2990,6 @@ export default function App() {
             {(activeTab === "rekap_absensi_guru" || activeTab === "rekap_guru") && (
               <div className="w-full">
                 <RekapAbsensiGuruPanel currentUser={currentUser} />
-              </div>
-            )}
-
-            {activeTab === "daftar_guru_sekolah" && (
-              <div className="w-full">
-                <DaftarGuruSekolahPanel currentUser={currentUser} />
               </div>
             )}
 

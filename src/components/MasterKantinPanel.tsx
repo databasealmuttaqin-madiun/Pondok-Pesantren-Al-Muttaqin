@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Store, Plus, Trash2, Search, Edit3, Check, X, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
+
+const MySwal = withReactContent(Swal);
 
 interface PlottingKantin {
   id: number;
@@ -25,16 +29,18 @@ export default function MasterKantinPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
-    setFeedback({ type, text });
-    setTimeout(() => {
-      setFeedback(null);
-    }, 4000);
+    if (type === "error") {
+      MySwal.fire({
+        icon: "error",
+        title: "Perhatian",
+        text: text,
+      });
+    }
   };
 
   const fetchMasterKantin = async () => {
@@ -238,23 +244,6 @@ export default function MasterKantinPanel() {
           </div>
         </div>
       </div>
-
-      {feedback && (
-        <div
-          className={`mb-4 p-3 rounded-xl flex items-center gap-2 text-xs font-semibold ${
-            feedback.type === "success"
-              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-              : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
-          }`}
-        >
-          {feedback.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-          )}
-          <span>{feedback.text}</span>
-        </div>
-      )}
 
       <form onSubmit={handleAddItem} className="flex items-center gap-2 mb-6 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50">
         <input

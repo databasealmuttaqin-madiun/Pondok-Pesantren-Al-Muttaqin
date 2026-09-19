@@ -79,7 +79,6 @@ export default function PlottingJamAbsensiPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Modal QR Code State
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -99,8 +98,13 @@ export default function PlottingJamAbsensiPanel() {
   const [formKeterangan, setFormKeterangan] = useState("");
 
   const showFeedback = (type: "success" | "error", text: string) => {
-    setFeedback({ type, text });
-    setTimeout(() => setFeedback(null), 4000);
+    if (type === "error") {
+      MySwal.fire({
+        icon: "error",
+        title: "Perhatian",
+        text: text,
+      });
+    }
   };
 
   // Fetch from Supabase
@@ -586,30 +590,6 @@ export default function PlottingJamAbsensiPanel() {
           </div>
         }
       />
-
-      {/* Feedback Banner */}
-      {feedback && (
-        <div className={`p-4 rounded-xl border text-sm font-semibold flex items-center justify-between transition-all ${
-          feedback.type === "success"
-            ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
-            : "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200"
-        }`}>
-          <div className="flex items-center gap-2.5">
-            {feedback.type === "success" ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-            )}
-            <span>{feedback.text}</span>
-          </div>
-          <button 
-            onClick={() => setFeedback(null)}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* 2. TABEL UTAMA - JAM ABSENSI PER HARI (MINIMALIS & MONOKROM) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
