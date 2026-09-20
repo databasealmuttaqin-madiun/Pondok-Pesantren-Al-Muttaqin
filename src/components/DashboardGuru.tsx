@@ -20,7 +20,6 @@ import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
 import { getPeriodDisplayTime, parsePeriod } from "../lib/periodHelper";
-import QRScannerModal, { DEFAULT_SCHOOL_COORDS, DEFAULT_STATIC_QR_TOKEN } from "./QRScannerModal";
 
 const MySwal = withReactContent(Swal);
 
@@ -134,7 +133,6 @@ export default function DashboardGuru({
   // GPS & QR State
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isQrScannerOpen, setIsQrScannerOpen] = useState<boolean>(false);
 
   // Fetch Data
   useEffect(() => {
@@ -462,7 +460,7 @@ export default function DashboardGuru({
           <div className="space-y-2.5 pt-1">
             <button
               type="button"
-              onClick={() => setIsQrScannerOpen(true)}
+              onClick={() => handleGoToPresensi?.()}
               className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-sm font-bold shadow-sm hover:shadow transition-all cursor-pointer"
             >
               <Camera className="w-4 h-4 text-white" />
@@ -625,30 +623,6 @@ export default function DashboardGuru({
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
-
-      {/* Modal Scanner QR Presensi */}
-      <QRScannerModal
-        isOpen={isQrScannerOpen}
-        onClose={() => setIsQrScannerOpen(false)}
-        onSuccess={() => {
-          // Refresh status presensi
-          if (currentUser?.username) {
-            supabase
-              .from("absensi_guru")
-              .select("*")
-              .eq("username", currentUser.username)
-              .eq("tanggal", todayYMD)
-              .maybeSingle()
-              .then(({ data }) => {
-                if (data) setTodayAttendance(data);
-              });
-          }
-        }}
-        currentUser={currentUser}
-        defaultJenis={!todayAttendance?.jam_masuk ? "Masuk" : "Pulang"}
-        schoolCoords={SCHOOL_COORDINATES}
-        expectedQrToken={DEFAULT_STATIC_QR_TOKEN}
-      />
     </div>
   );
 }
