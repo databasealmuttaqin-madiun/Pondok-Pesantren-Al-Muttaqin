@@ -89,7 +89,16 @@ export default function PlottingJamAbsensiPanel() {
 
   // Modal QR Code State
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [qrToken, setQrToken] = useState(() => getDailyQrToken());
+  const [qrToken, setQrToken] = useState(() => {
+    try {
+      const cached = localStorage.getItem("pengaturan_sekolah_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.qr_token) return parsed.qr_token;
+      }
+    } catch {}
+    return "ALMUTTAQIN_PRESENSI_STATION_PRIMARY";
+  });
   const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   // Modal Form State (Tambah / Edit)
@@ -126,6 +135,7 @@ export default function PlottingJamAbsensiPanel() {
           if (data.latitude != null) setSchoolLatitude(Number(data.latitude));
           if (data.longitude != null) setSchoolLongitude(Number(data.longitude));
           if (data.radius_meters != null) setSchoolRadius(Number(data.radius_meters));
+          if (data.qr_token) setQrToken(data.qr_token);
         } else {
           const cached = localStorage.getItem("pengaturan_sekolah_cache");
           if (cached) {
@@ -133,6 +143,7 @@ export default function PlottingJamAbsensiPanel() {
             if (parsed.latitude) setSchoolLatitude(parsed.latitude);
             if (parsed.longitude) setSchoolLongitude(parsed.longitude);
             if (parsed.radius_meters) setSchoolRadius(parsed.radius_meters);
+            if (parsed.qr_token) setQrToken(parsed.qr_token);
           }
         }
       } catch (err) {
@@ -141,6 +152,62 @@ export default function PlottingJamAbsensiPanel() {
     };
     fetchPengaturanSekolah();
   }, []);
+
+  // Generate new manual QR code token
+  const handleGenerateNewQrToken = async () => {
+    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const newToken = `ALMUTTAQIN_QR_${randomHex}`;
+    setQrToken(newToken);
+
+    try {
+      const payload = {
+        latitude: Number(schoolLatitude),
+        longitude: Number(schoolLongitude),
+        radius_meters: Number(schoolRadius),
+        qr_token: newToken,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: existing } = await supabase
+        .from("pengaturan_sekolah")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+      if (existing && existing.id) {
+        await supabase
+          .from("pengaturan_sekolah")
+          .update(payload)
+          .eq("id", existing.id);
+      } else {
+        await supabase
+          .from("pengaturan_sekolah")
+          .insert([payload]);
+      }
+
+      localStorage.setItem("pengaturan_sekolah_cache", JSON.stringify(payload));
+
+      MySwal.fire({
+        icon: "success",
+        title: "QR Code Baru Berhasil Dibuat!",
+        text: `Token QR baru: ${newToken}. Kode QR ini sekarang aktif dan tidak akan berganti otomatis kecuali di-generate kembali.`,
+        confirmButtonColor: "#2563eb"
+      });
+    } catch (err) {
+      console.warn("Gagal simpan QR token baru ke DB:", err);
+      const cached = localStorage.getItem("pengaturan_sekolah_cache");
+      let parsed = cached ? JSON.parse(cached) : { latitude: schoolLatitude, longitude: schoolLongitude, radius_meters: schoolRadius };
+      parsed.qr_token = newToken;
+      localStorage.setItem("pengaturan_sekolah_cache", JSON.stringify(parsed));
+
+      MySwal.fire({
+        icon: "success",
+        title: "QR Code Baru Dibuat (Lokal)",
+        text: `Token QR baru: ${newToken}`,
+        confirmButtonColor: "#2563eb"
+      });
+    }
+  };
 
   const handleSaveKoordinat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -938,24 +1005,36 @@ export default function PlottingJamAbsensiPanel() {
             </div>
 
             {/* Footer Modal / Tombol Aksi */}
-            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-              {/* Tombol Utama: Unduh PNG */}
+            <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {/* Tombol Generate QR Baru */}
               <button
-                onClick={handleDownloadQrPng}
-                className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs cursor-pointer"
+                type="button"
+                onClick={handleGenerateNewQrToken}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs cursor-pointer"
               >
-                <Download className="w-4 h-4" />
-                <span>Unduh Gambar QR (.PNG)</span>
+                <RefreshCw className="w-4 h-4" />
+                <span>Generate QR Code Baru</span>
               </button>
 
-              {/* Tombol Sekunder: Cetak PDF/Print */}
-              <button
-                onClick={handlePrintQr}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Cetak Papan QR</span>
-              </button>
+              <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                {/* Tombol Utama: Unduh PNG */}
+                <button
+                  onClick={handleDownloadQrPng}
+                  className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Unduh Gambar QR (.PNG)</span>
+                </button>
+
+                {/* Tombol Sekunder: Cetak PDF/Print */}
+                <button
+                  onClick={handlePrintQr}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak Papan QR</span>
+                </button>
+              </div>
             </div>
 
           </div>

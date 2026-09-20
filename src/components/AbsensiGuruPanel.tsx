@@ -71,6 +71,15 @@ export function getDayNameFromDate(date: Date): DayName {
 // Helper: Memuat konfigurasi stasiun dan jadwal harian dari admin settings jika ada
 export function getActiveSchoolConfig() {
   try {
+    let cachedQrToken = "ALMUTTAQIN_PRESENSI_STATION_PRIMARY";
+    try {
+      const savedCache = localStorage.getItem("pengaturan_sekolah_cache");
+      if (savedCache) {
+        const parsedCache = JSON.parse(savedCache);
+        if (parsedCache.qr_token) cachedQrToken = parsedCache.qr_token;
+      }
+    } catch {}
+
     // 1. Cek data dari Plotting Jam Absensi Guru jika ada
     const savedPlotting = localStorage.getItem("plotting_jam_absensi_data");
     if (savedPlotting) {
@@ -87,7 +96,7 @@ export function getActiveSchoolConfig() {
 
         return {
           ...DEFAULT_SCHOOL_LOCATION,
-          qrToken: "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+          qrToken: cachedQrToken,
           namaSekolah: "SMP IT Al-Muttaqin",
           alamatPos: "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
           jamMasuk: mappedJadwal[0]?.jam_masuk || "07:00",
@@ -109,7 +118,7 @@ export function getActiveSchoolConfig() {
         latitude: typeof parsed.latitude === "number" ? parsed.latitude : (parseFloat(parsed.latitude) || DEFAULT_SCHOOL_LOCATION.latitude),
         longitude: typeof parsed.longitude === "number" ? parsed.longitude : (parseFloat(parsed.longitude) || DEFAULT_SCHOOL_LOCATION.longitude),
         radiusMeters: typeof parsed.radius_gps === "number" ? parsed.radius_gps : (parseInt(parsed.radius_gps) || DEFAULT_SCHOOL_LOCATION.radiusMeters),
-        qrToken: parsed.qr_token || "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+        qrToken: cachedQrToken !== "ALMUTTAQIN_PRESENSI_STATION_PRIMARY" ? cachedQrToken : (parsed.qr_token || "ALMUTTAQIN_PRESENSI_STATION_PRIMARY"),
         namaSekolah: parsed.nama_sekolah || "SMP IT Al-Muttaqin",
         alamatPos: parsed.alamat_pos || "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
         jamMasuk: parsed.jam_masuk || "07:00",
@@ -119,9 +128,18 @@ export function getActiveSchoolConfig() {
       };
     }
   } catch {}
+  let fallbackQrToken = "ALMUTTAQIN_PRESENSI_STATION_PRIMARY";
+  try {
+    const savedCache = localStorage.getItem("pengaturan_sekolah_cache");
+    if (savedCache) {
+      const parsedCache = JSON.parse(savedCache);
+      if (parsedCache.qr_token) fallbackQrToken = parsedCache.qr_token;
+    }
+  } catch {}
+
   return {
     ...DEFAULT_SCHOOL_LOCATION,
-    qrToken: "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
+    qrToken: fallbackQrToken,
     namaSekolah: "SMP IT Al-Muttaqin",
     alamatPos: "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
     jamMasuk: "07:00",
