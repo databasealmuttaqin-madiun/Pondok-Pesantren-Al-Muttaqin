@@ -190,22 +190,6 @@ export default function RekapAbsensiSiswaPanel() {
         }
       }
 
-      // Fallback baseline students if DB is empty
-      if (mappedStudents.length === 0) {
-        mappedStudents = [
-          { id: "s1", nama_lengkap: "Deswita Ayu Paramita", nis: "260901", kelas: selectedClass },
-          { id: "s2", nama_lengkap: "Arum Bening", nis: "260902", kelas: selectedClass },
-          { id: "s3", nama_lengkap: "Berlian Nisaul Solikhah", nis: "260903", kelas: selectedClass },
-          { id: "s4", nama_lengkap: "Atika Oktaviani Calista Achmad", nis: "260904", kelas: selectedClass },
-          { id: "s5", nama_lengkap: "Muhammad Ridho Aditya Putra", nis: "260905", kelas: selectedClass },
-          { id: "s6", nama_lengkap: "Eva Aprilia Anggreini", nis: "260906", kelas: selectedClass },
-          { id: "s7", nama_lengkap: "Friescha Cahaya Septa", nis: "260907", kelas: selectedClass },
-          { id: "s8", nama_lengkap: "Khodijah Afwa Parahita", nis: "260908", kelas: selectedClass },
-          { id: "s9", nama_lengkap: "Julia Rahman", nis: "260909", kelas: selectedClass },
-          { id: "s10", nama_lengkap: "Rikha Arsita Bella Agama", nis: "260910", kelas: selectedClass }
-        ];
-      }
-
       setStudents(mappedStudents);
 
       // Step B: Fetch Jurnal Mengajar for the month & class
@@ -256,7 +240,7 @@ export default function RekapAbsensiSiswaPanel() {
     return `${filterYear}-${String(filterMonth + 1).padStart(2, "0")}`;
   }, [filterMonth, filterYear]);
 
-  // Generate sessions columns: Use real database journals if they exist, or fallback to beautiful mock session columns matching the image
+  // Generate sessions columns: Use real database journals if they exist
   const sessionCols = useMemo<SessionColumn[]>(() => {
     if (rawJurnals && rawJurnals.length > 0) {
       return rawJurnals.map((j: any) => {
@@ -288,20 +272,8 @@ export default function RekapAbsensiSiswaPanel() {
       }).sort((a, b) => a.tanggal.localeCompare(b.tanggal) || a.id.localeCompare(b.id));
     }
 
-    // Default mock columns matching image layout precisely
-    return [
-      { id: "m1", tanggal: `${monthPrefix}-14`, dayNum: "14", sesi: "MALAM" },
-      { id: "m2", tanggal: `${monthPrefix}-15`, dayNum: "15", sesi: "BADA M..." },
-      { id: "m3", tanggal: `${monthPrefix}-15`, dayNum: "15", sesi: "MALAM" },
-      { id: "m4", tanggal: `${monthPrefix}-16`, dayNum: "16", sesi: "MALAM" },
-      { id: "m5", tanggal: `${monthPrefix}-17`, dayNum: "17", sesi: "BADA M..." },
-      { id: "m6", tanggal: `${monthPrefix}-17`, dayNum: "17", sesi: "MALAM" },
-      { id: "m7", tanggal: `${monthPrefix}-18`, dayNum: "18", sesi: "BADA M..." },
-      { id: "m8", tanggal: `${monthPrefix}-18`, dayNum: "18", sesi: "MALAM" },
-      { id: "m9", tanggal: `${monthPrefix}-19`, dayNum: "19", sesi: "PAGI 1" },
-      { id: "m10", tanggal: `${monthPrefix}-19`, dayNum: "19", sesi: "PAGI 2" },
-      { id: "m11", tanggal: `${monthPrefix}-19`, dayNum: "19", sesi: "SIANG" },
-    ];
+    // Return empty array if no database journals exist
+    return [];
   }, [rawJurnals, monthPrefix, mapelListState]);
 
   // Compute grouped days to span correctly in Header Row 1
@@ -318,9 +290,8 @@ export default function RekapAbsensiSiswaPanel() {
     return groups;
   }, [sessionCols]);
 
-  // Deterministic status retriever for student + column ID
-  const getStatusForSession = useCallback((studentId: string, colId: string): "H" | "I" | "S" | "T" | "A" => {
-    // If we have real DB rows
+  // Deterministic status retriever for student + column ID (real DB only)
+  const getStatusForSession = useCallback((studentId: string, colId: string): "H" | "I" | "S" | "T" | "A" | "" => {
     const realRecord = rawAbsensi.find(
       a => String(a.siswa_id) === String(studentId) && String(a.jurnal_id) === String(colId)
     );
@@ -333,34 +304,7 @@ export default function RekapAbsensiSiswaPanel() {
       if (s === "alpa" || s === "alfa") return "A";
     }
 
-    // Mock sequence matches image exactly for first 10 students (stable values)
-    const seed = studentId.charCodeAt(0) + (studentId.charCodeAt(1) || 0) + colId.charCodeAt(colId.length - 1);
-    
-    // Custom seed modifiers to make some rows look like the image:
-    // Row 1 (Deswita Ayu): All H
-    if (studentId === "s1" || studentId.endsWith("s1")) {
-      return "H";
-    }
-    // Row 2 (Arum Bening): last is I, rest is H
-    if (studentId === "s2" || studentId.endsWith("s2")) {
-      return colId === "m11" ? "I" : "H";
-    }
-    // Row 5 (Muhammad Ridho): has two T at PAGI 1 & PAGI 2
-    if (studentId === "s5" || studentId.endsWith("s5")) {
-      return (colId === "m9" || colId === "m10") ? "T" : "H";
-    }
-    // Row 10 (Rikha Arsita): has T at first
-    if (studentId === "s10" || studentId.endsWith("s10")) {
-      return colId === "m1" ? "T" : "H";
-    }
-
-    // Default natural distribution
-    const mod = seed % 35;
-    if (mod === 0) return "T";
-    if (mod === 1) return "I";
-    if (mod === 2) return "S";
-    if (mod === 3) return "A";
-    return "H";
+    return "";
   }, [rawAbsensi]);
 
   // 3. Compute final records with accumulated count of green and red badges
