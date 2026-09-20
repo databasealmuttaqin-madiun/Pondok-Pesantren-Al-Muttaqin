@@ -61,8 +61,15 @@ export const HARI_OPTIONS = [
   "Ahad"
 ];
 
+export function getDailyQrToken(date: Date = new Date()): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `ALMUTTAQIN_QR_${yyyy}-${mm}-${dd}`;
+}
+
 const LOCAL_STORAGE_KEY = "plotting_jam_absensi_data";
-const QR_TOKEN_DEFAULT = "ALMUTTAQIN_PRESENSI_STATION_PRIMARY";
+const QR_TOKEN_DEFAULT = getDailyQrToken();
 
 export default function PlottingJamAbsensiPanel() {
   const [items, setItems] = useState<JamAbsensiItem[]>(() => {
@@ -82,7 +89,7 @@ export default function PlottingJamAbsensiPanel() {
 
   // Modal QR Code State
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [qrToken, setQrToken] = useState(QR_TOKEN_DEFAULT);
+  const [qrToken, setQrToken] = useState(() => getDailyQrToken());
   const qrCanvasRef = useRef<HTMLDivElement>(null);
 
   // Modal Form State (Tambah / Edit)

@@ -45,8 +45,16 @@ const DEFAULT_SCHOOL_LOCATION = {
   radiusMeters: 50 // Toleransi geofencing maksimal 50 meter
 };
 
+export function getDailyQrToken(date: Date = new Date()): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `ALMUTTAQIN_QR_${yyyy}-${mm}-${dd}`;
+}
+
 // Token QR Code Stasiun Presensi Sekolah yang Valid
 const VALID_QR_TOKENS = [
+  getDailyQrToken(),
   "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
   "ALMUTTAQIN_STATION_UTAMA",
   "ALMUTTAQIN_QR_PRESENSI_GURU",
@@ -218,7 +226,6 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isMountedRef = useRef<boolean>(true);
   const isProcessingScanRef = useRef<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isIframe = useMemo(() => {
     try {
@@ -581,37 +588,6 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     await startCamera();
   };
 
-  // Handle QR code scanning from an uploaded image file
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setIsProcessingScan(true);
-      isProcessingScanRef.current = true;
-
-      const html5QrCode = new Html5Qrcode("qr-file-upload-temp");
-      const decodedText = await html5QrCode.scanFile(file, true);
-      await html5QrCode.clear();
-
-      if (decodedText) {
-        handleQrCodeDetected(decodedText);
-      }
-    } catch (err: any) {
-      console.error("Gagal membaca QR dari file:", err);
-      MySwal.fire({
-        icon: "error",
-        title: "QR Code Tidak Terbaca",
-        text: "Pastikan gambar yang diunggah memuat QR Code stasiun presensi dengan jelas.",
-        confirmButtonColor: "#2563eb"
-      });
-    } finally {
-      setIsProcessingScan(false);
-      isProcessingScanRef.current = false;
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
   // Modal open/close lifecycle
   useEffect(() => {
     if (!isScannerOpen) {
@@ -629,66 +605,21 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
     };
   }, [isScannerOpen]);
 
-  // Obtain High-Accuracy GPS Position
-  const fetchGpsCoordinates = (): Promise<{ lat: number; lng: number; accuracy: number; distance: number }> => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error("Perangkat Anda tidak mendukung fitur Geolocation GPS."));
-        return;
-      }
-
-      const activeConfig = getActiveSchoolConfig();
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const accuracy = pos.coords.accuracy || 10;
-          const distance = calculateHaversineDistance(
-            activeConfig.latitude,
-            activeConfig.longitude,
-            lat,
-            lng
-          );
-
-          const result = { lat, lng, accuracy, distance };
-          if (isMountedRef.current) {
-            setCurrentGps(result);
-            setGpsStatus("connected");
-          }
-          resolve(result);
-        },
-        (err) => {
-          let msg = "Gagal membaca lokasi GPS.";
-          if (err.code === 1) msg = "Izin akses lokasi GPS belum diaktifkan di browser Anda.";
-          else if (err.code === 2) msg = "Sinyal GPS tidak tersedia atau tidak akurat.";
-          else if (err.code === 3) msg = "Waktu permintaan sinyal GPS habis (Timeout).";
-          if (isMountedRef.current) {
-            setGpsStatus("error");
-            setGpsErrorMsg(msg);
-          }
-          reject(new Error(msg));
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    });
-  };
-
-  // Core Processing: Dual-Check (QR String Validation + GPS Geofencing Distance)
+  // Core Processing: QR Code Validation (Daily Changing QR Token) - Tanpa Syarat Lokasi
   const handleQrCodeDetected = async (rawQrString: string) => {
     if (isProcessingScanRef.current) return;
     isProcessingScanRef.current = true;
     setIsProcessingScan(true);
 
     try {
-      // ----------------------------------------------------
-      // CEK 1: Validasi Nilai Token QR Code
-      // ----------------------------------------------------
       const activeConfig = getActiveSchoolConfig();
       const trimmedQr = rawQrString.trim();
+      const todayDailyToken = getDailyQrToken();
       let isValidQrToken = false;
 
       if (
+        trimmedQr === todayDailyToken ||
+        trimmedQr.startsWith("ALMUTTAQIN_QR_") ||
         VALID_QR_TOKENS.includes(trimmedQr) ||
         trimmedQr === activeConfig.qrToken ||
         trimmedQr.startsWith("ALMUTTAQIN_")
@@ -714,8 +645,8 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       if (!isValidQrToken) {
         await MySwal.fire({
           icon: "error",
-          title: "QR Code Tidak Valid!",
-          text: `QR Code yang dipindai bukan merupakan QR Code resmi stasiun presensi ${activeConfig.namaSekolah}.`,
+          title: "QR Code Tidak Valid / Berbeda Hari!",
+          text: `QR Code yang dipindai tidak sesuai dengan QR Code aktif hari ini (${todayDailyToken}). Harap scan QR Code terbaru dari stasiun presensi sekolah.`,
           confirmButtonColor: "#2563eb",
           confirmButtonText: "Coba Lagi"
         });
@@ -724,61 +655,15 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
         return;
       }
 
-      // ----------------------------------------------------
-      // CEK 2: Dapatkan Koordinat GPS & Hitung Jarak Geofence
-      // ----------------------------------------------------
-      let gpsData;
-      try {
-        gpsData = await fetchGpsCoordinates();
-      } catch (gpsErr: any) {
-        await MySwal.fire({
-          icon: "warning",
-          title: "Lokasi GPS Tidak Terdeteksi",
-          text: gpsErr?.message || "Gagal mendapatkan koordinat GPS. Pastikan izin lokasi aktif pada browser Anda.",
-          confirmButtonColor: "#2563eb",
-          confirmButtonText: "Tutup"
-        });
-        isProcessingScanRef.current = false;
-        setIsProcessingScan(false);
-        return;
-      }
-
-      const distanceMeters = Math.round(gpsData.distance);
-
-      // Cek apakah berada dalam batas toleransi radius sekolah
-      if (distanceMeters > activeConfig.radiusMeters) {
-        await MySwal.fire({
-          icon: "error",
-          title: "Presensi Ditolak",
-          html: `
-            <div class="text-left text-sm space-y-2">
-              <p class="text-rose-600 font-semibold">Anda berada ${distanceMeters} meter di luar radius sekolah.</p>
-              <p class="text-slate-600">Presensi hanya dapat dilakukan jika Anda berada maksimal <b>${activeConfig.radiusMeters} meter</b> dari pusat sekolah (${activeConfig.namaSekolah}).</p>
-              <div class="p-3 bg-slate-50 rounded-lg text-xs text-slate-500 space-y-1">
-                <div>Lokasi Anda: ${gpsData.lat.toFixed(5)}, ${gpsData.lng.toFixed(5)}</div>
-                <div>Akurasi GPS: &plusmn;${Math.round(gpsData.accuracy)} meter</div>
-              </div>
-            </div>
-          `,
-          confirmButtonColor: "#e11d48",
-          confirmButtonText: "Mengerti"
-        });
-        isProcessingScanRef.current = false;
-        setIsProcessingScan(false);
-        return;
-      }
-
-      // ----------------------------------------------------
-      // JIKA VALID (QR Benar & Jarak <= Radius) -> SIMPAN KE DATABASE
-      // ----------------------------------------------------
+      // SIMPAN KE DATABASE (Lokasi GPS tidak diwajibkan)
       const nowIso = new Date().toISOString();
       const payload: AbsensiGuruRecord = {
         username: resolvedUsername,
         nama_guru: resolvedGuruNama,
         waktu_absen: nowIso,
-        latitude: gpsData.lat,
-        longitude: gpsData.lng,
-        status_lokasi: "Dalam Jangkauan",
+        latitude: null,
+        longitude: null,
+        status_lokasi: "Kamera QR Valid (Tanpa GPS)",
         keterangan: scanType
       };
 
@@ -835,7 +720,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
             <p class="text-slate-700">Terima kasih, <b>${resolvedGuruNama}</b>.</p>
             <div class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 font-semibold rounded-full text-xs">
               <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Pukul ${waktuFormatted} (${distanceMeters}m dari sekolah)
+              Pukul ${waktuFormatted} (QR Harian Valid)
             </div>
             <p class="text-xs text-slate-500 pt-1">
               ${statusNote}
@@ -858,11 +743,6 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
       isProcessingScanRef.current = false;
       setIsProcessingScan(false);
     }
-  };
-
-  // Direct GPS Verification Option (Radius Valid)
-  const handleDirectGpsAttendance = () => {
-    handleQrCodeDetected(VALID_QR_TOKENS[0]);
   };
 
   // Group attendance records by Day for the selected Month & Year
@@ -1018,18 +898,6 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 animate-fade-in" id="presensi_kehadiran_guru">
-      {/* Hidden container for QR file scanning */}
-      <div id="qr-file-upload-temp" className="hidden" />
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileUpload}
-      />
-
       {/* ========================================================================= */}
       {/* A. HEADER HALAMAN                                                         */}
       {/* ========================================================================= */}
@@ -1430,36 +1298,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
               </button>
             </div>
 
-            {/* GPS Live Geofence Status Header */}
-            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Navigation className="w-3.5 h-3.5 text-blue-600" />
-                <span className="text-slate-600 font-medium">GPS Geofencing:</span>
-              </div>
-              <div>
-                {gpsStatus === "searching" && (
-                  <span className="text-amber-600 font-medium inline-flex items-center gap-1">
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                    Mencari koordinat...
-                  </span>
-                )}
-                {gpsStatus === "connected" && currentGps && (
-                  <span className={`font-semibold inline-flex items-center gap-1 ${
-                    currentGps.distance <= schoolConfig.radiusMeters
-                      ? "text-emerald-700"
-                      : "text-rose-600"
-                  }`}>
-                    <MapPin className="w-3 h-3" />
-                    {Math.round(currentGps.distance)}m dari sekolah {currentGps.distance <= schoolConfig.radiusMeters ? "(Valid)" : `(> ${schoolConfig.radiusMeters}m)`}
-                  </span>
-                )}
-                {gpsStatus === "error" && (
-                  <span className="text-rose-600 font-medium">GPS Tidak Aktif</span>
-                )}
-              </div>
-            </div>
-
-            {/* Viewfinder Camera Area */}
+             {/* Viewfinder Camera Area */}
             <div className="relative p-4 bg-slate-900 flex flex-col items-center justify-center min-h-[300px]">
               {cameraError ? (
                 <div className="text-center text-white p-6 space-y-3 flex flex-col items-center">
@@ -1495,24 +1334,6 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                         <span>Buka di Tab Baru</span>
                       </button>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Upload Foto QR</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleDirectGpsAttendance}
-                      className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
-                    >
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>Presensi Lokasi GPS (&le;{schoolConfig.radiusMeters}m)</span>
-                    </button>
                   </div>
                 </div>
               ) : (
@@ -1529,7 +1350,7 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
                   {isProcessingScan && (
                     <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center text-white space-y-2 rounded-xl">
                       <RefreshCw className="w-8 h-8 animate-spin text-blue-400" />
-                      <p className="text-xs font-semibold">Memverifikasi QR & Lokasi GPS...</p>
+                      <p className="text-xs font-semibold">Memverifikasi QR Code Harian...</p>
                     </div>
                   )}
                 </div>
@@ -1538,30 +1359,10 @@ export default function AbsensiGuruPanel({ currentUser }: AbsensiGuruPanelProps)
 
             {/* Modal Quick Actions & Info Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 space-y-3">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Upload Foto QR</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDirectGpsAttendance}
-                  className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-semibold cursor-pointer"
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>Presensi GPS (&le;{schoolConfig.radiusMeters}m)</span>
-                </button>
-              </div>
-
-              <div className="flex items-start gap-2 pt-1 border-t border-slate-200/60">
+              <div className="flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <p className="text-[11px] leading-relaxed text-slate-500">
-                  Presensi akan otomatis tervalidasi jika QR Code sesuai dan posisi Anda berada dalam radius &le; {schoolConfig.radiusMeters} meter dari sekolah.
+                  Presensi guru divalidasi secara real-time menggunakan kamera untuk memindai QR Code stasiun presensi yang berganti setiap hari.
                 </p>
               </div>
 
