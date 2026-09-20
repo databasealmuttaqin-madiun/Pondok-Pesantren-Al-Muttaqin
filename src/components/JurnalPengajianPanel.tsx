@@ -661,11 +661,11 @@ export default function JurnalPengajianPanel({
                               key={opt.value}
                               onClick={() => handleStatusChange(Number(santri.id) || 0, opt.value)}
                               className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold transition-all border ${
-                                absensi.status === opt.value 
+                                (absensi.status === opt.value || (opt.value === 'terlambat' && absensi.status === 'telat') || (opt.value === 'telat' && absensi.status === 'terlambat'))
                                   ? opt.color + " shadow-sm scale-110 z-10" 
                                   : "text-slate-500 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700"
                               }`}
-                              title={opt.value.toUpperCase()}
+                              title={opt.value === 'terlambat' || opt.value === 'telat' ? 'Telat (Tercatat di Rekap Absensi, di Jurnal dihitung Hadir)' : opt.value.toUpperCase()}
                             >
                               {opt.label}
                             </button>

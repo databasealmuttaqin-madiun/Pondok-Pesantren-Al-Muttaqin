@@ -19,7 +19,10 @@ import {
   Copy,
   Check,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  MessageCircle,
+  ClipboardList,
+  Printer
 } from "lucide-react";
 
 const MySwal = withReactContent(Swal);
@@ -558,11 +561,6 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
     }
   };
 
-  const handleOpenWhatsApp = () => {
-    const url = `https://wa.me/?text=${encodeURIComponent(waFormattedText)}`;
-    window.open(url, "_blank");
-  };
-
   // PDF Export
   const handleExportPdf = () => {
     setIsExporting(true);
@@ -612,24 +610,17 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
 
   return (
     <div className="space-y-6 animate-fade-in" id="rekap_absensi_siswa_module">
-      {/* 1. HEADER HALAMAN */}
-      <PageHeader
-        category="Sekolah & Presensi"
-        title="Rekap Absensi Siswa"
-        description="Laporan rekapitulasi tingkat kehadiran, ketepatan waktu, dan riwayat presensi harian siswa per kelas."
-      />
 
-      {/* 2. AREA FILTER & ACTION BAR */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        {/* Dropdown Filters on Left */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Filter Kelas */}
-          <div className="flex flex-col space-y-1">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Kelas Sekolah</span>
+      {/* 2. AREA FILTER BAR */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-end justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* Dropdown Kelas Sekolah */}
+          <div className="flex flex-col space-y-1 w-full sm:w-auto min-w-[160px]">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Kelas Sekolah</span>
             <select
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[150px]"
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer w-full"
             >
               {classesList.map((cls) => (
                 <option key={cls} value={cls}>{cls}</option>
@@ -637,13 +628,13 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
             </select>
           </div>
 
-          {/* Filter Bulan */}
-          <div className="flex flex-col space-y-1">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Bulan</span>
+          {/* Dropdown Bulan */}
+          <div className="flex flex-col space-y-1 w-full sm:w-auto min-w-[160px]">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Bulan</span>
             <select
               value={filterMonth}
               onChange={(e) => setFilterMonth(Number(e.target.value))}
-              className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[155px]"
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer w-full"
             >
               {monthNames.map((name, idx) => (
                 <option key={idx} value={idx}>{name} {filterYear}</option>
@@ -652,8 +643,8 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
           </div>
 
           {/* Search Bar */}
-          <div className="flex flex-col space-y-1 w-full sm:w-[220px]">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Cari Siswa</span>
+          <div className="flex flex-col space-y-1 w-full sm:w-[200px]">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Cari Siswa</span>
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
@@ -661,42 +652,32 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                 placeholder="Cari nama / NISN..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400"
               />
             </div>
           </div>
         </div>
 
-        {/* Action Buttons on Right */}
-        <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center">
-          <button
-            type="button"
-            onClick={() => setIsWaModalOpen(true)}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-55"
-          >
-            <Share2 className="w-4 h-4" />
-            <span>Rekap WA</span>
-          </button>
-
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 justify-end">
           <button
             type="button"
             onClick={handleExportPdf}
             disabled={isExporting || isLoading}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg transition-all cursor-pointer disabled:opacity-55"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 disabled:opacity-50"
           >
-            <FileText className="w-4 h-4 text-slate-500" />
-            <span>Ekspor PDF</span>
+            <Printer className="w-4 h-4" />
+            {isExporting ? "Mencetak..." : "Cetak Rekap"}
           </button>
-          
+          {/* Primary Button Laporan WA */}
           <button
             type="button"
-            onClick={handleExportExcel}
-            disabled={isExporting || isLoading}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-55"
+            onClick={() => setIsWaModalOpen(true)}
+            disabled={isLoading}
+            className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium transition-all shadow-sm cursor-pointer shrink-0 disabled:opacity-55"
           >
-            <Download className="w-4 h-4" />
-            <span>Ekspor Excel</span>
+            <MessageCircle className="w-4 h-4" />
+            <span>Laporan WA</span>
           </button>
         </div>
       </div>
@@ -762,8 +743,11 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                     {day.dayNum}
                   </th>
                 ))}
-                <th rowSpan={2} className="px-4 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-emerald-600 dark:text-emerald-400 font-extrabold w-14">H</th>
-                <th rowSpan={2} className="px-4 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400 font-extrabold w-14">A</th>
+                <th rowSpan={2} className="px-3 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-emerald-600 dark:text-emerald-400 font-extrabold w-12" title="Total Hadir">H</th>
+                <th rowSpan={2} className="px-3 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-orange-600 dark:text-orange-400 font-extrabold w-12" title="Total Telat / Terlambat">T</th>
+                <th rowSpan={2} className="px-3 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 font-extrabold w-12" title="Total Izin">I</th>
+                <th rowSpan={2} className="px-3 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-amber-600 dark:text-amber-400 font-extrabold w-12" title="Total Sakit">S</th>
+                <th rowSpan={2} className="px-3 py-3 text-center border-r border-slate-200 dark:border-slate-800 text-rose-600 dark:text-rose-400 font-extrabold w-12" title="Total Alpa">A</th>
                 <th rowSpan={2} className="px-4 py-3 text-center w-24">AKSI</th>
               </tr>
               {/* Header Baris 2: Nama Sesi */}
@@ -778,14 +762,14 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={sessionCols.length + 5} className="px-5 py-12 text-center text-slate-400">
+                  <td colSpan={sessionCols.length + 8} className="px-5 py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-400 mb-2" />
                     <p className="text-xs font-medium">Memuat rekap absensi matriks kelas {selectedClass}...</p>
                   </td>
                 </tr>
               ) : filteredRekapList.length === 0 ? (
                 <tr>
-                  <td colSpan={sessionCols.length + 5} className="px-5 py-12 text-center text-slate-400">
+                  <td colSpan={sessionCols.length + 8} className="px-5 py-12 text-center text-slate-400">
                     <Info className="w-6 h-6 mx-auto text-slate-300 mb-2" />
                     <p className="text-xs">Tidak ada data siswa ditemukan untuk kriteria filter saat ini.</p>
                   </td>
@@ -833,11 +817,20 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                         );
                       })}
 
-                      {/* Total H & A */}
-                      <td className="px-4 py-3 text-center font-mono font-extrabold text-sm text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-slate-800">
+                      {/* Total Ringkasan: H, T, I, S, A */}
+                      <td className="px-3 py-3 text-center font-mono font-extrabold text-xs text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-slate-800">
                         {row.hadir}
                       </td>
-                      <td className="px-4 py-3 text-center font-mono font-extrabold text-sm text-rose-600 dark:text-rose-400 border-r border-slate-100 dark:border-slate-800">
+                      <td className="px-3 py-3 text-center font-mono font-extrabold text-xs text-orange-600 dark:text-orange-400 border-r border-slate-100 dark:border-slate-800">
+                        {row.terlambat}
+                      </td>
+                      <td className="px-3 py-3 text-center font-mono font-extrabold text-xs text-blue-600 dark:text-blue-400 border-r border-slate-100 dark:border-slate-800">
+                        {row.izin}
+                      </td>
+                      <td className="px-3 py-3 text-center font-mono font-extrabold text-xs text-amber-600 dark:text-amber-400 border-r border-slate-100 dark:border-slate-800">
+                        {row.sakit}
+                      </td>
+                      <td className="px-3 py-3 text-center font-mono font-extrabold text-xs text-rose-600 dark:text-rose-400 border-r border-slate-100 dark:border-slate-800">
                         {row.alpa}
                       </td>
 
@@ -1089,18 +1082,10 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
               <button
                 type="button"
                 onClick={handleCopyWaText}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition-colors cursor-pointer"
-              >
-                {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                <span>{isCopied ? "Tersalin!" : "Salin Teks"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenWhatsApp}
                 className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm hover:shadow-md cursor-pointer"
               >
-                <ExternalLink className="w-4 h-4" />
-                <span>Kirim ke WhatsApp</span>
+                {isCopied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
+                <span>{isCopied ? "Tersalin!" : "Salin Teks"}</span>
               </button>
             </div>
           </div>

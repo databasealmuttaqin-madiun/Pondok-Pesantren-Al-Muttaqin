@@ -365,6 +365,8 @@ export default function JurnalMengajarBaruPanel({
   const totalSakit = Object.values(attendanceMap).filter(v => v === "sakit").length;
   const totalIzin = Object.values(attendanceMap).filter(v => v === "izin").length;
   const totalAlpa = Object.values(attendanceMap).filter(v => v === "alpa").length;
+  const totalTelat = Object.values(attendanceMap).filter(v => v === "telat" || v === "terlambat").length;
+  const totalHadir = Object.values(attendanceMap).filter(v => v === "hadir" || v === "telat" || v === "terlambat").length;
 
   const handleSaveJurnal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -759,14 +761,20 @@ export default function JurnalMengajarBaruPanel({
                     <p className="text-[10px] text-slate-500">Jumlah Siswa Kelas {kelas}: {students.length} anak</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg text-[11px] font-extrabold">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10px] font-extrabold" title="Status Hadir total (termasuk Telat)">
+                      Hadir: {totalHadir}
+                    </span>
+                    <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-extrabold" title="Telat dicatat untuk Rekap Absensi Siswa, pada Jurnal tetap dihitung sebagai Hadir">
+                      Telat: {totalTelat}
+                    </span>
+                    <span className="px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg text-[10px] font-extrabold">
                       Sakit: {totalSakit}
                     </span>
-                    <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-extrabold">
+                    <span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-[10px] font-extrabold">
                       Izin: {totalIzin}
                     </span>
-                    <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-extrabold">
+                    <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-extrabold">
                       Alpa: {totalAlpa}
                     </span>
                   </div>
@@ -781,11 +789,12 @@ export default function JurnalMengajarBaruPanel({
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        {(["hadir", "sakit", "izin", "alpa"] as const).map(st => {
-                          const isActive = (attendanceMap[s.id] || "hadir") === st;
+                        {(["hadir", "telat", "sakit", "izin", "alpa"] as const).map(st => {
+                          const isActive = (attendanceMap[s.id] || "hadir") === st || (st === "telat" && attendanceMap[s.id] === "terlambat");
                           let activeStyle = "bg-blue-600 text-white shadow-xs";
+                          if (st === "telat") activeStyle = "bg-amber-500 text-white shadow-xs";
                           if (st === "sakit") activeStyle = "bg-orange-500 text-white shadow-xs";
-                          if (st === "izin") activeStyle = "bg-amber-500 text-white shadow-xs";
+                          if (st === "izin") activeStyle = "bg-yellow-500 text-white shadow-xs";
                           if (st === "alpa") activeStyle = "bg-rose-600 text-white shadow-xs";
 
                           return (
@@ -793,11 +802,12 @@ export default function JurnalMengajarBaruPanel({
                               key={st}
                               type="button"
                               onClick={() => setAttendanceMap(prev => ({ ...prev, [s.id]: st }))}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
-                                isActive ? activeStyle : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                              className={`w-7 h-7 rounded-lg text-[11px] font-black uppercase transition-all cursor-pointer flex items-center justify-center ${
+                                isActive ? activeStyle : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                               }`}
+                              title={st === "telat" ? "Telat (Tercatat di Rekap Absensi Siswa, di Jurnal dihitung Hadir)" : st.toUpperCase()}
                             >
-                              {st === "hadir" ? "H" : st === "sakit" ? "S" : st === "izin" ? "I" : "A"}
+                              {st === "hadir" ? "H" : st === "telat" ? "T" : st === "sakit" ? "S" : st === "izin" ? "I" : "A"}
                             </button>
                           );
                         })}

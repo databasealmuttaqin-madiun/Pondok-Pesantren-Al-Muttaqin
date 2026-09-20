@@ -152,18 +152,19 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
   
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'hadir': return 'bg-green-100 text-green-700';
-      case 'izin': return 'bg-blue-100 text-blue-700';
-      case 'sakit': return 'bg-yellow-100 text-yellow-700';
-      case 'terlambat': return 'bg-orange-100 text-orange-700';
-      case 'alpa': return 'bg-red-100 text-red-700';
-      default: return 'bg-slate-100 text-slate-400';
+      case 'hadir': return 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300';
+      case 'izin': return 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300';
+      case 'sakit': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300';
+      case 'terlambat':
+      case 'telat': return 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
+      case 'alpa': return 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300';
+      default: return 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500';
     }
   };
   
   const getStatusInitial = (status: string) => {
     if (!status) return '-';
-    if (status === 'terlambat') return 'T';
+    if (status === 'terlambat' || status === 'telat') return 'T';
     return status.charAt(0).toUpperCase();
   };
 
@@ -253,15 +254,26 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
       await navigator.clipboard.writeText(waFormattedText);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
-      onTriggerNotification("Pesan WA berhasil disalin!", "success");
+      MySwal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: "Teks rekap WA berhasil disalin!",
+        showConfirmButton: false,
+        timer: 2000,
+        timerProgressBar: true
+      });
     } catch (err) {
-      onTriggerNotification("Gagal menyalin pesan", "error");
+      MySwal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "error",
+        title: "Gagal menyalin teks!",
+        showConfirmButton: false,
+        timer: 2000,
+        timerProgressBar: true
+      });
     }
-  };
-
-  const handleOpenWhatsApp = () => {
-    const url = `https://wa.me/?text=${encodeURIComponent(waFormattedText)}`;
-    window.open(url, "_blank");
   };
 
   return (
@@ -361,8 +373,11 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                       );
                     });
                   })()}
-                  <th rowSpan={2} className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-blue-50 dark:bg-blue-900/20 align-middle">H</th>
-                  <th rowSpan={2} className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-red-50 dark:bg-red-900/20 align-middle">A</th>
+                  <th rowSpan={2} className="px-3 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 align-middle font-bold w-10" title="Total Hadir">H</th>
+                  <th rowSpan={2} className="px-3 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 align-middle font-bold w-10" title="Total Telat / Terlambat">T</th>
+                  <th rowSpan={2} className="px-3 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 align-middle font-bold w-10" title="Total Izin">I</th>
+                  <th rowSpan={2} className="px-3 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 align-middle font-bold w-10" title="Total Sakit">S</th>
+                  <th rowSpan={2} className="px-3 py-3 border-b border-slate-200 dark:border-slate-800 text-center bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 align-middle font-bold w-10" title="Total Alpa">A</th>
                 </tr>
                 <tr>
                   {jurnals.map((j) => (
@@ -377,19 +392,22 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {santriList.length === 0 ? (
                   <tr>
-                    <td colSpan={jurnals.length + 4} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={jurnals.length + 7} className="px-4 py-8 text-center text-slate-500">
                       Tidak ada santri yang terdaftar di kelas ini.
                     </td>
                   </tr>
                 ) : jurnals.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                       Belum ada entri jurnal/absensi untuk bulan ini.
                     </td>
                   </tr>
                 ) : (
                   santriList.map((santri, index) => {
                     let hadirCount = 0;
+                    let telatCount = 0;
+                    let izinCount = 0;
+                    let sakitCount = 0;
                     let alpaCount = 0;
                     
                     return (
@@ -402,7 +420,10 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                         {jurnals.map((j) => {
                           const status = santri.id && absensiMap[String(santri.id)] ? absensiMap[String(santri.id)][j.key] : null;
                           if (status === 'hadir') hadirCount++;
-                          if (status === 'alpa') alpaCount++;
+                          else if (status === 'terlambat' || status === 'telat') telatCount++;
+                          else if (status === 'izin') izinCount++;
+                          else if (status === 'sakit') sakitCount++;
+                          else if (status === 'alpa') alpaCount++;
                           
                           return (
                             <td key={j.key} className="px-1 py-3 text-center border-r border-slate-50 dark:border-slate-800/50">
@@ -413,8 +434,11 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                           );
                         })}
                         
-                        <td className="px-4 py-3 text-center font-bold text-green-600 bg-blue-50/50 dark:bg-blue-900/10 border-l border-slate-200 dark:border-slate-700">{hadirCount}</td>
-                        <td className="px-4 py-3 text-center font-bold text-red-600 bg-red-50/50 dark:bg-red-900/10">{alpaCount}</td>
+                        <td className="px-3 py-3 text-center font-bold text-green-600 bg-green-50/50 dark:bg-green-900/10 border-l border-slate-200 dark:border-slate-700">{hadirCount}</td>
+                        <td className="px-3 py-3 text-center font-bold text-amber-600 bg-amber-50/50 dark:bg-amber-900/10">{telatCount}</td>
+                        <td className="px-3 py-3 text-center font-bold text-blue-600 bg-blue-50/50 dark:bg-blue-900/10">{izinCount}</td>
+                        <td className="px-3 py-3 text-center font-bold text-yellow-600 bg-yellow-50/50 dark:bg-yellow-900/10">{sakitCount}</td>
+                        <td className="px-3 py-3 text-center font-bold text-red-600 bg-red-50/50 dark:bg-red-900/10">{alpaCount}</td>
                       </tr>
                     );
                   })
@@ -512,24 +536,23 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
             {/* Modal Footer */}
             <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <span className="text-[10px] text-slate-400">
-                Gunakan tombol di kanan untuk menyalin atau mengirim langsung.
+                Gunakan tombol di kanan untuk menyalin teks pesan absensi.
               </span>
               <div className="flex items-center gap-2.5 self-end">
                 <button
                   type="button"
-                  onClick={handleCopyText}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  onClick={() => setIsWaModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                 >
-                  {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{isCopied ? "Tersalin!" : "Salin Pesan"}</span>
+                  Tutup
                 </button>
                 <button
                   type="button"
-                  onClick={handleOpenWhatsApp}
+                  onClick={handleCopyText}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Kirim WhatsApp</span>
+                  {isCopied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{isCopied ? "Tersalin!" : "Salin Teks"}</span>
                 </button>
               </div>
             </div>

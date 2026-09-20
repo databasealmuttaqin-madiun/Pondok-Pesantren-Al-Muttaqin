@@ -97,6 +97,129 @@ export default function PlottingJamAbsensiPanel() {
   const [formIsAktif, setFormIsAktif] = useState(true);
   const [formKeterangan, setFormKeterangan] = useState("");
 
+  // Modal Koordinat Sekolah State (pengaturan_sekolah)
+  const [isKoordinatModalOpen, setIsKoordinatModalOpen] = useState(false);
+  const [schoolLatitude, setSchoolLatitude] = useState<number>(-7.6549);
+  const [schoolLongitude, setSchoolLongitude] = useState<number>(111.5199);
+  const [schoolRadius, setSchoolRadius] = useState<number>(50);
+  const [isSavingKoordinat, setIsSavingKoordinat] = useState(false);
+  const [fetchingGps, setFetchingGps] = useState(false);
+
+  // Fetch pengaturan_sekolah on mount
+  useEffect(() => {
+    const fetchPengaturanSekolah = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("pengaturan_sekolah")
+          .select("*")
+          .limit(1)
+          .maybeSingle();
+
+        if (data && !error) {
+          if (data.latitude != null) setSchoolLatitude(Number(data.latitude));
+          if (data.longitude != null) setSchoolLongitude(Number(data.longitude));
+          if (data.radius_meters != null) setSchoolRadius(Number(data.radius_meters));
+        } else {
+          const cached = localStorage.getItem("pengaturan_sekolah_cache");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.latitude) setSchoolLatitude(parsed.latitude);
+            if (parsed.longitude) setSchoolLongitude(parsed.longitude);
+            if (parsed.radius_meters) setSchoolRadius(parsed.radius_meters);
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal memuat pengaturan_sekolah:", err);
+      }
+    };
+    fetchPengaturanSekolah();
+  }, []);
+
+  const handleSaveKoordinat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingKoordinat(true);
+    try {
+      const payload = {
+        latitude: Number(schoolLatitude),
+        longitude: Number(schoolLongitude),
+        radius_meters: Number(schoolRadius),
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: existing } = await supabase
+        .from("pengaturan_sekolah")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+      let error = null;
+      if (existing && existing.id) {
+        const res = await supabase
+          .from("pengaturan_sekolah")
+          .update(payload)
+          .eq("id", existing.id);
+        error = res.error;
+      } else {
+        const res = await supabase
+          .from("pengaturan_sekolah")
+          .insert([payload]);
+        error = res.error;
+      }
+
+      localStorage.setItem("pengaturan_sekolah_cache", JSON.stringify(payload));
+
+      if (error) {
+        MySwal.fire({
+          icon: "success",
+          title: "Disimpan Lokal",
+          text: "Titik koordinat berhasil disimpan (Tabel database pengaturan_sekolah belum aktif/RLS restricted).",
+        });
+      } else {
+        MySwal.fire({
+          icon: "success",
+          title: "Berhasil!",
+          text: "Titik koordinat dan radius sekolah berhasil disinkronkan ke tabel database pengaturan_sekolah.",
+        });
+      }
+      setIsKoordinatModalOpen(false);
+    } catch (err: any) {
+      MySwal.fire({
+        icon: "error",
+        title: "Kesalahan",
+        text: err.message || "Gagal menyimpan koordinat sekolah.",
+      });
+    } finally {
+      setIsSavingKoordinat(false);
+    }
+  };
+
+  const handleGetCurrentGps = () => {
+    if (!navigator.geolocation) {
+      MySwal.fire("Info", "Browser Anda tidak mendukung geolokasi GPS.", "info");
+      return;
+    }
+    setFetchingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setSchoolLatitude(Number(pos.coords.latitude.toFixed(6)));
+        setSchoolLongitude(Number(pos.coords.longitude.toFixed(6)));
+        setFetchingGps(false);
+        MySwal.fire({
+          icon: "success",
+          title: "GPS Diperoleh",
+          text: `Lat: ${pos.coords.latitude.toFixed(6)}, Lng: ${pos.coords.longitude.toFixed(6)}`,
+          timer: 2000,
+          showConfirmButton: false
+        });
+      },
+      (err) => {
+        setFetchingGps(false);
+        MySwal.fire("Gagal", `Tidak dapat mengambil lokasi GPS: ${err.message}`, "error");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   const showFeedback = (type: "success" | "error", text: string) => {
     if (type === "error") {
       MySwal.fire({
@@ -587,6 +710,16 @@ export default function PlottingJamAbsensiPanel() {
               <Plus className="w-4 h-4" />
               <span>Buat Jam Absensi</span>
             </button>
+
+            {/* Tombol 3: Pengaturan Titik Koordinat Sekolah (pengaturan_sekolah) */}
+            <button
+              onClick={() => setIsKoordinatModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-xs sm:text-sm transition-all shadow-xs shadow-emerald-500/20 cursor-pointer"
+              title="Atur Titik Koordinat & Radius Sekolah (Tabel pengaturan_sekolah)"
+            >
+              <MapPin className="w-4 h-4" />
+              <span>Titik Koordinat Sekolah</span>
+            </button>
           </div>
         }
       />
@@ -982,6 +1115,118 @@ export default function PlottingJamAbsensiPanel() {
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PENGATURAN TITIK KOORDINAT SEKOLAH (pengaturan_sekolah) */}
+      {isKoordinatModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-2xl">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Titik Koordinat & Radius Sekolah</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Sinkronisasi tabel database <code className="text-emerald-600 font-mono">pengaturan_sekolah</code></p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsKoordinatModalOpen(false)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveKoordinat} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Latitude (Garis Lintang)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={schoolLatitude}
+                  onChange={(e) => setSchoolLatitude(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-semibold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="-7.654900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Longitude (Garis Bujur)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={schoolLongitude}
+                  onChange={(e) => setSchoolLongitude(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-semibold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="111.519900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Radius Geofencing (Meter)
+                </label>
+                <input
+                  type="number"
+                  min="10"
+                  max="1000"
+                  required
+                  value={schoolRadius}
+                  onChange={(e) => setSchoolRadius(parseInt(e.target.value) || 50)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="50"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Maksimal jarak guru dari titik koordinat sekolah saat melakukan absensi QR.</p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleGetCurrentGps}
+                  disabled={fetchingGps}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  <span>{fetchingGps ? "Mengambil GPS..." : "Ambil Lokasi Saat Ini"}</span>
+                </button>
+
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${schoolLatitude},${schoolLongitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                >
+                  Buka di Google Maps ↗
+                </a>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsKoordinatModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingKoordinat}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-all shadow-md shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingKoordinat ? "Menyimpan..." : "Simpan Koordinat"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
