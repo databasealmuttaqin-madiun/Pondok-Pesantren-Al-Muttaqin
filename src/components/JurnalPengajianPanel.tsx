@@ -161,20 +161,6 @@ export default function JurnalPengajianPanel({
           if (mappedUstaz.length > 0) {
             setUstazList(mappedUstaz);
           }
-        } else if (dbPengguna && dbPengguna.length > 0) {
-          // Fallback if no plotted guru pondok yet
-          const filteredUstaz = dbPengguna.filter(u => {
-            const r = String(u.peran_utama || u.role || "").toLowerCase();
-            const b = String(u.bagian || "").toLowerCase();
-            const tt = Array.isArray(u.tugas_tambahan) ? u.tugas_tambahan.map(x => String(x).toLowerCase()) : [];
-            return r.includes("guru") || r.includes("pengasuh") || r.includes("pondok") || b.includes("pondok") || tt.some(x => x.includes("guru"));
-          }).map(u => ({
-            id: String(u.id),
-            nama: (u.nama_lengkap || u.nama || u.username).trim(),
-            username: u.username
-          }));
-          filteredUstaz.sort((a, b) => a.nama.localeCompare(b.nama));
-          setUstazList(filteredUstaz);
         }
       } catch (err) {
         console.warn("Error loading plotted ustaz list:", err);

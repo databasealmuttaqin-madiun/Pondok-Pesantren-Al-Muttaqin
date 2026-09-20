@@ -14,7 +14,12 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
-  Info
+  Info,
+  Share2,
+  Copy,
+  Check,
+  ExternalLink,
+  MessageSquare
 } from "lucide-react";
 
 const MySwal = withReactContent(Swal);
@@ -65,12 +70,18 @@ export default function RekapAbsensiSiswaPanel() {
   const [students, setStudents] = useState<Student[]>([]);
   const [rawJurnals, setRawJurnals] = useState<any[]>([]);
   const [rawAbsensi, setRawAbsensi] = useState<any[]>([]);
+  const [mapelListState, setMapelListState] = useState<{ nama_mapel: string; kode_mapel: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   // Detail Modal State
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<AttendanceSummary | null>(null);
+
+  // WA Recap Modal States
+  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
+  const [selectedWaDate, setSelectedWaDate] = useState<string>("");
+  const [isCopied, setIsCopied] = useState(false);
 
   const monthNames = [
     "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -120,7 +131,21 @@ export default function RekapAbsensiSiswaPanel() {
       }
     };
 
+    const fetchMapel = async () => {
+      try {
+        const { data: mapels } = await supabase
+          .from("mata_pelajaran")
+          .select("nama_mapel, kode_mapel");
+        if (mapels) {
+          setMapelListState(mapels);
+        }
+      } catch (e) {
+        console.warn("Failed to load mapel list on mount:", e);
+      }
+    };
+
     fetchClasses();
+    fetchMapel();
   }, []);
 
   // 2. Fetch data from Supabase
@@ -234,11 +259,28 @@ export default function RekapAbsensiSiswaPanel() {
       return rawJurnals.map((j: any) => {
         const d = new Date(j.tanggal);
         const day = isNaN(d.getTime()) ? "01" : String(d.getDate());
+
+        let resolvedSesi = "";
+        if (j.mata_pelajaran) {
+          const mapelLower = String(j.mata_pelajaran).toLowerCase().trim();
+          const matched = mapelListState.find(m => 
+            m.nama_mapel.toLowerCase().trim() === mapelLower ||
+            m.kode_mapel.toLowerCase().trim() === mapelLower
+          );
+          if (matched) {
+            resolvedSesi = matched.kode_mapel.toUpperCase();
+          } else {
+            resolvedSesi = String(j.mata_pelajaran).slice(0, 7).toUpperCase();
+          }
+        } else {
+          resolvedSesi = `JAM ${j.jam_ke || 1}`;
+        }
+
         return {
           id: String(j.id),
           tanggal: j.tanggal,
           dayNum: day,
-          sesi: j.mata_pelajaran ? String(j.mata_pelajaran).slice(0, 7).toUpperCase() : `JAM ${j.jam_ke || 1}`
+          sesi: resolvedSesi
         };
       }).sort((a, b) => a.tanggal.localeCompare(b.tanggal) || a.id.localeCompare(b.id));
     }
@@ -257,7 +299,7 @@ export default function RekapAbsensiSiswaPanel() {
       { id: "m10", tanggal: `${monthPrefix}-19`, dayNum: "19", sesi: "PAGI 2" },
       { id: "m11", tanggal: `${monthPrefix}-19`, dayNum: "19", sesi: "SIANG" },
     ];
-  }, [rawJurnals, monthPrefix]);
+  }, [rawJurnals, monthPrefix, mapelListState]);
 
   // Compute grouped days to span correctly in Header Row 1
   const groupedDays = useMemo(() => {
@@ -404,6 +446,123 @@ export default function RekapAbsensiSiswaPanel() {
     );
   }, [rekapList, searchQuery]);
 
+  // Extract unique available dates for WA modal dropdown
+  const availableWaDates = useMemo(() => {
+    const dates = Array.from(new Set(sessionCols.map(c => c.tanggal))).sort();
+    return dates;
+  }, [sessionCols]);
+
+  // Set default selectedWaDate to the latest available date or today
+  useEffect(() => {
+    if (availableWaDates.length > 0) {
+      setSelectedWaDate(availableWaDates[availableWaDates.length - 1]);
+    } else {
+      setSelectedWaDate(new Date().toISOString().slice(0, 10));
+    }
+  }, [availableWaDates]);
+
+  // Formatted text for WhatsApp broadcast
+  const waFormattedText = useMemo(() => {
+    if (!selectedWaDate) return "";
+
+    const dateObj = new Date(selectedWaDate);
+    const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const monthsIndo = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+    
+    const dayName = daysIndo[dateObj.getDay()];
+    const formattedDateString = `${dateObj.getDate()} ${monthsIndo[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+
+    // Get all session columns on this selected date
+    const colsOnDate = sessionCols.filter(c => c.tanggal === selectedWaDate);
+
+    let countHadir = 0;
+    let countSakitIzin = 0;
+    let countAlpa = 0;
+
+    const lines = students.map((student, idx) => {
+      const statuses = colsOnDate.map(col => getStatusForSession(student.id, col.id));
+
+      const emojis = statuses.map(s => {
+        if (s === "H") return "✅";
+        if (s === "T") return "⚠️";
+        if (s === "S") return "🤒";
+        if (s === "I") return "✉️";
+        if (s === "A") return "❌";
+        return "✅";
+      }).join(" ");
+
+      const hasAlpa = statuses.includes("A");
+      const hasSickOrLeave = statuses.includes("S") || statuses.includes("I") || statuses.includes("T");
+
+      if (hasAlpa) {
+        countAlpa++;
+      } else if (hasSickOrLeave) {
+        countSakitIzin++;
+      } else {
+        countHadir++;
+      }
+
+      const extraNotes: string[] = [];
+      statuses.forEach((s, sIdx) => {
+        if (s !== "H") {
+          const sessionName = colsOnDate[sIdx]?.sesi || `Sesi ${sIdx + 1}`;
+          let label = "HADIR";
+          if (s === "T") label = "TERLAMBAT";
+          if (s === "I") label = "IZIN";
+          if (s === "S") label = "SAKIT";
+          if (s === "A") label = "ALPA";
+          extraNotes.push(`${label} (${sessionName})`);
+        }
+      });
+
+      const noteStr = extraNotes.length > 0 ? ` - ${extraNotes.join(", ")}` : "";
+
+      return `${idx + 1}. ${student.nama_lengkap} ${emojis}${noteStr}`;
+    });
+
+    return `📅 *LAPORAN ABSENSI SISWA KELAS ${selectedClass.toUpperCase()}*
+_${dayName}, ${formattedDateString}_
+
+*Daftar Kehadiran Siswa:*
+
+${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
+
+*Ringkasan Kehadiran:*
+• Hadir: ${countHadir} Siswa
+• Sakit/Izin/Terlambat: ${countSakitIzin} Siswa
+• Alpha: ${countAlpa} Siswa`;
+  }, [selectedWaDate, selectedClass, students, sessionCols, getStatusForSession]);
+
+  const handleCopyWaText = async () => {
+    try {
+      await navigator.clipboard.writeText(waFormattedText);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+      MySwal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: "Teks rekap WA berhasil disalin!",
+        showConfirmButton: false,
+        timer: 2000
+      });
+    } catch (err) {
+      MySwal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: "Gagal menyalin teks."
+      });
+    }
+  };
+
+  const handleOpenWhatsApp = () => {
+    const url = `https://wa.me/?text=${encodeURIComponent(waFormattedText)}`;
+    window.open(url, "_blank");
+  };
+
   // PDF Export
   const handleExportPdf = () => {
     setIsExporting(true);
@@ -509,7 +668,17 @@ export default function RekapAbsensiSiswaPanel() {
         </div>
 
         {/* Action Buttons on Right */}
-        <div className="flex items-center gap-2.5 self-end md:self-center">
+        <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center">
+          <button
+            type="button"
+            onClick={() => setIsWaModalOpen(true)}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-55"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>Rekap WA</span>
+          </button>
+
           <button
             type="button"
             onClick={handleExportPdf}
@@ -524,10 +693,10 @@ export default function RekapAbsensiSiswaPanel() {
             type="button"
             onClick={handleExportExcel}
             disabled={isExporting || isLoading}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-55"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm hover:shadow-md cursor-pointer disabled:opacity-55"
           >
             <Download className="w-4 h-4" />
-            <span>Ekspor Excel (.xlsx)</span>
+            <span>Ekspor Excel</span>
           </button>
         </div>
       </div>
@@ -836,6 +1005,102 @@ export default function RekapAbsensiSiswaPanel() {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL REKAP WHATSAPP */}
+      {isWaModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-emerald-600 text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl text-white">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Rekap Absensi WhatsApp
+                  </h3>
+                  <p className="text-xs text-emerald-100">
+                    Format pesan siap dikirim ke grup WhatsApp Kelas / Wali Murid
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWaModalOpen(false)}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Pilih Tanggal Laporan
+                </label>
+                <select
+                  value={selectedWaDate}
+                  onChange={(e) => setSelectedWaDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                >
+                  {availableWaDates.length > 0 ? (
+                    availableWaDates.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))
+                  ) : (
+                    <option value={new Date().toISOString().slice(0, 10)}>
+                      {new Date().toISOString().slice(0, 10)} (Hari Ini)
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Pratinjau Pesan WhatsApp
+                </label>
+                <textarea
+                  readOnly
+                  rows={10}
+                  value={waFormattedText}
+                  className="w-full p-3 font-mono text-xs bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none resize-none leading-relaxed"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 p-4 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsWaModalOpen(false)}
+                className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyWaText}
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition-colors cursor-pointer"
+              >
+                {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <span>{isCopied ? "Tersalin!" : "Salin Teks"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenWhatsApp}
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm hover:shadow-md cursor-pointer"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Kirim ke WhatsApp</span>
               </button>
             </div>
           </div>

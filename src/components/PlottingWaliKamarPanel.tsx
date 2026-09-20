@@ -110,7 +110,50 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
         console.warn("Notice when fetching pengguna table:", err);
       }
 
-      setPenggunaList(uList.sort((a, b) => a.nama.localeCompare(b.nama)));
+      let filteredUList = uList;
+      try {
+        const { data: dbGuru } = await supabase
+          .from("guru")
+          .select("id, pengguna_id, nama_lengkap");
+
+        const { data: plotGuruPondok } = await supabase
+          .from("plotting_guru_pondok")
+          .select("*");
+        
+        if (plotGuruPondok && plotGuruPondok.length > 0) {
+          filteredUList = uList.filter(u => {
+            const matchedGuru = dbGuru?.find(g => String(g.pengguna_id) === String(u.id));
+            return plotGuruPondok.some(item => {
+              const rawId = String(item.guru_id || "");
+              return rawId === String(u.id) || 
+                     (matchedGuru && rawId === String(matchedGuru.id)) ||
+                     (u.nama && u.nama.toLowerCase() === rawId.toLowerCase());
+            });
+          });
+        } else {
+          filteredUList = [];
+        }
+      } catch (err) {
+        console.warn("Error filtering with plotting_guru_pondok:", err);
+      }
+
+      if (filteredUList.length === 0 && uList.length > 0) {
+        // Fallback only if database plotting is empty
+        filteredUList = uList;
+      }
+
+      // Unique-fy by name
+      const uniqueUList: typeof filteredUList = [];
+      const seenNames = new Set<string>();
+      for (const item of filteredUList) {
+        const normName = item.nama.trim().toLowerCase();
+        if (!seenNames.has(normName)) {
+          seenNames.add(normName);
+          uniqueUList.push(item);
+        }
+      }
+
+      setPenggunaList(uniqueUList.sort((a, b) => a.nama.localeCompare(b.nama)));
 
       // 3. Fetch data dari tabel 'plotting_wali_kamar' (hanya nama dan kamar)
       try {

@@ -1,0 +1,1286 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { supabase } from "../supabaseClient";
+import PageHeader from "./PageHeader";
+import { 
+  BookOpen, 
+  BookCheck, 
+  Award, 
+  Search, 
+  Eye, 
+  Edit3, 
+  CheckSquare, 
+  Square, 
+  Users, 
+  CheckCircle2, 
+  Filter, 
+  RotateCcw, 
+  X, 
+  Save, 
+  FileText, 
+  Calendar, 
+  TrendingUp, 
+  Sparkles, 
+  Shield,
+  Layers,
+  ArrowRight,
+  UserCheck,
+  AlertCircle
+} from "lucide-react";
+
+export interface MateriItem {
+  id: number | string;
+  nama_materi: string;
+  kelompok?: string;
+  jumlah_halaman: number;
+  urutan?: number;
+}
+
+export interface CapaianSantriRecord {
+  id: string; // `${santri_id}_${materi_id}`
+  santri_id: string | number;
+  santri_nama: string;
+  kamar: string;
+  kelas_pengajian: string;
+  materi_id: number | string;
+  materi_nama: string;
+  total_halaman: number;
+  belum_disampaikan: boolean;
+  halaman_dimaknai: number[]; // e.g. [1, 2, 3, 4, 5]
+  catatan?: string;
+  updated_at: string;
+  updated_by?: string;
+}
+
+interface CapaianMateriPanelProps {
+  initialTab?: "santri" | "agregat";
+  currentUserRole?: string;
+  userTugasTambahan?: string[];
+  currentUser?: any;
+  students?: any[];
+  recitationClasses?: string[];
+  rooms?: string[];
+  onTriggerNotification?: (message: string, type: "success" | "error" | "warning") => void;
+}
+
+// Default fallback list of materials/books if database table is empty
+const DEFAULT_MATERI_LIST: MateriItem[] = [
+  { id: 1, nama_materi: "Al-Qur'an", kelompok: "alquran", jumlah_halaman: 604, urutan: 1 },
+  { id: 2, nama_materi: "Kitab Hidayatus Shibyan", kelompok: "himpunan", jumlah_halaman: 40, urutan: 2 },
+  { id: 3, nama_materi: "Kitab Mabadi Fiqhiyyah", kelompok: "himpunan", jumlah_halaman: 50, urutan: 3 },
+  { id: 4, nama_materi: "Kitab Aqidatul Awam", kelompok: "himpunan", jumlah_halaman: 30, urutan: 4 },
+  { id: 5, nama_materi: "Kitab Ta'lim Muta'allim", kelompok: "himpunan", jumlah_halaman: 80, urutan: 5 },
+  { id: 6, nama_materi: "Kitab Safinatun Najah", kelompok: "himpunan", jumlah_halaman: 35, urutan: 6 },
+];
+
+export default function CapaianMateriPanel({
+  initialTab = "santri",
+  currentUserRole = "viewer",
+  userTugasTambahan = [],
+  currentUser = null,
+  students = [],
+  recitationClasses = [],
+  rooms = [],
+  onTriggerNotification
+}: CapaianMateriPanelProps) {
+  // Main Tab: "santri" (Capaian Materi Siswa) or "agregat" (Capaian Materi Kelas / Asrama)
+  const [activeMainTab, setActiveMainTab] = useState<"santri" | "agregat">(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveMainTab(initialTab);
+    }
+  }, [initialTab]);
+
+  // Master Data
+  const [materiList, setMateriList] = useState<MateriItem[]>(DEFAULT_MATERI_LIST);
+  const [capaianRecords, setCapaianRecords] = useState<Record<string, CapaianSantriRecord>>({});
+  const [assignedKamarIds, setAssignedKamarIds] = useState<string[]>([]);
+  const [waliKamarMapping, setWaliKamarMapping] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Filters for Tab 1 (Capaian Per Santri)
+  const [filterKamar, setFilterKamar] = useState<string>("All");
+  const [filterKelas, setFilterKelas] = useState<string>("All");
+  const [selectedMateriId, setSelectedMateriId] = useState<number | string>(1);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Filters for Tab 2 (Agregat Rata-rata)
+  const [agregatMateriId, setAgregatMateriId] = useState<number | string>(1);
+  const [agregatTahun, setAgregatTahun] = useState<string>("2025/2026");
+  const [agregatGroupMode, setAgregatGroupMode] = useState<"kamar" | "kelas">("kamar");
+
+  // Modal State Update
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<any | null>(null);
+  const [formBelumDisampaikan, setFormBelumDisampaikan] = useState(false);
+  const [formHalamanDimaknai, setFormHalamanDimaknai] = useState<number[]>([]);
+  const [formCatatan, setFormCatatan] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pageRangeStart, setPageRangeStart] = useState<number>(1); // For book pagination ranges e.g. 1-100
+
+  // Modal State View Detail
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewingStudent, setViewingStudent] = useState<any | null>(null);
+
+  // RBAC Role checks
+  const roleLower = String(currentUserRole || "").toLowerCase();
+  const userPeran = String(currentUser?.peran_utama || currentUser?.role || "").toLowerCase();
+  const tugasList = userTugasTambahan.map(t => String(t).toLowerCase());
+
+  const isAdminOrPengasuh = 
+    roleLower.includes("admin") || 
+    roleLower.includes("super") || 
+    roleLower.includes("pimpinan") || 
+    userPeran.includes("admin") ||
+    userPeran.includes("super") ||
+    tugasList.some(t => t.includes("pengasuh") || t.includes("pembina") || t.includes("pondok"));
+
+  const isWaliKamarUser = 
+    !isAdminOrPengasuh && 
+    (roleLower.includes("wali") || roleLower.includes("kamar") || userPeran.includes("wali") || tugasList.some(t => t.includes("wali") || t.includes("kamar")));
+
+  // 1. Initial Load: Fetch Plotting Wali Kamar, Materi, and Capaian Records
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    try {
+      // A. Load Materi Pengajian
+      const { data: dbMateri } = await supabase
+        .from("materi_pengajian")
+        .select("id, nama_materi, kelompok, jumlah_halaman, urutan")
+        .order("urutan", { ascending: true });
+
+      if (dbMateri && dbMateri.length > 0) {
+        setMateriList(dbMateri);
+        if (dbMateri[0]?.id) {
+          setSelectedMateriId(dbMateri[0].id);
+          setAgregatMateriId(dbMateri[0].id);
+        }
+      }
+
+      // B. Load Plotting Wali Kamar
+      let plottingList: any[] = [];
+      const { data: dbPlotting } = await supabase
+        .from("plotting_wali_kamar")
+        .select("id, pengguna_id, nama, kamar");
+
+      if (dbPlotting && dbPlotting.length > 0) {
+        plottingList = dbPlotting;
+      } else {
+        try {
+          const saved = localStorage.getItem("plotting_wali_kamar_data");
+          if (saved) plottingList = JSON.parse(saved);
+        } catch (e) {}
+      }
+
+      // Build Wali Kamar Name Mapping per Room
+      const waliMap: Record<string, string> = {};
+      const myRooms: string[] = [];
+      const myUserId = String(currentUser?.id || "");
+      const myName = String(currentUser?.nama || currentUser?.nama_lengkap || "").toLowerCase();
+
+      plottingList.forEach((item: any) => {
+        if (item.kamar) {
+          waliMap[item.kamar] = item.nama || "Wali Kamar";
+        }
+        // Check match with current logged-in user
+        const itemUserId = String(item.pengguna_id || "");
+        const itemNama = String(item.nama || "").toLowerCase();
+
+        if (
+          (myUserId && itemUserId === myUserId) ||
+          (myName && itemNama.includes(myName)) ||
+          (myName && myName.includes(itemNama))
+        ) {
+          if (item.kamar && !myRooms.includes(item.kamar)) {
+            myRooms.push(item.kamar);
+          }
+        }
+      });
+
+      setWaliKamarMapping(waliMap);
+      setAssignedKamarIds(myRooms);
+
+      if (isWaliKamarUser && myRooms.length > 0) {
+        setFilterKamar(myRooms[0]);
+      }
+
+      // C. Load Capaian Records
+      let localRecords: Record<string, CapaianSantriRecord> = {};
+      try {
+        const savedCap = localStorage.getItem("capaian_materi_santri_data");
+        if (savedCap) {
+          localRecords = JSON.parse(savedCap);
+        }
+      } catch (e) {}
+
+      // Try load from Supabase if table exists
+      try {
+        const { data: dbCap, error: capErr } = await supabase.from("capaian_santri").select("*");
+        if (capErr) {
+          console.warn("Supabase fetch capaian_santri warning:", capErr.message);
+        } else if (dbCap && dbCap.length > 0) {
+          dbCap.forEach((rec: any) => {
+            const key = `${rec.santri_id}_${rec.materi_id}`;
+            localRecords[key] = {
+              id: key,
+              santri_id: rec.santri_id,
+              santri_nama: rec.santri_nama || "",
+              kamar: rec.kamar || "",
+              kelas_pengajian: rec.kelas_pengajian || "",
+              materi_id: rec.materi_id,
+              materi_nama: rec.materi_nama || "",
+              total_halaman: Number(rec.total_halaman) || 40,
+              belum_disampaikan: Boolean(rec.belum_disampaikan),
+              halaman_dimaknai: Array.isArray(rec.halaman_dimaknai) ? rec.halaman_dimaknai : [],
+              catatan: rec.catatan || "",
+              updated_at: rec.updated_at || new Date().toISOString(),
+              updated_by: rec.updated_by || "Guru / Wali Kamar"
+            };
+          });
+        }
+      } catch (e) {
+        // Table might not exist yet, fallback cleanly to localRecords
+      }
+
+      setCapaianRecords(localRecords);
+    } catch (err) {
+      console.warn("Notice loading capaian materi data:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInitialData();
+  }, [currentUser, isWaliKamarUser]);
+
+  // Selected Material object
+  const currentMateri = useMemo(() => {
+    return materiList.find(m => String(m.id) === String(selectedMateriId)) || materiList[0] || DEFAULT_MATERI_LIST[0];
+  }, [materiList, selectedMateriId]);
+
+  const agregatMateri = useMemo(() => {
+    return materiList.find(m => String(m.id) === String(agregatMateriId)) || materiList[0] || DEFAULT_MATERI_LIST[0];
+  }, [materiList, agregatMateriId]);
+
+  // Unique lists of rooms and classes
+  const availableRooms = useMemo(() => {
+    if (isWaliKamarUser && assignedKamarIds.length > 0) {
+      return assignedKamarIds;
+    }
+    const setR = new Set<string>();
+    if (rooms && rooms.length > 0) {
+      rooms.forEach(r => setR.add(r));
+    }
+    students.forEach(s => {
+      if (s.kamar) setR.add(s.kamar);
+    });
+    return Array.from(setR).sort();
+  }, [rooms, students, isWaliKamarUser, assignedKamarIds]);
+
+  const availableClasses = useMemo(() => {
+    const setC = new Set<string>();
+    if (recitationClasses && recitationClasses.length > 0) {
+      recitationClasses.forEach(c => setC.add(c));
+    }
+    students.forEach(s => {
+      if (s.kelas_pengajian) setC.add(s.kelas_pengajian);
+    });
+    return Array.from(setC).sort();
+  }, [recitationClasses, students]);
+
+  // Filtered Students list according to RBAC and search
+  const filteredStudents = useMemo(() => {
+    return students.filter(student => {
+      // 1. RBAC Wali Kamar Restriction
+      if (isWaliKamarUser && assignedKamarIds.length > 0) {
+        const studentKamar = student.kamar || "";
+        if (!assignedKamarIds.includes(studentKamar)) return false;
+      }
+
+      // 2. Room Dropdown Filter
+      if (filterKamar !== "All") {
+        if ((student.kamar || "").trim().toLowerCase() !== filterKamar.trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 3. Class Dropdown Filter
+      if (filterKelas !== "All") {
+        if ((student.kelas_pengajian || "").trim().toLowerCase() !== filterKelas.trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 4. Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const nama = (student.nama_lengkap || student.nama || "").toLowerCase();
+        if (!nama.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [students, isWaliKamarUser, assignedKamarIds, filterKamar, filterKelas, searchQuery]);
+
+  // Helper to compute progress percentage for a student & book
+  const getCapaianData = (studentId: string | number, materiId: string | number) => {
+    const key = `${studentId}_${materiId}`;
+    const rec = capaianRecords[key];
+    const totalPages = currentMateri?.jumlah_halaman || 40;
+
+    if (!rec) {
+      return {
+        key,
+        belum_disampaikan: false,
+        halaman_dimaknai: [] as number[],
+        count: 0,
+        totalPages,
+        percentage: 0,
+        catatan: "",
+        updated_at: "-",
+        updated_by: "-"
+      };
+    }
+
+    if (rec.belum_disampaikan) {
+      return {
+        key,
+        belum_disampaikan: true,
+        halaman_dimaknai: [],
+        count: 0,
+        totalPages: rec.total_halaman || totalPages,
+        percentage: 0,
+        catatan: rec.catatan || "",
+        updated_at: rec.updated_at,
+        updated_by: rec.updated_by
+      };
+    }
+
+    const count = rec.halaman_dimaknai ? rec.halaman_dimaknai.length : 0;
+    const maxPages = rec.total_halaman || totalPages;
+    const percentage = maxPages > 0 ? Math.min(100, Math.round((count / maxPages) * 1000) / 10) : 0;
+
+    return {
+      key,
+      belum_disampaikan: false,
+      halaman_dimaknai: rec.halaman_dimaknai || [],
+      count,
+      totalPages: maxPages,
+      percentage,
+      catatan: rec.catatan || "",
+      updated_at: rec.updated_at,
+      updated_by: rec.updated_by
+    };
+  };
+
+  // Open Edit Modal
+  const handleOpenEditModal = (student: any) => {
+    setEditingStudent(student);
+    const data = getCapaianData(student.id, currentMateri.id);
+    setFormBelumDisampaikan(data.belum_disampaikan);
+    setFormHalamanDimaknai(data.halaman_dimaknai || []);
+    setFormCatatan(data.catatan || "");
+    setPageRangeStart(1);
+    setIsEditModalOpen(true);
+  };
+
+  // Open View Modal
+  const handleOpenViewModal = (student: any) => {
+    setViewingStudent(student);
+    setIsViewModalOpen(true);
+  };
+
+  // Bulk Select All / Unselect All
+  const handleSelectAllPages = () => {
+    const total = currentMateri?.jumlah_halaman || 40;
+    const allPages = Array.from({ length: total }, (_, i) => i + 1);
+    setFormHalamanDimaknai(allPages);
+    setFormBelumDisampaikan(false);
+  };
+
+  const handleClearAllPages = () => {
+    setFormHalamanDimaknai([]);
+  };
+
+  // Toggle single page
+  const handleTogglePage = (pageNum: number) => {
+    if (formBelumDisampaikan) return;
+    setFormHalamanDimaknai(prev => {
+      if (prev.includes(pageNum)) {
+        return prev.filter(p => p !== pageNum);
+      } else {
+        return [...prev, pageNum].sort((a, b) => a - b);
+      }
+    });
+  };
+
+  // Toggle range of pages (e.g., select page range)
+  const handleSelectRange = (start: number, end: number, value: boolean) => {
+    if (formBelumDisampaikan) return;
+    const range = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    setFormHalamanDimaknai(prev => {
+      const setP = new Set(prev);
+      range.forEach(p => {
+        if (value) setP.add(p);
+        else setP.delete(p);
+      });
+      return Array.from(setP).sort((a, b) => a - b);
+    });
+  };
+
+  // Save Capaian Progress
+  const handleSaveCapaian = async () => {
+    if (!editingStudent || !currentMateri) return;
+
+    setIsSubmitting(true);
+    try {
+      const recordKey = `${editingStudent.id}_${currentMateri.id}`;
+      const updatedByName = currentUser?.nama || currentUser?.nama_lengkap || (isWaliKamarUser ? "Wali Kamar" : "Guru Pengasuh");
+      const totalPages = currentMateri.jumlah_halaman || 40;
+
+      const newRecord: CapaianSantriRecord = {
+        id: recordKey,
+        santri_id: editingStudent.id,
+        santri_nama: editingStudent.nama_lengkap || editingStudent.nama || "",
+        kamar: editingStudent.kamar || "",
+        kelas_pengajian: editingStudent.kelas_pengajian || "",
+        materi_id: currentMateri.id,
+        materi_nama: currentMateri.nama_materi,
+        total_halaman: totalPages,
+        belum_disampaikan: formBelumDisampaikan,
+        halaman_dimaknai: formBelumDisampaikan ? [] : formHalamanDimaknai,
+        catatan: formCatatan,
+        updated_at: new Date().toISOString(),
+        updated_by: updatedByName
+      };
+
+      // 1. Update local state
+      const nextRecords = {
+        ...capaianRecords,
+        [recordKey]: newRecord
+      };
+      setCapaianRecords(nextRecords);
+      localStorage.setItem("capaian_materi_santri_data", JSON.stringify(nextRecords));
+
+      // 2. Upsert to Supabase
+      try {
+        const payload = {
+          id: String(recordKey),
+          santri_id: String(editingStudent.id),
+          santri_nama: editingStudent.nama_lengkap || editingStudent.nama || "",
+          kamar: editingStudent.kamar || "",
+          kelas_pengajian: editingStudent.kelas_pengajian || "",
+          materi_id: currentMateri.id,
+          materi_nama: currentMateri.nama_materi,
+          total_halaman: totalPages,
+          belum_disampaikan: formBelumDisampaikan,
+          halaman_dimaknai: formBelumDisampaikan ? [] : formHalamanDimaknai,
+          catatan: formCatatan,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedByName
+        };
+
+        const { error: dbError } = await supabase.from("capaian_santri").upsert(payload);
+        if (dbError) {
+          console.error("Supabase error saving capaian_santri:", dbError);
+          if (onTriggerNotification) {
+            onTriggerNotification(`Error Supabase: ${dbError.message}`, "error");
+          }
+        } else if (onTriggerNotification) {
+          onTriggerNotification(`Capaian ${currentMateri.nama_materi} untuk ${editingStudent.nama_lengkap || editingStudent.nama} berhasil disimpan ke database!`, "success");
+        }
+      } catch (err: any) {
+        console.warn("Notice saving to Supabase:", err?.message);
+      }
+
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      if (onTriggerNotification) {
+        onTriggerNotification("Gagal menyimpan capaian: " + err.message, "error");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Grouped Agregat Data for Tab 2
+  const agregatCardsData = useMemo(() => {
+    const totalPages = agregatMateri?.jumlah_halaman || 40;
+    const groupsMap: Record<string, {
+      name: string;
+      wali: string;
+      students: any[];
+      totalPagesSum: number;
+      completedPagesSum: number;
+    }> = {};
+
+    students.forEach(student => {
+      // Filter for Wali Kamar role in Tab 2 as well
+      if (isWaliKamarUser && assignedKamarIds.length > 0) {
+        if (!assignedKamarIds.includes(student.kamar || "")) return;
+      }
+
+      const groupName = agregatGroupMode === "kamar" 
+        ? (student.kamar || "Tanpa Kamar") 
+        : (student.kelas_pengajian || "Tanpa Kelas");
+
+      if (!groupsMap[groupName]) {
+        groupsMap[groupName] = {
+          name: groupName,
+          wali: agregatGroupMode === "kamar" ? (waliKamarMapping[groupName] || "Belum Dibatasi") : "Pengajar Kelas",
+          students: [],
+          totalPagesSum: 0,
+          completedPagesSum: 0
+        };
+      }
+
+      groupsMap[groupName].students.push(student);
+
+      const capData = getCapaianData(student.id, agregatMateri.id);
+      groupsMap[groupName].completedPagesSum += capData.count;
+      groupsMap[groupName].totalPagesSum += totalPages;
+    });
+
+    return Object.values(groupsMap).map(grp => {
+      const studentCount = grp.students.length;
+      const maxPossiblePages = studentCount * totalPages;
+      const avgPercentage = maxPossiblePages > 0 
+        ? Math.min(100, Math.round((grp.completedPagesSum / maxPossiblePages) * 1000) / 10) 
+        : 0;
+
+      const avgPageNumber = studentCount > 0 
+        ? Math.round(grp.completedPagesSum / studentCount) 
+        : 0;
+
+      return {
+        groupName: grp.name,
+        waliName: grp.wali,
+        studentCount,
+        avgPercentage,
+        avgPageNumber,
+        totalPages
+      };
+    }).sort((a, b) => a.groupName.localeCompare(b.groupName, undefined, { numeric: true }));
+  }, [students, isWaliKamarUser, assignedKamarIds, agregatGroupMode, agregatMateri, waliKamarMapping, capaianRecords]);
+
+  // Pagination for book page grid if pages exceed 100
+  const maxPagesToDisplay = currentMateri?.jumlah_halaman || 40;
+  const pageRanges = useMemo(() => {
+    if (maxPagesToDisplay <= 100) return [];
+    const ranges: { start: number; end: number; label: string }[] = [];
+    for (let i = 1; i <= maxPagesToDisplay; i += 100) {
+      const end = Math.min(i + 99, maxPagesToDisplay);
+      ranges.push({
+        start: i,
+        end,
+        label: `Hal ${i} - ${end}`
+      });
+    }
+    return ranges;
+  }, [maxPagesToDisplay]);
+
+  const activePageEnd = useMemo(() => {
+    if (maxPagesToDisplay <= 100) return maxPagesToDisplay;
+    return Math.min(pageRangeStart + 99, maxPagesToDisplay);
+  }, [pageRangeStart, maxPagesToDisplay]);
+
+  return (
+    <div className="space-y-6 pb-12 animate-fade-in" id="capaian_materi_module">
+      {/* 1. PAGE HEADER */}
+      <PageHeader 
+        category="Pembelajaran & Asrama" 
+        title="Capaian Materi & Makna Kitab" 
+        description="Pantau dan update perkembangan makna kitab/Al-Qur'an santri secara mandiri maupun rata-rata kelas."
+      />
+
+      {/* Wali Kamar Restriction Banner Notice if active */}
+      {isWaliKamarUser && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-center gap-3 text-amber-800 dark:text-amber-200 text-xs sm:text-sm">
+          <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+          <div>
+            <span className="font-bold">Akses Wali Kamar Aktif:</span> Menampilkan dan mengelola khusus santri di kamar binaan Anda ({assignedKamarIds.join(", ") || "Kamar Anda"}).
+          </div>
+        </div>
+      )}
+
+      {/* 2. TAB SWITCHER UTAMA & DATABASE STATUS */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-2xl">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("santri")}
+            className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
+              activeMainTab === "santri"
+                ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Capaian Materi Siswa</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab("agregat")}
+            className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
+              activeMainTab === "agregat"
+                ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span>Capaian Materi Kelas</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold border border-emerald-200 dark:border-emerald-800/60">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Terhubung Supabase
+          </span>
+
+          <button
+            type="button"
+            onClick={loadInitialData}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+            title="Sinkronisasi & Muat Ulang Data dari Supabase"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-blue-500" : ""}`} />
+            <span>{isLoading ? "Memuat..." : "Refresh Database"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ======================================================================== */}
+      {/* TAB 1: CAPAIAN PER SANTRI */}
+      {/* ======================================================================== */}
+      {activeMainTab === "santri" && (
+        <div className="space-y-6">
+          {/* FILTER BAR TAB 1 */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Dropdown 1: Pilih Kamar */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Pilih Kamar
+                </label>
+                <select
+                  value={filterKamar}
+                  disabled={isWaliKamarUser && assignedKamarIds.length === 1}
+                  onChange={(e) => setFilterKamar(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:bg-slate-100 dark:disabled:bg-slate-900"
+                >
+                  {!isWaliKamarUser && <option value="All">Semua Kamar</option>}
+                  {availableRooms.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dropdown 2: Kelas Pengajian */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Kelas Pengajian
+                </label>
+                <select
+                  value={filterKelas}
+                  onChange={(e) => setFilterKelas(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All">Semua Kelas Pengajian</option>
+                  {availableClasses.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dropdown 3: Pilih Kitab / Materi */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Pilih Kitab / Materi
+                </label>
+                <select
+                  value={selectedMateriId}
+                  onChange={(e) => setSelectedMateriId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm font-semibold border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  {materiList.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nama_materi} ({m.jumlah_halaman} Hal)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Input 4: Search Santri / NISN */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Cari Santri
+                </label>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Nama santri / NISN..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* TABEL DAFTAR CAPAIAN SANTRI */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <BookCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <h3 className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">
+                  Matriks Capaian {currentMateri?.nama_materi}
+                </h3>
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full font-medium">
+                Total: {filteredStudents.length} Santri
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[11px] font-bold">
+                    <th className="py-3 px-4 w-12 text-center">NO</th>
+                    <th className="py-3 px-4">NAMA SANTRI</th>
+                    <th className="py-3 px-4">KAMAR</th>
+                    <th className="py-3 px-4">KELAS PENGAJIAN</th>
+                    <th className="py-3 px-4 w-48 text-center">CAPAIAN (%)</th>
+                    <th className="py-3 px-4 w-36 text-center">AKSI</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                  {filteredStudents.length > 0 ? (
+                    filteredStudents.map((student, idx) => {
+                      const cap = getCapaianData(student.id, currentMateri.id);
+                      return (
+                        <tr 
+                          key={student.id || idx}
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                        >
+                          <td className="py-3 px-4 text-center font-semibold text-slate-500">
+                            {idx + 1}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-800 dark:text-slate-100">
+                              {student.nama_lengkap || student.nama}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-medium">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                              {student.kamar || "—"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-semibold border border-blue-200/50 dark:border-blue-800/50">
+                              {student.kelas_pengajian || "—"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {cap.belum_disampaikan ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-medium">
+                                Belum Disampaikan
+                              </span>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
+                                  <span>{cap.percentage}%</span>
+                                  <span className="text-[11px] font-normal text-slate-400">
+                                    {cap.count}/{cap.totalPages} Hal
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className={`h-2 rounded-full transition-all duration-300 ${
+                                      cap.percentage >= 80 
+                                        ? "bg-emerald-500" 
+                                        : cap.percentage >= 40 
+                                        ? "bg-blue-500" 
+                                        : "bg-amber-500"
+                                    }`}
+                                    style={{ width: `${cap.percentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* Lihat Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenViewModal(student)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                                title="Lihat Detail Capaian"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Lihat</span>
+                              </button>
+
+                              {/* Ubah Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(student)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-xs"
+                                title="Ubah Capaian Halaman"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Ubah</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        Tidak ada data santri yang sesuai filter.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================== */}
+      {/* TAB 2: CAPAIAN PER KELAS / ASRAMA (RATA-RATA AGREGAT) */}
+      {/* ======================================================================== */}
+      {activeMainTab === "agregat" && (
+        <div className="space-y-6">
+          {/* FILTER BAR TAB 2 */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Dropdown 1: Pilih Kitab / Materi */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Pilih Kitab / Materi
+                </label>
+                <select
+                  value={agregatMateriId}
+                  onChange={(e) => setAgregatMateriId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm font-semibold border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  {materiList.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nama_materi} ({m.jumlah_halaman} Hal)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dropdown 2: Tahun Ajaran */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Tahun Ajaran
+                </label>
+                <select
+                  value={agregatTahun}
+                  onChange={(e) => setAgregatTahun(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="2025/2026">2025 / 2026</option>
+                  <option value="2026/2027">2026 / 2027</option>
+                </select>
+              </div>
+
+              {/* Toggle View Mode: Per Kamar vs Per Kelas */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Kelompokkan Berdasarkan
+                </label>
+                <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setAgregatGroupMode("kamar")}
+                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      agregatGroupMode === "kamar"
+                        ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                        : "text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    Per Asrama / Kamar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAgregatGroupMode("kelas")}
+                    className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      agregatGroupMode === "kelas"
+                        ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                        : "text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    Per Kelas Pengajian
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* GRID CARD KELAS / ASRAMA */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {agregatCardsData.length > 0 ? (
+              agregatCardsData.map((card) => (
+                <div
+                  key={card.groupName}
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    {/* Header Card */}
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-bold text-base text-slate-800 dark:text-slate-100">
+                          {card.groupName}
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Pembimbing: <span className="font-semibold text-slate-700 dark:text-slate-300">{card.waliName}</span>
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg">
+                        {card.studentCount} Santri
+                      </span>
+                    </div>
+
+                    {/* Progress Percentage Display */}
+                    <div className="space-y-1.5 pt-2">
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        Rata-rata Capaian {agregatMateri?.nama_materi}
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {card.avgPercentage}%
+                        </span>
+                      </div>
+
+                      {/* Smooth Progress Bar */}
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
+                        <div
+                          className="bg-emerald-500 h-3 rounded-full transition-all duration-500"
+                          style={{ width: `${card.avgPercentage}%` }}
+                        />
+                      </div>
+
+                      <p className="text-xs text-slate-500 dark:text-slate-400 pt-1">
+                        Rata-rata berada di <strong className="text-slate-800 dark:text-slate-200">Halaman {card.avgPageNumber}</strong> dari {card.totalPages} Halaman
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Button Detail Santri */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (agregatGroupMode === "kamar") {
+                          setFilterKamar(card.groupName);
+                        } else {
+                          setFilterKelas(card.groupName);
+                        }
+                        setSelectedMateriId(agregatMateri.id);
+                        setActiveMainTab("santri");
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                    >
+                      <span>Detail Santri</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full py-12 text-center text-slate-400">
+                Belum ada data kelompok kelas / kamar yang tersedia.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================== */}
+      {/* MODAL 1: FORMULIR UPDATE CAPAIAN ("UBAH CAPAIAN") */}
+      {/* ======================================================================== */}
+      {isEditModalOpen && editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] flex flex-col my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-blue-600 text-white">
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Ubah Capaian Makna Kitab
+                </h3>
+                <p className="text-xs text-blue-100">
+                  {editingStudent.nama_lengkap || editingStudent.nama} • {editingStudent.kamar || "Kamar"} • {editingStudent.kelas_pengajian || "Kelas"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-5">
+              {/* Info Header Box */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3.5 space-y-1 text-xs sm:text-sm">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="font-bold text-slate-800 dark:text-slate-100">
+                    Kitab: {currentMateri.nama_materi} ({currentMateri.jumlah_halaman} Halaman)
+                  </span>
+                  <span className="text-slate-500 text-xs">
+                    Riwayat: {getCapaianData(editingStudent.id, currentMateri.id).updated_by} ({getCapaianData(editingStudent.id, currentMateri.id).updated_at.slice(0, 10)})
+                  </span>
+                </div>
+              </div>
+
+              {/* Checkbox Mini: Belum Disampaikan */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="chk_belum_disampaikan"
+                  checked={formBelumDisampaikan}
+                  onChange={(e) => {
+                    setFormBelumDisampaikan(e.target.checked);
+                    if (e.target.checked) {
+                      setFormHalamanDimaknai([]);
+                    }
+                  }}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                />
+                <label 
+                  htmlFor="chk_belum_disampaikan" 
+                  className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+                >
+                  Belum Disampaikan (Centang jika materi kitab ini belum mulai diajarkan)
+                </label>
+              </div>
+
+              {/* AREA INTERAKTIF MATRIKS TOMBOL ANGKA HALAMAN */}
+              {!formBelumDisampaikan && (
+                <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  {/* Bulk Actions Header */}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Pilih Halaman Yang Sudah Dimaknai:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSelectAllPages}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-lg transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        <span>Pilih Semua</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleClearAllPages}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Square className="w-3.5 h-3.5" />
+                        <span>Hapus Semua</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Range Tabs if book is large (>100 pages e.g. Al-Qur'an 604 hal) */}
+                  {pageRanges.length > 0 && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                      {pageRanges.map((r) => (
+                        <button
+                          key={r.start}
+                          type="button"
+                          onClick={() => setPageRangeStart(r.start)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                            pageRangeStart === r.start
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                          }`}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Realtime Progress Badge */}
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200 bg-emerald-50/50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60">
+                    <span>
+                      Terpilih: {formHalamanDimaknai.length} dari {currentMateri.jumlah_halaman} Halaman
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      ({Math.round((formHalamanDimaknai.length / (currentMateri.jumlah_halaman || 1)) * 1000) / 10}%)
+                    </span>
+                  </div>
+
+                  {/* Numeric Buttons Grid */}
+                  <div className="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-12 gap-1.5 max-h-60 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                    {Array.from({ length: activePageEnd - pageRangeStart + 1 }, (_, i) => pageRangeStart + i).map((num) => {
+                      const isChecked = formHalamanDimaknai.includes(num);
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleTogglePage(num)}
+                          className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                            isChecked
+                              ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
+                              : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {num}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Input Textarea: Catatan / Keterangan */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Catatan / Keterangan Tambahan (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Contoh: Makna lancar, bab thaharah telah tuntas dimaknai..."
+                  value={formCatatan}
+                  onChange={(e) => setFormCatatan(e.target.value)}
+                  className="w-full p-2.5 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 p-4 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCapaian}
+                disabled={isSubmitting}
+                className="inline-flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSubmitting ? "Menyimpan..." : "Simpan Capaian"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================== */}
+      {/* MODAL 2: DETAIL CAPAIAN VIEW-ONLY ("LIHAT CAPAIAN") */}
+      {/* ======================================================================== */}
+      {isViewModalOpen && viewingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                  Detail Capaian Makna
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsViewModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              <div>
+                <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  {viewingStudent.nama_lengkap || viewingStudent.nama}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Kamar: {viewingStudent.kamar || "—"} • Kelas: {viewingStudent.kelas_pengajian || "—"}
+                </p>
+              </div>
+
+              {(() => {
+                const cap = getCapaianData(viewingStudent.id, currentMateri.id);
+                return (
+                  <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                        Kitab: {currentMateri.nama_materi}
+                      </span>
+                      <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                        {cap.percentage}%
+                      </span>
+                    </div>
+
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="bg-emerald-500 h-2.5 rounded-full"
+                        style={{ width: `${cap.percentage}%` }}
+                      />
+                    </div>
+
+                    <div className="text-xs text-slate-600 dark:text-slate-300 pt-1 space-y-1">
+                      <p>
+                        • <strong>Halaman Selesai:</strong> {cap.count} dari {cap.totalPages} Halaman
+                      </p>
+                      <p>
+                        • <strong>Status:</strong> {cap.belum_disampaikan ? "Belum Disampaikan" : "Aktif Dimaknai"}
+                      </p>
+                      {cap.catatan && (
+                        <p className="italic text-slate-500 pt-1">
+                          "Catatan: {cap.catatan}"
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 text-right">
+              <button
+                type="button"
+                onClick={() => setIsViewModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

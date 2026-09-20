@@ -23,6 +23,7 @@ import TargetPengajianPanel from "./components/TargetPengajianPanel";
 import JurnalPengajianPanel from "./components/JurnalPengajianPanel";
 import RekapJurnalPengajianPanel from "./components/RekapJurnalPengajianPanel";
 import RekapAbsensiPengajianPanel from "./components/RekapAbsensiPengajianPanel";
+import CapaianMateriPanel from "./components/CapaianMateriPanel";
 import NfcRegisterPanel from "./components/NfcRegisterPanel";
 import DaftarWargaPanel from "./components/DaftarWargaPanel";
 import SiswaLulusMutasiPanel from "./components/SiswaLulusMutasiPanel";
@@ -36,7 +37,7 @@ import MasterMataPelajaranPanel from "./components/MasterMataPelajaranPanel";
 import PlottingGuruMapelPanel from "./components/PlottingGuruMapelPanel";
 import RekapAbsensiGuruPanel from "./components/RekapAbsensiGuruPanel";
 import PlottingJamAbsensiPanel from "./components/PlottingJamAbsensiPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone, FileSpreadsheet, QrCode } from "lucide-react";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone, FileSpreadsheet, QrCode, TrendingUp } from "lucide-react";
 
 const DEMO_SANTRI: SantriData[] = [];
 
@@ -102,7 +103,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -129,7 +130,8 @@ export default function App() {
   const [isManajemenPondokExpanded, setIsManajemenPondokExpanded] = useState(false);
   const [isManajemenSekolahExpanded, setIsManajemenSekolahExpanded] = useState(false);
   const [isPengajianExpanded, setIsPengajianExpanded] = useState(false);
-  const [hoveredFlyout, setHoveredFlyout] = useState<"rekap" | "data_warga" | "pelanggaran" | "manajemen_pondok" | "manajemen_sekolah" | "pengajian" | "nfc" | "kantin" | "perizinan" | "sekolah" | null>(null);
+  const [isCapaianMateriExpanded, setIsCapaianMateriExpanded] = useState(true);
+  const [hoveredFlyout, setHoveredFlyout] = useState<"rekap" | "data_warga" | "pelanggaran" | "manajemen_pondok" | "manajemen_sekolah" | "pengajian" | "capaian_materi" | "nfc" | "kantin" | "perizinan" | "sekolah" | null>(null);
   const [mobileSekolahOpen, setMobileSekolahOpen] = useState(true);
   const [mobilePerizinanOpen, setMobilePerizinanOpen] = useState(true);
   const [mobileRekapOpen, setMobileRekapOpen] = useState(true);
@@ -140,6 +142,7 @@ export default function App() {
   const [mobileManajemenPondokOpen, setMobileManajemenPondokOpen] = useState(false);
   const [mobileManajemenSekolahOpen, setMobileManajemenSekolahOpen] = useState(false);
   const [mobilePengajianOpen, setMobilePengajianOpen] = useState(false);
+  const [mobileCapaianMateriOpen, setMobileCapaianMateriOpen] = useState(true);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const [listFilters, setListFilters] = useState<{ category?: string; status?: string; class?: string }>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1324,6 +1327,10 @@ export default function App() {
     { id: "sekolah_pengumuman", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Pengumuman", label: "Pengumuman Sekolah", shortLabel: "Pengumuman", icon: Megaphone, roles: ["super admin", "admin", "guru SMP"] },
     { id: "sekolah_jam_absensi", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Plotting Jam Absensi", label: "Plotting Jam Absensi Guru", shortLabel: "Jam Absensi", icon: QrCode, roles: ["super admin", "admin", "guru SMP"] },
 
+    // CAPAIAN MATERI GROUP WITH SUBMENUS
+    { id: "capaian_materi", group: "CAPAIAN_MATERI", isSubmenu: true, subLabel: "Capaian Materi Siswa", label: "Capaian Materi Siswa", shortLabel: "Capaian Siswa", icon: Award, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok", "wali kamar", "wali_kamar"] },
+    { id: "capaian_materi_kelas", group: "CAPAIAN_MATERI", isSubmenu: true, subLabel: "Capaian Materi Kelas", label: "Capaian Materi Kelas / Asrama", shortLabel: "Capaian Kelas", icon: TrendingUp, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok", "wali kamar", "wali_kamar"] },
+
     // PENGAJIAN
     { id: "manajemen_materi", group: "PENGAJIAN", isSubmenu: true, subLabel: "Master Materi", label: "Master Materi Pengajian", shortLabel: "Materi", icon: BookOpen, roles: ["super admin", "admin"] },
     { id: "target_pengajian", group: "PENGAJIAN", isSubmenu: true, subLabel: "Target Pengajian", label: "Target Capaian Pengajian", shortLabel: "Target", icon: Target, roles: ["super admin", "admin", "guru pondok", "pondok"] },
@@ -1355,7 +1362,7 @@ export default function App() {
     if (tabId === "kantin_rekap") return "rekap_pembukuan";
     if (tabId === "absensi_guru" || tabId === "presensi_guru" || tabId === "jurnal_mengajar" || tabId === "daftar_guru_sekolah" || tabId === "dashboard_guru" || tabId === "rekap_absensi_guru" || tabId === "rekap_guru") return "guru_sekolah";
     if (tabId === "rekap_sekolah") return "rekap_sekolah";
-    if (["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(tabId)) return "pengajian";
+    if (["manajemen_materi", "target_pengajian", "capaian_materi", "capaian_materi_kelas", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(tabId)) return "pengajian";
     if (tabId === "pengguna") return "admin_only";
     return null;
   };
@@ -2511,6 +2518,93 @@ export default function App() {
                 )}
               </div>
             )}
+            {/* 4.5 CAPAIAN MATERI GROUP (ACCORDION) */}
+            {accessibleTabs.some(t => t.group === "CAPAIAN_MATERI") && (!sidebarSearchQuery || "capaian materi makna kitab siswa kelas asrama".includes(sidebarSearchQuery.toLowerCase())) && (
+              <div 
+                className="w-full pt-1.5 relative group/flyout"
+                onMouseEnter={() => setHoveredFlyout("capaian_materi")}
+                onMouseLeave={() => setHoveredFlyout(null)}
+              >
+                {!sidebarCollapsed ? (
+                  <div
+                    onClick={() => setIsCapaianMateriExpanded(!isCapaianMateriExpanded)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Capaian Materi</span>
+                    {isCapaianMateriExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full flex justify-center py-1">
+                    <button
+                      onClick={() => setIsCapaianMateriExpanded(!isCapaianMateriExpanded)}
+                      className={`p-2 rounded-xl transition-colors ${
+                        ["capaian_materi", "capaian_materi_kelas"].includes(activeTab)
+                          ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                          : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                      }`}
+                      title="Capaian Materi"
+                    >
+                      <Award className="w-4.5 h-4.5" />
+                    </button>
+                  </div>
+                )}
+                {/* Expanded Inline Submenu */}
+                {!sidebarCollapsed && isCapaianMateriExpanded && (
+                  <div className="space-y-0.5 mt-0.5">
+                    {accessibleTabs.filter(t => t.group === "CAPAIAN_MATERI").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center justify-start px-3 py-2 gap-3 rounded-xl transition-all text-xs ${
+                            isSubActive
+                              ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                          }`}
+                        >
+                          <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                          <span className="truncate">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Collapsed Flyout Popover */}
+                {sidebarCollapsed && hoveredFlyout === "capaian_materi" && (
+                  <div className="absolute left-full top-0 ml-2 z-50 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                    <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      Capaian Materi
+                    </div>
+                    {accessibleTabs.filter(t => t.group === "CAPAIAN_MATERI").map((sub) => {
+                      const SubIcon = sub.icon;
+                      const isSubActive = activeTab === sub.id;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveTab(sub.id as any)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                            isSubActive
+                              ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-bold"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <SubIcon className="w-4 h-4 text-slate-400" />
+                          <span>{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 5. PENGAJIAN GROUP (ACCORDION) */}
             {accessibleTabs.some(t => t.group === "PENGAJIAN") && (!sidebarSearchQuery || "pengajian materi target capaian jurnal absensi rekap".includes(sidebarSearchQuery.toLowerCase())) && (
               <div 
@@ -2535,7 +2629,7 @@ export default function App() {
                     <button
                       onClick={() => setIsPengajianExpanded(!isPengajianExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["manajemen_materi", "target_pengajian"].includes(activeTab)
+                        ["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
@@ -3197,6 +3291,21 @@ export default function App() {
               </div>
             )}
 
+            {(activeTab === "capaian_materi" || activeTab === "capaian_materi_kelas") && (
+              <div className="w-full">
+                <CapaianMateriPanel
+                  initialTab={activeTab === "capaian_materi_kelas" ? "agregat" : "santri"}
+                  currentUserRole={userRole}
+                  userTugasTambahan={currentUser?.tugas_tambahan}
+                  currentUser={currentUser}
+                  students={students}
+                  recitationClasses={recitationClasses}
+                  rooms={rooms}
+                  onTriggerNotification={triggerNotification}
+                />
+              </div>
+            )}
+
             {activeTab === "rekap_jurnal" && (
               <div className="w-full">
                 <RekapJurnalPengajianPanel
@@ -3718,6 +3827,49 @@ export default function App() {
                   {isManajemenSekolahExpanded && (
                     <div className="space-y-0.5 mt-0.5">
                       {accessibleTabs.filter(t => t.group === "MANAJEMEN_SEKOLAH").map((sub) => {
+                        const SubIcon = sub.icon;
+                        const isSubActive = activeTab === sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            onClick={() => {
+                              setActiveTab(sub.id as any);
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs ${
+                              isSubActive
+                                ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/60"
+                                : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
+                            <span className="truncate">{sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* CAPAIAN MATERI GROUP */}
+              {accessibleTabs.some(t => t.group === "CAPAIAN_MATERI") && (
+                <div className="pt-1.5">
+                  <div
+                    onClick={() => setMobileCapaianMateriOpen(!mobileCapaianMateriOpen)}
+                    className="px-3 pt-2 pb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <span>Capaian Materi</span>
+                    {mobileCapaianMateriOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+
+                  {mobileCapaianMateriOpen && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {accessibleTabs.filter(t => t.group === "CAPAIAN_MATERI").map((sub) => {
                         const SubIcon = sub.icon;
                         const isSubActive = activeTab === sub.id;
                         return (

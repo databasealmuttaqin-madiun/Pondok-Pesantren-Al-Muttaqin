@@ -257,7 +257,23 @@ export default function PlottingGuruPondokPanel() {
         );
       }
 
-      const sortedGurus = gList.sort((a, b) => a.nama.localeCompare(b.nama));
+      // Filter out duplicate names, prioritizing records with pengguna_id
+      const uniqueGList: typeof gList = [];
+      const seenNames = new Set<string>();
+      const sortedForUniqueness = [...gList].sort((a, b) => {
+        if (a.pengguna_id && !b.pengguna_id) return -1;
+        if (!a.pengguna_id && b.pengguna_id) return 1;
+        return 0;
+      });
+      for (const item of sortedForUniqueness) {
+        const normName = item.nama.trim().toLowerCase();
+        if (!seenNames.has(normName)) {
+          seenNames.add(normName);
+          uniqueGList.push(item);
+        }
+      }
+
+      const sortedGurus = uniqueGList.sort((a, b) => a.nama.localeCompare(b.nama));
       setPenggunaList(sortedGurus);
 
       // 2. Fetch plotting_guru_pondok from Supabase

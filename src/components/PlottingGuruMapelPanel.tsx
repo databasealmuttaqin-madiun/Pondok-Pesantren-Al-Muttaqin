@@ -118,7 +118,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
       setAvailableClasses(sortedClasses);
 
       // 2. Fetch Teachers from 'guru' and map with 'pengguna' (nama_lengkap)
-      const gList: { id: string; nama: string; no_hp?: string }[] = [];
+      const gList: { id: string; nama: string; no_hp?: string; pengguna_id?: string }[] = [];
       try {
         const { data: dbGuru } = await supabase
           .from("guru")
@@ -135,7 +135,8 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
             gList.push({
               id: String(g.id),
               nama: displayName,
-              no_hp: matchedUser?.no_hp || g.nomor_hp || ""
+              no_hp: matchedUser?.no_hp || g.nomor_hp || "",
+              pengguna_id: g.pengguna_id ? String(g.pengguna_id) : undefined
             });
           });
         }
@@ -143,15 +144,59 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
         console.warn("Notice when fetching guru and pengguna for guru mapel:", err);
       }
 
-      if (gList.length === 0) {
-        gList.push(
+      let filteredGList = gList;
+      try {
+        const { data: plotGuruSekolah } = await supabase
+          .from("plotting_guru_sekolah")
+          .select("*");
+        
+        if (plotGuruSekolah && plotGuruSekolah.length > 0) {
+          filteredGList = gList.filter(g => {
+            return plotGuruSekolah.some(item => {
+              const rawId = String(item.guru_id || "");
+              return rawId === String(g.id) || 
+                     (g.pengguna_id && rawId === String(g.pengguna_id)) ||
+                     (g.nama && g.nama.toLowerCase() === rawId.toLowerCase());
+            });
+          });
+        } else {
+          filteredGList = [];
+        }
+      } catch (err) {
+        console.warn("Error filtering with plotting_guru_sekolah:", err);
+      }
+
+      if (filteredGList.length === 0 && gList.length > 0) {
+        // Fallback only if plotting_guru_sekolah is empty
+        filteredGList = gList;
+      }
+
+      if (filteredGList.length === 0) {
+        filteredGList.push(
           { id: "1", nama: "Drs. Bambang Sudarsono M.Pd" },
           { id: "2", nama: "Siti Rahmawati S.Pd" },
           { id: "3", nama: "Ahmad Fauzi S.Si" },
           { id: "4", nama: "Ustaz H. Abdullah S.Pd.I" }
         );
       }
-      setGuruList(gList.sort((a, b) => a.nama.localeCompare(b.nama)));
+
+      // Unique-fy by name, prioritizing records with pengguna_id
+      const uniqueGList: typeof filteredGList = [];
+      const seenNames = new Set<string>();
+      const sortedForUniqueness = [...filteredGList].sort((a, b) => {
+        if (a.pengguna_id && !b.pengguna_id) return -1;
+        if (!a.pengguna_id && b.pengguna_id) return 1;
+        return 0;
+      });
+      for (const item of sortedForUniqueness) {
+        const normName = item.nama.trim().toLowerCase();
+        if (!seenNames.has(normName)) {
+          seenNames.add(normName);
+          uniqueGList.push(item);
+        }
+      }
+
+      setGuruList(uniqueGList.sort((a, b) => a.nama.localeCompare(b.nama)));
 
       // 3. Fetch Mata Pelajaran
       let mList: MataPelajaranItem[] = [];

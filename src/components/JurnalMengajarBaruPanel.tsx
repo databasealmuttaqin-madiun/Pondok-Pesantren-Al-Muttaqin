@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, BookOpen, Calendar, Clock, Trash2, Edit3, X, CheckCircle2, AlertCircle, Printer, Search } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { parsePeriod } from "../lib/periodHelper";
 
 interface JurnalMengajarBaruPanelProps {
   currentUser: any;
@@ -25,7 +26,7 @@ export default function JurnalMengajarBaruPanel({
   const [tahunPelajaran] = useState("2026/2027");
   const [tanggal, setTanggal] = useState(new Date().toISOString().split("T")[0]);
   const [hari, setHari] = useState("Senin");
-  const [jamKe, setJamKe] = useState("1 - 2");
+  const [jamKe, setJamKe] = useState("");
   const [mataPelajaran, setMataPelajaran] = useState("");
   const [materiPembelajaran, setMateriPembelajaran] = useState("");
   const [keterangan, setKeterangan] = useState("");
@@ -34,10 +35,166 @@ export default function JurnalMengajarBaruPanel({
   const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
   const [classList, setclassList] = useState<string[]>(["7A", "7B", "8A", "8B", "9A", "9B", "10A", "11A", "12A"]);
 
+  // DB source states
+  const [selectedGuruId, setSelectedGuruId] = useState<string>("");
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [periods, setPeriods] = useState<any[]>([]);
+  const [plottingGuruMapel, setPlottingGuruMapel] = useState<any[]>([]);
+  const [dbGurusList, setDbGurusList] = useState<any[]>([]);
+
   useEffect(() => {
     fetchJurnals();
     fetchClasses();
+    loadFormData();
   }, [filterSemester]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setSelectedGuruId(currentUser.id || "");
+    } else if (teachers.length > 0) {
+      setSelectedGuruId(teachers[0].id);
+    }
+  }, [isModalOpen, currentUser, teachers]);
+
+  const isSameClass = (c1: string, c2: string): boolean => {
+    if (!c1 || !c2) return false;
+    const norm = (s: string) => s.toLowerCase().replace(/^kelas\s*/, "").replace(/[^a-z0-9]/g, "");
+    return norm(c1) === norm(c2);
+  };
+
+  const getFilteredSubjects = () => {
+    if (!selectedGuruId || !kelas) return [];
+
+    // Find matching guru record to map pengguna.id -> guru.id
+    const activeGuruRecord = dbGurusList.find(g => 
+      String(g.pengguna_id) === String(selectedGuruId) || String(g.id) === String(selectedGuruId)
+    );
+
+    const activePlottings = plottingGuruMapel.filter(p => {
+      const teacherMatched = 
+        String(p.guru_id) === String(selectedGuruId) || 
+        (activeGuruRecord && String(p.guru_id) === String(activeGuruRecord.id));
+
+      const classMatched = isSameClass(String(p.kelas_nama || ""), kelas);
+      return teacherMatched && classMatched;
+    });
+
+    if (activePlottings.length === 0) return [];
+
+    return subjects.filter(sub =>
+      activePlottings.some(p => String(p.mapel_id) === String(sub.id))
+    );
+  };
+
+  useEffect(() => {
+    const filtered = getFilteredSubjects();
+    if (filtered.length > 0) {
+      if (!filtered.some(s => s.nama_mapel === mataPelajaran)) {
+        setMataPelajaran(filtered[0].nama_mapel);
+      }
+    } else {
+      setMataPelajaran("");
+    }
+  }, [selectedGuruId, kelas, plottingGuruMapel, subjects, dbGurusList]);
+
+  const loadFormData = async () => {
+    try {
+      // 1. Fetch teachers from plotting_guru_sekolah
+      const { data: plotData } = await supabase
+        .from("plotting_guru_sekolah")
+        .select("*");
+
+      // Fetch fallback all gurus
+      const { data: dbGurus } = await supabase
+        .from("guru")
+        .select("*");
+
+      if (dbGurus) {
+        setDbGurusList(dbGurus);
+      }
+
+      // Fetch fallback all pengguna
+      const { data: dbPengguna } = await supabase
+        .from("pengguna")
+        .select("*");
+
+      const mappedTeachersList: any[] = [];
+      const usedUsernamesOrIds = new Set<string>();
+      const usedNames = new Set<string>();
+
+      if (plotData && plotData.length > 0) {
+        plotData.forEach((item: any) => {
+          const rawId = String(item.guru_id || "");
+          const matchedGuru = dbGurus?.find(g => String(g.id) === rawId || (g.pengguna_id && String(g.pengguna_id) === rawId));
+          const matchedUser = dbPengguna?.find(u => String(u.id) === rawId || String(u.id) === String(matchedGuru?.pengguna_id));
+
+          const resolvedId = matchedUser?.id || matchedGuru?.id || rawId;
+          const resolvedName = matchedGuru?.nama_lengkap || matchedGuru?.nama || matchedUser?.nama_lengkap || matchedUser?.nama || `Guru (${rawId})`;
+
+          const normName = resolvedName.trim().toLowerCase();
+          if (resolvedId && !usedUsernamesOrIds.has(resolvedId) && !usedNames.has(normName)) {
+            usedUsernamesOrIds.add(resolvedId);
+            usedNames.add(normName);
+            mappedTeachersList.push({
+              id: resolvedId,
+              nama: resolvedName
+            });
+          }
+        });
+      }
+
+      setTeachers(mappedTeachersList.sort((a, b) => a.nama.localeCompare(b.nama)));
+
+      // 2. Fetch master subjects
+      const { data: mapelData } = await supabase
+        .from("mata_pelajaran")
+        .select("*")
+        .order("nama_mapel", { ascending: true });
+
+      if (mapelData && mapelData.length > 0) {
+        setSubjects(mapelData);
+      } else {
+        setSubjects([
+          { id: "s1", nama_mapel: "Matematika", kode_mapel: "MTK" },
+          { id: "s2", nama_mapel: "Bahasa Indonesia", kode_mapel: "BIN" },
+          { id: "s3", nama_mapel: "Bahasa Inggris", kode_mapel: "BIG" },
+          { id: "s4", nama_mapel: "Fisika", kode_mapel: "FIS" },
+          { id: "s5", nama_mapel: "Kimia", kode_mapel: "KIM" },
+          { id: "s6", nama_mapel: "Biologi", kode_mapel: "BIO" },
+          { id: "s7", nama_mapel: "Pendidikan Agama Islam", kode_mapel: "PAI" }
+        ]);
+      }
+
+      // 3. Fetch lesson periods
+      const { data: periodData } = await supabase
+        .from("jam_pelajaran")
+        .select("*")
+        .order("jam_ke", { ascending: true });
+
+      if (periodData && periodData.length > 0) {
+        setPeriods(periodData);
+      } else {
+        setPeriods([
+          { id: "p1", jam_ke: 1, hari: "Senin", nama: "Jam Pelajaran Ke-1", kode: "JP-01", mulai: "07:00", selesai: "07:45" },
+          { id: "p2", jam_ke: 2, hari: "Senin", nama: "Jam Pelajaran Ke-2", kode: "JP-02", mulai: "07:45", selesai: "08:30" },
+          { id: "p3", jam_ke: 3, hari: "Senin", nama: "Jam Pelajaran Ke-3", kode: "JP-03", mulai: "08:30", selesai: "09:15" },
+          { id: "p4", jam_ke: 4, hari: "Senin", nama: "Jam Pelajaran Ke-4", kode: "JP-04", mulai: "09:35", selesai: "10:20" }
+        ]);
+      }
+
+      // 4. Fetch plotting_guru_mapel
+      const { data: plotMapelData } = await supabase
+        .from("plotting_guru_mapel")
+        .select("*");
+      if (plotMapelData) {
+        setPlottingGuruMapel(plotMapelData);
+      }
+
+    } catch (e) {
+      console.warn("Failed to load select parameters from database:", e);
+    }
+  };
 
   const fetchClasses = async () => {
     try {
@@ -85,9 +242,20 @@ export default function JurnalMengajarBaruPanel({
     if (tanggal) {
       const d = new Date(tanggal);
       const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-      setHari(days[d.getDay()]);
+      const computedDay = days[d.getDay()];
+      setHari(computedDay);
+      
+      // Auto set first valid period of the day
+      if (periods.length > 0) {
+        const dayPeriods = periods.filter(p => parsePeriod(p).hari.toLowerCase() === computedDay.toLowerCase());
+        if (dayPeriods.length > 0) {
+          setJamKe(parsePeriod(dayPeriods[0]).kode);
+        } else {
+          setJamKe("");
+        }
+      }
     }
-  }, [tanggal]);
+  }, [tanggal, periods]);
 
   useEffect(() => {
     if (isModalOpen && kelas) {
@@ -204,9 +372,17 @@ export default function JurnalMengajarBaruPanel({
       onTriggerNotification("Materi pembelajaran wajib diisi!", "error");
       return;
     }
+    if (!mataPelajaran) {
+      onTriggerNotification("Silakan pilih mata pelajaran!", "error");
+      return;
+    }
+    if (!jamKe) {
+      onTriggerNotification("Silakan pilih jam pelajaran!", "error");
+      return;
+    }
 
     const payload = {
-      guru_id: currentUser?.id || null,
+      guru_id: selectedGuruId || currentUser?.id || null,
       kelas_id: kelas,
       semester,
       tahun_pelajaran: tahunPelajaran,
@@ -335,6 +511,7 @@ export default function JurnalMengajarBaruPanel({
             <thead>
               <tr className="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-black text-center border-b border-slate-200 dark:border-slate-800">
                 <th className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 w-36">Hari, Tanggal</th>
+                <th className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 w-48">Nama Guru</th>
                 <th className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 w-24">Jam Ke</th>
                 <th className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 w-32">Mata Pelajaran</th>
                 <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800">Materi Pembelajaran</th>
@@ -351,6 +528,9 @@ export default function JurnalMengajarBaruPanel({
                   <td className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 text-center">
                     <span className="font-bold block">{j.hari}</span>
                     <span className="text-[10px] text-slate-400">{j.tanggal}</span>
+                  </td>
+                  <td className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 font-semibold text-slate-850 dark:text-slate-250">
+                    {teachers.find(t => t.id === j.guru_id)?.nama || "Guru Sekolah"}
                   </td>
                   <td className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 text-center font-bold">
                     {j.jam_ke}
@@ -388,7 +568,7 @@ export default function JurnalMengajarBaruPanel({
 
               {filteredJurnals.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-slate-400 text-xs">
+                  <td colSpan={10} className="text-center py-12 text-slate-400 text-xs">
                     Belum ada data jurnal mengajar yang tercatat. Silakan klik tombol "Tambahkan Jurnal Baru".
                   </td>
                 </tr>
@@ -482,27 +662,69 @@ export default function JurnalMengajarBaruPanel({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Jam Ke *</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: 1 - 2"
-                    value={jamKe}
-                    onChange={(e) => setJamKe(e.target.value)}
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Nama Guru Pengajar *</label>
+                  <select
+                    value={selectedGuruId}
+                    onChange={(e) => setSelectedGuruId(e.target.value)}
                     required
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">-- Pilih Guru --</option>
+                    {teachers.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.nama}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Mata Pelajaran *</label>
-                  <input
-                    type="text"
-                    placeholder="Nama Mata Pelajaran"
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 font-sans">Mata Pelajaran * (Sesuai Plotting Kelas & Guru)</label>
+                  <select
                     value={mataPelajaran}
                     onChange={(e) => setMataPelajaran(e.target.value)}
                     required
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    {getFilteredSubjects().length === 0 ? (
+                      <option value="">-- Tidak ada mapel terplotting untuk guru di kelas ini --</option>
+                    ) : (
+                      <>
+                        <option value="">-- Pilih Mata Pelajaran --</option>
+                        {getFilteredSubjects().map(s => (
+                          <option key={s.id} value={s.nama_mapel}>
+                            {s.nama_mapel} ({s.kode_mapel || "MAPEL"})
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Jam Pelajaran * (Disesuaikan hari {hari})</label>
+                  <select
+                    value={jamKe}
+                    onChange={(e) => setJamKe(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {periods.filter(p => parsePeriod(p).hari.toLowerCase() === hari.toLowerCase()).length === 0 ? (
+                      <option value="">-- Tidak ada jam pelajaran untuk hari {hari} --</option>
+                    ) : (
+                      <>
+                        <option value="">-- Pilih Jam Pelajaran --</option>
+                        {periods.filter(p => parsePeriod(p).hari.toLowerCase() === hari.toLowerCase()).map(p => {
+                          const pr = parsePeriod(p);
+                          return (
+                            <option key={p.id} value={pr.kode}>
+                              {pr.kode} - {pr.nama} ({pr.mulai} - {pr.selesai})
+                            </option>
+                          );
+                        })}
+                      </>
+                    )}
+                  </select>
                 </div>
 
                 <div className="md:col-span-2">
