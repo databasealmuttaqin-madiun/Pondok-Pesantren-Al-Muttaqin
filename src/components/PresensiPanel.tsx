@@ -51,7 +51,7 @@ import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
 import NfcUidConverterModal from "./NfcUidConverterModal";
 import { convertNfcUid } from "../utils/nfcConverter";
-import RekapSekolahComingSoon from "./RekapSekolahComingSoon";
+import RekapAbsensiSiswaPanel from "./RekapAbsensiSiswaPanel";
 
 interface PresensiPanelProps {
   students: SantriData[];
@@ -2223,7 +2223,7 @@ export default function PresensiPanel({
         <div className="flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
           <span>{viewMode === "rekap" ? (rekapSubMenu === "sekolah" ? "Rekap Presensi Sekolah" : "Rekap Presensi Sholat") : "Presensi Santri"}</span>
           <ChevronRight className="w-4 h-4" />
-          <span>{viewMode === "rekap" ? (rekapSubMenu === "sekolah" ? "Sekolah (Coming Soon)" : "Sholat 5 Waktu") : "Daftar"}</span>
+          <span>{viewMode === "rekap" ? (rekapSubMenu === "sekolah" ? "Rekap Absensi Siswa" : "Sholat 5 Waktu") : "Daftar"}</span>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-[28px] font-bold text-slate-900 dark:text-white tracking-tight leading-none">
@@ -2410,7 +2410,7 @@ export default function PresensiPanel({
           {/* B. REKAP DATA VIEW */}
           {attendanceSubTab === "rekap" && (
             rekapSubMenu === "sekolah" ? (
-              <RekapSekolahComingSoon onSwitchToSholat={() => handleRekapSubMenuChange("sholat")} />
+              <RekapAbsensiSiswaPanel />
             ) : (
         <div className="space-y-4 animate-fade-in" id="attendance_rekap_section">
 

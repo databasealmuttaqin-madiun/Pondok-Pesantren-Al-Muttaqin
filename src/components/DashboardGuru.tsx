@@ -19,6 +19,7 @@ import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+import { getPeriodDisplayTime, parsePeriod } from "../lib/periodHelper";
 import QRScannerModal, { DEFAULT_SCHOOL_COORDS, DEFAULT_STATIC_QR_TOKEN } from "./QRScannerModal";
 
 const MySwal = withReactContent(Swal);
@@ -532,7 +533,10 @@ export default function DashboardGuru({
               <div className="space-y-2.5">
                 {todayUpcomingSchedules.map((item, idx) => {
                   const period = periods.find(p => p.jam_ke === item.jam_ke);
-                  const periodTime = period ? `${period.mulai} - ${period.selesai}` : `Jam ke-${item.jam_ke}`;
+                  const pr = period ? parsePeriod(period) : null;
+                  const periodTime = pr ? `${pr.mulai} - ${pr.selesai}` : `Jam ke-${item.jam_ke}`;
+                  const displayKode = pr ? pr.kode : `JP-${item.jam_ke}`;
+                  const displayNama = pr ? pr.nama : `Jam Pelajaran Ke-${item.jam_ke}`;
 
                   return (
                     <div 
@@ -540,9 +544,8 @@ export default function DashboardGuru({
                       className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex flex-col items-center justify-center font-bold text-xs shrink-0">
-                          <span className="text-[9px] uppercase font-medium">Jam</span>
-                          <span>{item.jam_ke}</span>
+                        <div className="px-2 py-1 rounded-lg bg-blue-50 text-blue-700 flex flex-col items-center justify-center font-bold text-[10px] shrink-0 font-mono">
+                          <span>{displayKode}</span>
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-slate-800">
@@ -550,6 +553,8 @@ export default function DashboardGuru({
                           </h4>
                           <div className="flex items-center gap-2 text-xs text-slate-500">
                             <span className="font-semibold text-slate-700">Kelas {item.kelas}</span>
+                            <span>•</span>
+                            <span className="font-medium text-slate-600">{displayNama}</span>
                             <span>•</span>
                             <span className="font-mono text-[11px]">{periodTime}</span>
                           </div>

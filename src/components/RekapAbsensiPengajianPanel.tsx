@@ -1,6 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { supabase, SantriData } from "../supabaseClient";
-import { ClipboardList, Search, Printer, Calendar } from "lucide-react";
+import { 
+  ClipboardList, 
+  Search, 
+  Printer, 
+  Calendar, 
+  MessageCircle, 
+  X, 
+  Copy, 
+  Send, 
+  Check, 
+  Share2 
+} from "lucide-react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 interface Props {
   recitationClasses: string[];
@@ -16,6 +31,11 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
   const [absensiMap, setAbsensiMap] = useState<Record<string, Record<string, string>>>({}); // [santriId][date] = status
   
   const [isLoading, setIsLoading] = useState(false);
+  
+  // WhatsApp Modal States
+  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
+  const [selectedWaDate, setSelectedWaDate] = useState<string>("");
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     if (selectedClass && selectedMonth) {
@@ -83,6 +103,13 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
 
       setJurnals(uniqueSessions);
 
+      // Set default WA date to the last session date available or today
+      if (uniqueSessions.length > 0) {
+        setSelectedWaDate(uniqueSessions[uniqueSessions.length - 1].tanggal);
+      } else {
+        setSelectedWaDate(new Date().toISOString().slice(0, 10));
+      }
+
       // 3. Get Absensi for those jurnals
       const allJurnalIds = loadedJurnals.map(j => j.id);
       if (allJurnalIds.length > 0) {
@@ -93,7 +120,7 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
 
         if (absError) throw absError;
 
-        // map status by santri and date. If multiple per date, we could prioritize worst status or just take first.
+        // map status by santri and date
         const newAbsMap: Record<string, Record<string, string>> = {};
         
         absData?.forEach(abs => {
@@ -102,8 +129,6 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
           const jurnal = loadedJurnals.find(j => j.id === abs.jurnal_id);
           if (jurnal) {
             const key = `${jurnal.tanggal}_${jurnal.sesi_id || 'none'}`;
-            // If already set for this date/sesi, only override if new status is worse (alpa > sakit > izin > terlambat > hadir)
-            // But for simplicity, let's just take whatever if it's not set.
             if (!newAbsMap[abs.santri_id][key] || abs.status !== 'hadir') {
                 newAbsMap[abs.santri_id][key] = abs.status;
             }
@@ -142,8 +167,106 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
     return status.charAt(0).toUpperCase();
   };
 
+  // Extract unique available dates from loaded jurnals for dropdown
+  const availableDates = useMemo(() => {
+    const dates = Array.from(new Set(jurnals.map(j => j.tanggal))).sort();
+    return dates;
+  }, [jurnals]);
+
+  // Generate formatting text for WhatsApp
+  const waFormattedText = useMemo(() => {
+    if (!selectedWaDate) return "";
+
+    const dateObj = new Date(selectedWaDate);
+    const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const monthsIndo = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+    
+    const dayName = daysIndo[dateObj.getDay()];
+    const formattedDateString = `${dateObj.getDate()} ${monthsIndo[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+
+    // Get all sessions scheduled on this selected date
+    const sessionsOnDate = jurnals.filter(j => j.tanggal === selectedWaDate);
+
+    let countHadir = 0;
+    let countSakitIzin = 0;
+    let countAlpa = 0;
+
+    const lines = santriList.map((santri, idx) => {
+      const statuses = sessionsOnDate.map(sesi => {
+        return santri.id && absensiMap[String(santri.id)] ? absensiMap[String(santri.id)][sesi.key] || "hadir" : "hadir";
+      });
+
+      const emojis = statuses.map(s => {
+        if (s === "hadir") return "✅";
+        if (s === "terlambat") return "⚠️";
+        if (s === "sakit") return "🤒";
+        if (s === "izin") return "✉️";
+        if (s === "alpa") return "❌";
+        return "✅";
+      }).join(" ");
+
+      const hasAlpa = statuses.includes("alpa");
+      const hasSickOrLeave = statuses.includes("sakit") || statuses.includes("izin") || statuses.includes("terlambat");
+
+      if (hasAlpa) {
+        countAlpa++;
+      } else if (hasSickOrLeave) {
+        countSakitIzin++;
+      } else {
+        countHadir++;
+      }
+
+      // Collect notes for non-hadir statuses
+      const extraNotes: string[] = [];
+      statuses.forEach((s, sIdx) => {
+        if (s !== "hadir") {
+          const sessionName = sessionsOnDate[sIdx]?.nama_sesi || `Sesi ${sIdx + 1}`;
+          extraNotes.push(`${s.toUpperCase()} (${sessionName})`);
+        }
+      });
+
+      const noteStr = extraNotes.length > 0 ? ` - ${extraNotes.join(", ")}` : "";
+
+      return `${idx + 1}. ${santri.nama_lengkap} ${emojis}${noteStr}`;
+    });
+
+    const result = `📅 *LAPORAN ABSENSI KELAS ${selectedClass.toUpperCase()}*
+_${dayName}, ${formattedDateString}_
+
+*Daftar Kehadiran Siswa:*
+
+${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
+
+*Ringkasan Kehadiran:*
+• Hadir: ${countHadir} Siswa
+• Sakit/Izin: ${countSakitIzin} Siswa
+• Alpha: ${countAlpa} Siswa`;
+
+    return result;
+  }, [selectedWaDate, selectedClass, santriList, jurnals, absensiMap]);
+
+  const handleCopyText = async () => {
+    try {
+      await navigator.clipboard.writeText(waFormattedText);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+      onTriggerNotification("Pesan WA berhasil disalin!", "success");
+    } catch (err) {
+      onTriggerNotification("Gagal menyalin pesan", "error");
+    }
+  };
+
+  const handleOpenWhatsApp = () => {
+    const url = `https://wa.me/?text=${encodeURIComponent(waFormattedText)}`;
+    window.open(url, "_blank");
+  };
+
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6" id="rekap_absensi_pengajian_root">
+      {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -156,13 +279,14 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
         </div>
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 py-2 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer"
         >
           <Printer className="w-4 h-4" /> Cetak Rekap
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm print:hidden">
+      {/* FILTER BAR SECTION */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm print:hidden">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             Kelas Pengajian
@@ -170,7 +294,7 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
           <select
             value={selectedClass}
             onChange={(e) => setSelectedClass(e.target.value)}
-            className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 h-10"
           >
             <option value="">-- Pilih Kelas --</option>
             {recitationClasses.map(c => (
@@ -186,8 +310,22 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 h-10"
           />
+        </div>
+        <div className="flex items-end">
+          <button
+            onClick={() => {
+              if (!selectedClass) {
+                onTriggerNotification("Pilih kelas terlebih dahulu untuk generate laporan WA", "warning");
+                return;
+              }
+              setIsWaModalOpen(true);
+            }}
+            className="w-full h-10 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer shadow-sm"
+          >
+            <MessageCircle className="w-4 h-4" /> Laporan WA
+          </button>
         </div>
       </div>
 
@@ -290,6 +428,111 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
             <span className="flex items-center gap-1"><div className="w-4 h-4 bg-yellow-100 text-yellow-700 rounded flex items-center justify-center">S</div> Sakit</span>
             <span className="flex items-center gap-1"><div className="w-4 h-4 bg-orange-100 text-orange-700 rounded flex items-center justify-center">T</div> Terlambat</span>
             <span className="flex items-center gap-1"><div className="w-4 h-4 bg-red-100 text-red-700 rounded flex items-center justify-center">A</div> Alpa</span>
+          </div>
+        </div>
+      )}
+
+      {/* WHATSAPP GENERATOR MODAL PREVIEW */}
+      {isWaModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header Modal */}
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-emerald-600" />
+                  Preview Laporan WhatsApp
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Laporan absensi harian kelas {selectedClass}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWaModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {/* Date Selector Inside Modal */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Pilih Tanggal Laporan
+                </label>
+                {availableDates.length > 0 ? (
+                  <select
+                    value={selectedWaDate}
+                    onChange={(e) => setSelectedWaDate(e.target.value)}
+                    className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-sm font-semibold p-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    {availableDates.map(d => {
+                      const parsed = new Date(d);
+                      const displayDate = parsed.toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric"
+                      });
+                      return (
+                        <option key={d} value={d}>
+                          {displayDate}
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : (
+                  <input
+                    type="date"
+                    value={selectedWaDate}
+                    onChange={(e) => setSelectedWaDate(e.target.value)}
+                    className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-sm font-semibold p-2.5"
+                  />
+                )}
+                {availableDates.length === 0 && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                    * Belum ada riwayat KBM di kelas ini untuk bulan terpilih. Menggunakan tanggal hari ini.
+                  </p>
+                )}
+              </div>
+
+              {/* Text Area Preview */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Teks Pesan WhatsApp
+                </label>
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl p-4 font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap max-h-80 overflow-y-auto shadow-inner select-all">
+                  {waFormattedText}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <span className="text-[10px] text-slate-400">
+                Gunakan tombol di kanan untuk menyalin atau mengirim langsung.
+              </span>
+              <div className="flex items-center gap-2.5 self-end">
+                <button
+                  type="button"
+                  onClick={handleCopyText}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{isCopied ? "Tersalin!" : "Salin Pesan"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsApp}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Kirim WhatsApp</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

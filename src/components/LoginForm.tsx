@@ -552,7 +552,13 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
                 }`}
               >
                 <UserPlus className="w-4 h-4 text-emerald-500" />
-                <span>Daftar Akun Guru / Staf Baru</span>
+                <span>
+                  {typeof navigator !== "undefined" && 
+                  ((navigator.language || "").toLowerCase().startsWith("en") || 
+                   (navigator.languages || []).some(l => l.toLowerCase().startsWith("en")))
+                    ? "Sign Up" 
+                    : "Daftar"}
+                </span>
               </button>
             </form>
           </motion.div>

@@ -1282,7 +1282,7 @@ export default function App() {
     // REKAP PRESENSI GROUP WITH SUBMENUS
     { id: "rekap_guru", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Presensi Guru", label: "Rekap Presensi Guru", shortLabel: "Rekap Guru", icon: UserCheck, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pimpinan", "pengurus"] },
     { id: "rekap_sholat", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Sholat", label: "Rekap Sholat", shortLabel: "Sholat", icon: Moon, roles: ["super admin", "admin", "guru pondok"] },
-    { id: "rekap_sekolah", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Sekolah (Coming Soon)", label: "Sekolah (Coming Soon)", shortLabel: "Sekolah", icon: School, roles: ["super admin", "admin", "guru pondok", "guru SMP"], isComingSoon: true },
+    { id: "rekap_sekolah", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Siswa Sekolah", label: "Rekap Absensi Siswa", shortLabel: "Siswa Sekolah", icon: School, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     
     // REGISTRASI NFC GROUP WITH SUBMENUS
     { id: "nfc_daftar", group: "REGISTRASI NFC", isSubmenu: true, subLabel: "Daftar Kartu", label: "Daftar Kartu", shortLabel: "Daftar Kartu", icon: Fingerprint, roles: ["super admin", "admin", "guru pondok"] },

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
 import { 
   Users, 
   Plus, 
@@ -17,6 +19,14 @@ import {
 } from "lucide-react";
 import { supabase, SantriData } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+import { 
+  DAYS_OF_WEEK, 
+  parsePeriod,
+  getPeriodDisplayTime, 
+  formatPeriodSchedule 
+} from "../lib/periodHelper";
+
+const MySwal = withReactContent(Swal);
 
 interface ManajemenSekolahPanelProps {
   students: SantriData[];
@@ -84,6 +94,9 @@ export default function ManajemenSekolahPanel({
   const [formJamKe, setFormJamKe] = useState<number>(1);
   const [formMulai, setFormMulai] = useState("07:00");
   const [formSelesai, setFormSelesai] = useState("07:45");
+  const [formPeriodHari, setFormPeriodHari] = useState("Senin");
+  const [formPeriodNama, setFormPeriodNama] = useState("Jam Ke-1");
+  const [formPeriodKode, setFormPeriodKode] = useState("JP-01");
 
   // Jadwal Pelajaran states
   const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
@@ -238,11 +251,17 @@ export default function ManajemenSekolahPanel({
     setIsSyncing(true);
     try {
       // Clear out string IDs to let DB assign incrementing id / uuid
-      const periodsToInsert = lessonPeriods.map(p => ({
-        jam_ke: p.jam_ke,
-        mulai: p.mulai,
-        selesai: p.selesai
-      }));
+      const periodsToInsert = lessonPeriods.map(p => {
+        const pr = parsePeriod(p);
+        return {
+          jam_ke: p.jam_ke,
+          hari: pr.hari,
+          nama: pr.nama,
+          kode: pr.kode,
+          mulai: pr.mulai,
+          selesai: pr.selesai
+        };
+      });
 
       // Try to clear existing just in case (neq "jam_ke" -99 is a safe catch-all delete)
       await supabase.from("jam_pelajaran").delete().neq("jam_ke", -99);
@@ -266,8 +285,17 @@ export default function ManajemenSekolahPanel({
 
   const handleSavePeriod = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    let assignedJamKe = formJamKe;
+    if (!editingPeriodId) {
+      assignedJamKe = lessonPeriods.length > 0 ? Math.max(...lessonPeriods.map(p => p.jam_ke)) + 1 : 1;
+    }
+
     const periodData = {
-      jam_ke: Number(formJamKe),
+      jam_ke: assignedJamKe,
+      hari: formPeriodHari,
+      nama: formPeriodNama,
+      kode: formPeriodKode,
       mulai: formMulai,
       selesai: formSelesai
     };
@@ -280,17 +308,34 @@ export default function ManajemenSekolahPanel({
           .eq("id", editingPeriodId);
         if (error) throw error;
         triggerFeedback("success", "Jam pelajaran berhasil diperbarui");
+        
+        MySwal.fire({
+          title: "Berhasil Diperbarui!",
+          text: `Jam pelajaran ${formPeriodNama} (${formPeriodKode}) telah berhasil diperbarui.`,
+          icon: "success",
+          confirmButtonText: "Selesai",
+          confirmButtonColor: "#2563eb",
+          customClass: {
+            popup: "rounded-2xl"
+          }
+        });
       } else {
-        // Prevent duplicate jam_ke
-        if (lessonPeriods.some(p => p.jam_ke === periodData.jam_ke)) {
-          triggerFeedback("error", `Jam Ke-${periodData.jam_ke} sudah ada!`);
-          return;
-        }
         const { error } = await supabase
           .from("jam_pelajaran")
           .insert([periodData]);
         if (error) throw error;
         triggerFeedback("success", "Jam pelajaran baru ditambahkan");
+
+        MySwal.fire({
+          title: "Berhasil Ditambahkan!",
+          text: `Jam pelajaran ${formPeriodNama} (${formPeriodKode}) telah berhasil disimpan.`,
+          icon: "success",
+          confirmButtonText: "Selesai",
+          confirmButtonColor: "#2563eb",
+          customClass: {
+            popup: "rounded-2xl"
+          }
+        });
       }
     } catch (err) {
       // Local fallback edit/save
@@ -304,9 +349,25 @@ export default function ManajemenSekolahPanel({
       setLessonPeriods(updated);
       localStorage.setItem("school_lesson_periods", JSON.stringify(updated));
       triggerFeedback("success", "Disimpan secara offline!");
+
+      MySwal.fire({
+        title: "Disimpan Offline!",
+        text: `Jam pelajaran ${formPeriodNama} disimpan sementara di browser Anda.`,
+        icon: "info",
+        confirmButtonText: "Selesai",
+        confirmButtonColor: "#2563eb",
+        customClass: {
+          popup: "rounded-2xl"
+        }
+      });
     }
     setIsPeriodFormOpen(false);
     setEditingPeriodId(null);
+    setFormMulai("07:00");
+    setFormSelesai("07:45");
+    setFormPeriodHari("Senin");
+    setFormPeriodNama("Jam Ke-1");
+    setFormPeriodKode("JP-01");
     fetchPeriods();
   };
 
@@ -807,7 +868,31 @@ export default function ManajemenSekolahPanel({
 
       {/* Tab: JAM PELAJARAN */}
       {activeSubTab === "jam_pelajaran" && (
-        <div className="space-y-6 w-full">
+        <div className="space-y-6 w-full" id="jam_pelajaran_tab_container">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-200">
+                Jam Pelajaran Sekolah
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Atur rentang waktu jam pelajaran sekolah formal
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingPeriodId(null);
+                setFormJamKe(lessonPeriods.length > 0 ? Math.max(...lessonPeriods.map(p => p.jam_ke)) + 1 : 1);
+                setFormMulai("07:00");
+                setFormSelesai("07:45");
+                setIsPeriodFormOpen(true);
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Buat Jam
+            </button>
+          </div>
+
           {/* Cloud Database Sync Status Alert Banner */}
           {isCloudPeriodsEmpty && (
             <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
@@ -830,145 +915,246 @@ export default function ManajemenSekolahPanel({
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Jam form */}
-          <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase leading-none">
-                {editingPeriodId ? "Edit Jam Pelajaran" : "Tambah Jam Pelajaran"}
-              </h3>
-              <p className="text-[10px] text-slate-450 font-bold mt-1 uppercase">
-                Atur rentang jam pelajaran sekolah
-              </p>
+          {/* Table displaying Lesson Periods */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="px-6 py-4">Hari</th>
+                    <th className="px-6 py-4">Nama</th>
+                    <th className="px-6 py-4">Kode</th>
+                    <th className="px-6 py-4">Jam Mulai</th>
+                    <th className="px-6 py-4">Jam Selesai</th>
+                    <th className="px-6 py-4 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-semibold">
+                  {lessonPeriods.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">
+                        Belum ada jam pelajaran yang diinput. Klik "Buat Jam" untuk menambahkan.
+                      </td>
+                    </tr>
+                  ) : (
+                    lessonPeriods.map((p) => {
+                      const parsed = parsePeriod(p);
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors align-top">
+                          <td className="px-6 py-4 text-slate-850 dark:text-slate-200">
+                            <span className="block bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-lg text-[10px] font-bold w-fit whitespace-nowrap">
+                              {parsed.hari}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-800 dark:text-slate-200 font-bold vertical-middle">
+                            {parsed.nama}
+                          </td>
+                          <td className="px-6 py-4 font-mono text-indigo-600 dark:text-indigo-400 font-bold vertical-middle">
+                            {parsed.kode}
+                          </td>
+                          <td className="px-6 py-4 font-mono text-slate-700 dark:text-slate-300">
+                            <span className="block font-semibold">
+                              {parsed.mulai}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-mono text-slate-700 dark:text-slate-300">
+                            <span className="block font-semibold">
+                              {parsed.selesai}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex justify-center items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const pr = parsePeriod(p);
+                                  setEditingPeriodId(p.id);
+                                  setFormJamKe(p.jam_ke);
+                                  setFormPeriodHari(pr.hari);
+                                  setFormPeriodNama(pr.nama);
+                                  setFormPeriodKode(pr.kode);
+                                  setFormMulai(pr.mulai);
+                                  setFormSelesai(pr.selesai);
+                                  setIsPeriodFormOpen(true);
+                                }}
+                                className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors cursor-pointer"
+                                title="Edit Jam"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePeriod(p.id)}
+                                className="p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                title="Hapus Jam"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
+            <div className="px-6 py-3.5 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500 font-medium">
+              <span>Total {lessonPeriods.length} Sesi Terdaftar</span>
+              <span className="italic">* Sesi berlaku untuk hari Senin s.d Sabtu</span>
+            </div>
+          </div>
 
-            <form onSubmit={handleSavePeriod} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block">
-                  Jam Ke- (Angka)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={formJamKe}
-                  onChange={(e) => setFormJamKe(Number(e.target.value))}
-                  className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block">
-                    Jam Mulai
-                  </label>
-                  <input
-                    type="time"
-                    value={formMulai}
-                    onChange={(e) => setFormMulai(e.target.value)}
-                    className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block">
-                    Jam Selesai
-                  </label>
-                  <input
-                    type="time"
-                    value={formSelesai}
-                    onChange={(e) => setFormSelesai(e.target.value)}
-                    className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                {editingPeriodId && (
+          {/* Form Modal for Create/Edit Period */}
+          {isPeriodFormOpen && (
+            <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+              <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase">
+                      {editingPeriodId ? "Edit Jam Pelajaran" : "Buat Jam Pelajaran"}
+                    </h3>
+                    <p className="text-[10px] text-slate-450 font-bold uppercase mt-0.5">
+                      Tentukan rentang jam sekolah formal
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
+                      setIsPeriodFormOpen(false);
                       setEditingPeriodId(null);
-                      setFormJamKe(1);
-                      setFormMulai("07:00");
-                      setFormSelesai("07:45");
                     }}
-                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl"
+                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer text-lg font-bold"
                   >
-                    Batal
+                    ×
                   </button>
-                )}
-                <button
-                  type="submit"
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl"
-                >
-                  {editingPeriodId ? "Simpan Perubahan" : "Simpan Jam Pelajaran"}
-                </button>
-              </div>
-            </form>
-          </div>
+                </div>
 
-          {/* Jam periods listing */}
-          <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex justify-between items-center">
-              <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase leading-none">
-                Daftar Rentang Jam Pelajaran
-              </h3>
-              <span className="text-[10px] bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold px-2 py-0.5 rounded font-mono">
-                {lessonPeriods.length} Sesi Terdaftar
-              </span>
-            </div>
-
-            {lessonPeriods.length === 0 ? (
-              <p className="text-center py-16 text-xs text-slate-400 italic">Belum ada jam pelajaran yang diinput.</p>
-            ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {lessonPeriods.map((p) => (
-                  <div key={p.id} className="py-3 flex items-center justify-between hover:bg-slate-50/50 dark:hover:bg-slate-800/10 px-2 transition-colors rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-black text-xs">
-                        {p.jam_ke}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200">
-                          Jam Pelajaran Ke-{p.jam_ke}
-                        </h4>
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          Pukul {p.mulai} - {p.selesai}
-                        </span>
-                      </div>
+                {/* Form Body */}
+                <form onSubmit={handleSavePeriod} className="p-6 space-y-4">
+                  {/* Visual Info Block */}
+                  <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-center text-[11px] font-bold">
+                    <div className="space-y-0.5">
+                      <span className="block text-[9px] text-slate-400 uppercase">HARI</span>
+                      <span className="text-slate-700 dark:text-slate-300">
+                        {formPeriodHari}
+                      </span>
                     </div>
-
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => {
-                          setEditingPeriodId(p.id);
-                          setFormJamKe(p.jam_ke);
-                          setFormMulai(p.mulai);
-                          setFormSelesai(p.selesai);
-                        }}
-                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
-                        title="Edit Jam"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeletePeriod(p.id)}
-                        className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                        title="Hapus Jam"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="space-y-0.5 border-x border-slate-200 dark:border-slate-800">
+                      <span className="block text-[9px] text-slate-400 uppercase">NAMA</span>
+                      <span className="text-slate-700 dark:text-slate-300">{formPeriodNama || "-"}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="block text-[9px] text-slate-400 uppercase">KODE</span>
+                      <span className="text-blue-600 dark:text-blue-400 font-mono font-bold uppercase">{formPeriodKode || "-"}</span>
                     </div>
                   </div>
-                ))}
+
+                  {/* Dropdown: Hari */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block font-bold">
+                      Hari
+                    </label>
+                    <select
+                      value={formPeriodHari}
+                      onChange={(e) => setFormPeriodHari(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
+                      required
+                    >
+                      {DAYS_OF_WEEK.map((day) => (
+                        <option key={day} value={day}>{day}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Input: Nama */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block font-bold">
+                      Nama Jam Pelajaran
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Jam Ke-6, Jam Istirahat, dll"
+                      value={formPeriodNama}
+                      onChange={(e) => setFormPeriodNama(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
+                      required
+                    />
+                  </div>
+
+                  {/* Input: Kode */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block font-bold">
+                      Kode
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: JP-06, IST-1"
+                      value={formPeriodKode}
+                      onChange={(e) => setFormPeriodKode(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200 uppercase"
+                      required
+                    />
+                  </div>
+
+                  {/* Grid: Start and End Time */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block font-bold">
+                        Jam Mulai
+                      </label>
+                      <input
+                        type="time"
+                        value={formMulai}
+                        onChange={(e) => setFormMulai(e.target.value)}
+                        className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block font-bold">
+                        Jam Selesai
+                      </label>
+                      <input
+                        type="time"
+                        value={formSelesai}
+                        onChange={(e) => setFormSelesai(e.target.value)}
+                        className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer Buttons */}
+                  <div className="pt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPeriodFormOpen(false);
+                        setEditingPeriodId(null);
+                        setFormMulai("07:00");
+                        setFormSelesai("07:45");
+                        setFormPeriodHari("Senin");
+                        setFormPeriodNama("Jam Ke-1");
+                        setFormPeriodKode("JP-01");
+                      }}
+                      className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer"
+                    >
+                      {editingPeriodId ? "Simpan Perubahan" : "Simpan Jam Pelajaran"}
+                    </button>
+                  </div>
+                </form>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1147,9 +1333,22 @@ export default function ManajemenSekolahPanel({
                         onChange={(e) => setFormScheduleJamKe(Number(e.target.value))}
                         className="w-full p-2 bg-slate-55 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-bold text-xs"
                       >
-                        {lessonPeriods.map(p => (
-                          <option key={p.id} value={p.jam_ke}>Jam Ke-{p.jam_ke} ({p.mulai}-{p.selesai})</option>
-                        ))}
+                        {(() => {
+                          const parsedList = lessonPeriods.map(p => parsePeriod(p));
+                          const sameDayList = parsedList.filter(pr => pr.hari === formHari);
+                          if (sameDayList.length > 0) {
+                            return sameDayList.map(pr => (
+                              <option key={pr.id} value={pr.jam_ke}>
+                                {pr.nama} ({pr.kode}): {pr.mulai} - {pr.selesai}
+                              </option>
+                            ));
+                          }
+                          return parsedList.map(pr => (
+                            <option key={pr.id} value={pr.jam_ke}>
+                              [{pr.hari}] {pr.nama} ({pr.kode}): {pr.mulai} - {pr.selesai}
+                            </option>
+                          ));
+                        })()}
                         {lessonPeriods.length === 0 && (
                           <option value="1">Jam Ke-1 (07:00-07:45)</option>
                         )}
