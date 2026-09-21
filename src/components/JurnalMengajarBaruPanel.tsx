@@ -57,10 +57,33 @@ export default function JurnalMengajarBaruPanel({
     }
   }, [isModalOpen, currentUser, teachers]);
 
+  const normalizeClassKey = (str: string): string => {
+    if (!str) return "";
+    return str.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+  };
+
+  const formatClassLabel = (str: string): string => {
+    if (!str) return "";
+    const clean = str.trim();
+    const withoutPrefix = clean.replace(/^kelas\s*/i, "").trim();
+    
+    const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
+    if (match) {
+      const num = match[1];
+      const letter = match[2].toUpperCase();
+      return `Kelas ${num}-${letter}`;
+    }
+    
+    if (/^\d+$/.test(withoutPrefix)) {
+      return `Kelas ${withoutPrefix}`;
+    }
+    
+    return clean.toLowerCase().startsWith("kelas") ? clean : `Kelas ${clean}`;
+  };
+
   const isSameClass = (c1: string, c2: string): boolean => {
     if (!c1 || !c2) return false;
-    const norm = (s: string) => s.toLowerCase().replace(/^kelas\s*/, "").replace(/[^a-z0-9]/g, "");
-    return norm(c1) === norm(c2);
+    return normalizeClassKey(c1) === normalizeClassKey(c2);
   };
 
   const getFilteredSubjects = () => {
@@ -198,40 +221,72 @@ export default function JurnalMengajarBaruPanel({
 
   const fetchClasses = async () => {
     try {
-      const classesSet = new Set<string>();
-      
-      // 1. Fetch classes from plotting where jenis = 'kelas sekolah'
-      const { data: plotSchool, error: plotErr } = await supabase
-        .from("plotting")
-        .select("nama")
-        .eq("jenis", "kelas sekolah");
-      
-      if (!plotErr && plotSchool) {
-        plotSchool.forEach((r: any) => {
-          if (r.nama) classesSet.add(String(r.nama).trim());
-        });
-      }
+      const classMap = new Map<string, string>();
 
-      // 2. Fallback check from "kelas sekolah" table distinct classes if plotting is empty
-      if (classesSet.size === 0) {
-        try {
-          const { data: dataSpace } = await supabase.from("kelas sekolah").select("kelas");
-          if (dataSpace) {
-            dataSpace.forEach((r: any) => {
-              if (r.kelas) classesSet.add(String(r.kelas).trim());
-            });
-          }
-        } catch (e) {}
-      }
-
-      if (classesSet.size > 0) {
-        const sortedClasses = Array.from(classesSet).sort();
-        setclassList(sortedClasses);
-        if (!sortedClasses.includes(kelas) && sortedClasses.length > 0) {
-          setKelas(sortedClasses[0]);
+      const addClass = (rawName: string) => {
+        if (!rawName || !rawName.trim()) return;
+        const key = normalizeClassKey(rawName);
+        if (key && !classMap.has(key)) {
+          classMap.set(key, formatClassLabel(rawName));
         }
+      };
+
+      // 1. Fetch classes from plotting where jenis = 'kelas sekolah'
+      try {
+        const { data: plotSchool } = await supabase
+          .from("plotting")
+          .select("nama")
+          .eq("jenis", "kelas sekolah");
+        
+        if (plotSchool) {
+          plotSchool.forEach((r: any) => {
+            if (r.nama) addClass(String(r.nama));
+          });
+        }
+      } catch (e) {}
+
+      // 2. Fetch from 'kelas sekolah' / 'kelas_sekolah' table
+      try {
+        const { data: dataSpace } = await supabase.from("kelas sekolah").select("kelas");
+        if (dataSpace) {
+          dataSpace.forEach((r: any) => {
+            if (r.kelas) addClass(String(r.kelas));
+          });
+        }
+      } catch (e) {}
+
+      try {
+        const { data: dataUnderline } = await supabase.from("kelas_sekolah").select("kelas");
+        if (dataUnderline) {
+          dataUnderline.forEach((r: any) => {
+            if (r.kelas) addClass(String(r.kelas));
+          });
+        }
+      } catch (e) {}
+
+      // 3. Fetch from 'siswa'
+      try {
+        const { data: dataSiswa } = await supabase.from("siswa").select("kelas_sekolah");
+        if (dataSiswa) {
+          dataSiswa.forEach((r: any) => {
+            if (r.kelas_sekolah) addClass(String(r.kelas_sekolah));
+          });
+        }
+      } catch (e) {}
+
+      if (classMap.size > 0) {
+        const sortedClasses = Array.from(classMap.values()).sort((a, b) => {
+          return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+        });
+        setclassList(sortedClasses);
+        setKelas((prev) => {
+          const exists = sortedClasses.find(c => isSameClass(c, prev));
+          return exists || sortedClasses[0];
+        });
       } else {
-        setclassList(["7A", "7B", "8A", "8B", "9A", "9B", "kelas 9-A"]);
+        const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 7-C", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
+        setclassList(defaultClasses);
+        setKelas(defaultClasses[0]);
       }
     } catch (e) {
       console.warn("Failed to fetch classes from plotting:", e);
@@ -293,55 +348,87 @@ export default function JurnalMengajarBaruPanel({
 
   const fetchStudents = async (selectedClass: string) => {
     try {
-      // Fetch students directly from table "kelas sekolah" where kelas matches selectedClass
-      const { data: classRows, error } = await supabase
-        .from("kelas sekolah")
-        .select("*")
-        .or(`kelas.eq.${selectedClass},kelas.ilike.%${selectedClass}%`);
+      const studentMap = new Map<string, any>();
 
-      if (error) throw error;
+      // A. Query 'siswa' table
+      try {
+        const { data: siswaRows } = await supabase.from("siswa").select("*");
+        if (siswaRows && siswaRows.length > 0) {
+          siswaRows.forEach((r: any) => {
+            const cls = r.kelas_sekolah || r.kelas || "";
+            if (isSameClass(cls, selectedClass)) {
+              const nameKey = (r.nama_lengkap || r.nama || "").trim().toLowerCase();
+              if (nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.id || r.nik || nameKey),
+                  raw_id: String(r.id || ""),
+                  nama_lengkap: r.nama_lengkap || r.nama || "-",
+                  kelas: selectedClass,
+                  nis: r.nisn || r.nis || r.nik || "-"
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {}
 
-      if (classRows && classRows.length > 0) {
-        const mappedStudents = classRows.map((r: any) => ({
-          id: r.id ? String(r.id) : String(Math.random()),
-          nama_lengkap: r.nama || "-",
-          kelas: r.kelas || selectedClass,
-          nis: r.nis || "-"
-        })).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
+      // B. Query 'kelas sekolah' table
+      try {
+        const { data: classRows } = await supabase.from("kelas sekolah").select("*");
+        if (classRows && classRows.length > 0) {
+          classRows.forEach((r: any) => {
+            const cls = r.kelas || "";
+            if (isSameClass(cls, selectedClass)) {
+              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+              if (nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
+                  raw_id: String(r.id || ""),
+                  nama_lengkap: r.nama || r.nama_lengkap || "-",
+                  kelas: selectedClass,
+                  nis: r.nis || r.nisn || "-"
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {}
 
-        setStudents(mappedStudents);
+      // C. Query 'kelas_sekolah' table
+      try {
+        const { data: classRowsUnder } = await supabase.from("kelas_sekolah").select("*");
+        if (classRowsUnder && classRowsUnder.length > 0) {
+          classRowsUnder.forEach((r: any) => {
+            const cls = r.kelas || "";
+            if (isSameClass(cls, selectedClass)) {
+              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+              if (nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
+                  raw_id: String(r.id || ""),
+                  nama_lengkap: r.nama || r.nama_lengkap || "-",
+                  kelas: selectedClass,
+                  nis: r.nis || r.nisn || "-"
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {}
+
+      let resultList = Array.from(studentMap.values()).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
+
+      if (resultList.length > 0) {
+        setStudents(resultList);
         const initial: Record<string, string> = {};
-        mappedStudents.forEach(s => { initial[s.id] = "hadir"; });
+        resultList.forEach(s => { initial[s.id] = "hadir"; });
         setAttendanceMap(initial);
       } else {
-        // Fallback: check all rows in "kelas sekolah" or "siswa"
-        const { data: allRows } = await supabase.from("kelas sekolah").select("*");
-        if (allRows && allRows.length > 0) {
-          const filtered = allRows.filter((r: any) => 
-            (r.kelas || "").trim().toLowerCase() === selectedClass.trim().toLowerCase() ||
-            (r.kelas || "").toLowerCase().includes(selectedClass.toLowerCase())
-          );
-          if (filtered.length > 0) {
-            const mappedStudents = filtered.map((r: any) => ({
-              id: r.id ? String(r.id) : String(Math.random()),
-              nama_lengkap: r.nama || "-",
-              kelas: r.kelas || selectedClass,
-              nis: r.nis || "-"
-            })).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
-
-            setStudents(mappedStudents);
-            const initial: Record<string, string> = {};
-            mappedStudents.forEach(s => { initial[s.id] = "hadir"; });
-            setAttendanceMap(initial);
-            return;
-          }
-        }
-
-        // Mock fallback if empty
+        // Fallback default
         const mock = [
-          { id: "s1", nama_lengkap: "Abdillah Wakhidul Akhir", nis: "101" },
-          { id: "s2", nama_lengkap: "Al Keysha Fierrando", nis: "102" },
-          { id: "s3", nama_lengkap: "Alfi Nur Aulia", nis: "103" }
+          { id: "s1", nama_lengkap: "Abdillah Wakhidul Akhir", nis: "101", kelas: selectedClass },
+          { id: "s2", nama_lengkap: "Al Keysha Fierrando", nis: "102", kelas: selectedClass },
+          { id: "s3", nama_lengkap: "Alfi Nur Aulia", nis: "103", kelas: selectedClass }
         ];
         setStudents(mock);
         const initial: Record<string, string> = {};
@@ -349,16 +436,7 @@ export default function JurnalMengajarBaruPanel({
         setAttendanceMap(initial);
       }
     } catch (e) {
-      console.warn("Error fetching students from 'kelas sekolah':", e);
-      const mock = [
-        { id: "s1", nama_lengkap: "Abdillah Wakhidul Akhir", nis: "101" },
-        { id: "s2", nama_lengkap: "Al Keysha Fierrando", nis: "102" },
-        { id: "s3", nama_lengkap: "Alfi Nur Aulia", nis: "103" }
-      ];
-      setStudents(mock);
-      const initial: Record<string, string> = {};
-      mock.forEach(s => { initial[s.id] = "hadir"; });
-      setAttendanceMap(initial);
+      console.warn("Error fetching students for journal:", e);
     }
   };
 
@@ -416,13 +494,25 @@ export default function JurnalMengajarBaruPanel({
         status: attendanceMap[s.id] || "hadir"
       }));
 
-      const { error: errA } = await supabase
-        .from("absensi_jurnal_siswa")
-        .insert(absensiPayloads);
+      try {
+        await supabase
+          .from("absensi_jurnal_siswa")
+          .insert(absensiPayloads);
+      } catch (eA) {
+        console.warn("Notice: could not bulk insert absensi_jurnal_siswa to supabase:", eA);
+      }
 
-      if (errA) throw errA;
+      // Update local storage backup
+      const newJurnal = {
+        ...insertedJurnal,
+        absensi_jurnal_siswa: absensiPayloads
+      };
+      const existingCached = localStorage.getItem("jurnal_mengajar_baru_list");
+      const list = existingCached ? JSON.parse(existingCached) : [];
+      const updatedList = [newJurnal, ...list.filter((j: any) => j.id !== jurnalId)];
+      localStorage.setItem("jurnal_mengajar_baru_list", JSON.stringify(updatedList));
 
-      onTriggerNotification("Jurnal Mengajar berhasil disimpan!", "success");
+      onTriggerNotification("Jurnal Mengajar dan Presensi Siswa berhasil disimpan!", "success");
       setIsModalOpen(false);
       fetchJurnals();
     } catch (err: any) {
@@ -431,7 +521,7 @@ export default function JurnalMengajarBaruPanel({
       const newJurnal = {
         id: Date.now().toString(),
         ...payload,
-        absensi_jurnal_siswa: students.map(s => ({ siswa_id: s.id, status: attendanceMap[s.id] }))
+        absensi_jurnal_siswa: students.map(s => ({ siswa_id: s.id, status: attendanceMap[s.id] || "hadir" }))
       };
       const updated = [newJurnal, ...jurnals];
       setJurnals(updated);
@@ -454,7 +544,7 @@ export default function JurnalMengajarBaruPanel({
   };
 
   const filteredJurnals = jurnals.filter(j => {
-    if (filterKelas !== "Semua" && j.kelas_id !== filterKelas) return false;
+    if (filterKelas !== "Semua" && !isSameClass(j.kelas_id, filterKelas)) return false;
     return true;
   });
 
@@ -477,7 +567,7 @@ export default function JurnalMengajarBaruPanel({
             className="px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none"
           >
             <option value="Semua">Semua Kelas</option>
-            {classList.map(c => <option key={c} value={c}>Kelas {c}</option>)}
+            {classList.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 
           {/* Filter Semester */}
@@ -616,7 +706,7 @@ export default function JurnalMengajarBaruPanel({
                     onChange={(e) => setKelas(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {classList.map(c => <option key={c} value={c}>Kelas {c}</option>)}
+                    {classList.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
 

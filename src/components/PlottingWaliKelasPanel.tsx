@@ -71,7 +71,7 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
     setIsLoading(true);
     try {
       // 1. Fetch school classes from 'plotting' (jenis = 'kelas sekolah')
-      const classesList: { id: number; nama: string }[] = [];
+      const classKeyMap = new Map<string, { id: number; nama: string }>();
       try {
         const { data: plotClasses } = await supabase
           .from("plotting")
@@ -79,11 +79,18 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
           .eq("jenis", "kelas sekolah");
         if (plotClasses && plotClasses.length > 0) {
           plotClasses.forEach((c: any) => {
-            if (c.nama) {
-              classesList.push({
-                id: Number(c.id),
-                nama: c.nama
-              });
+            if (c.nama && String(c.nama).trim()) {
+              const raw = String(c.nama).trim();
+              const key = raw.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+              const withoutPrefix = raw.replace(/^kelas\s*/i, "").trim();
+              const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
+              const label = match ? `Kelas ${match[1]}-${match[2].toUpperCase()}` : (/^\d+$/.test(withoutPrefix) ? `Kelas ${withoutPrefix}` : (raw.toLowerCase().startsWith("kelas") ? raw : `Kelas ${raw}`));
+              if (key && !classKeyMap.has(key)) {
+                classKeyMap.set(key, {
+                  id: Number(c.id),
+                  nama: label
+                });
+              }
             }
           });
         }
@@ -92,16 +99,21 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
       }
 
       // If database is empty, fallback using schoolClasses strings to prevent blank screen
-      if (classesList.length === 0 && schoolClasses && schoolClasses.length > 0) {
+      if (classKeyMap.size === 0 && schoolClasses && schoolClasses.length > 0) {
         schoolClasses.forEach((clsName, index) => {
-          classesList.push({
-            id: 1000 + index,
-            nama: clsName
-          });
+          if (clsName && clsName.trim()) {
+            const key = clsName.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+            if (key && !classKeyMap.has(key)) {
+              classKeyMap.set(key, {
+                id: 1000 + index,
+                nama: clsName
+              });
+            }
+          }
         });
       }
 
-      setAvailableClasses(classesList.sort((a, b) => a.nama.localeCompare(b.nama)));
+      setAvailableClasses(Array.from(classKeyMap.values()).sort((a, b) => a.nama.localeCompare(b.nama, undefined, { numeric: true, sensitivity: "base" })));
 
       // 2. Fetch Wali Kelas from 'guru' and map with 'pengguna' (nama_lengkap)
       const gList: { id: string; nama: string; no_hp?: string; pengguna_id?: string }[] = [];

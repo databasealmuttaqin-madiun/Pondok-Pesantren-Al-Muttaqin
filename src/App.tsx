@@ -564,7 +564,22 @@ export default function App() {
             .eq("jenis", "kelas sekolah");
 
           if (plotSchool && plotSchool.length > 0) {
-            const dbSchoolListPlot = plotSchool.map((r) => r.nama).filter(Boolean);
+            const classMap = new Map<string, string>();
+            plotSchool.forEach((r: any) => {
+              if (r.nama && String(r.nama).trim()) {
+                const raw = String(r.nama).trim();
+                const key = raw.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+                const withoutPrefix = raw.replace(/^kelas\s*/i, "").trim();
+                const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
+                const label = match ? `Kelas ${match[1]}-${match[2].toUpperCase()}` : (/^\d+$/.test(withoutPrefix) ? `Kelas ${withoutPrefix}` : (raw.toLowerCase().startsWith("kelas") ? raw : `Kelas ${raw}`));
+                if (key && !classMap.has(key)) {
+                  classMap.set(key, label);
+                }
+              }
+            });
+            const dbSchoolListPlot = Array.from(classMap.values()).sort((a, b) =>
+              a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+            );
             setSchoolClasses(dbSchoolListPlot);
             localStorage.setItem("manajemen_school_classes", JSON.stringify(dbSchoolListPlot));
           }

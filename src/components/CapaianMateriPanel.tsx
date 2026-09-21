@@ -62,14 +62,25 @@ interface CapaianMateriPanelProps {
   onTriggerNotification?: (message: string, type: "success" | "error" | "warning") => void;
 }
 
-// Default fallback list of materials/books if database table is empty
+// Default fallback list of materials/books: Juz 1-30 first (Al-Qur'an), then Al-Hadist / Kitab Kuning
 const DEFAULT_MATERI_LIST: MateriItem[] = [
-  { id: 1, nama_materi: "Al-Qur'an", kelompok: "alquran", jumlah_halaman: 604, urutan: 1 },
-  { id: 2, nama_materi: "Kitab Hidayatus Shibyan", kelompok: "himpunan", jumlah_halaman: 40, urutan: 2 },
-  { id: 3, nama_materi: "Kitab Mabadi Fiqhiyyah", kelompok: "himpunan", jumlah_halaman: 50, urutan: 3 },
-  { id: 4, nama_materi: "Kitab Aqidatul Awam", kelompok: "himpunan", jumlah_halaman: 30, urutan: 4 },
-  { id: 5, nama_materi: "Kitab Ta'lim Muta'allim", kelompok: "himpunan", jumlah_halaman: 80, urutan: 5 },
-  { id: 6, nama_materi: "Kitab Safinatun Najah", kelompok: "himpunan", jumlah_halaman: 35, urutan: 6 },
+  ...Array.from({ length: 30 }, (_, i) => ({
+    id: `juz_${i + 1}`,
+    nama_materi: `Juz ${i + 1}`,
+    kelompok: "alquran",
+    jumlah_halaman: i === 29 ? 24 : 20,
+    urutan: i + 1
+  })),
+  { id: "k_ahkam", nama_materi: "K. Ahkam", kelompok: "hadist", jumlah_halaman: 124, urutan: 31 },
+  { id: "k_jihad", nama_materi: "K. Jihad", kelompok: "hadist", jumlah_halaman: 63, urutan: 32 },
+  { id: "k_hajji", nama_materi: "K. Hajji", kelompok: "hadist", jumlah_halaman: 111, urutan: 33 },
+  { id: "k_manasik", nama_materi: "K. Manasiki Hajji", kelompok: "hadist", jumlah_halaman: 113, urutan: 34 },
+  { id: "k_imaroh", nama_materi: "K. Imaroh", kelompok: "hadist", jumlah_halaman: 80, urutan: 35 },
+  { id: "k_safinah", nama_materi: "Kitab Safinatun Najah", kelompok: "hadist", jumlah_halaman: 35, urutan: 36 },
+  { id: "k_talim", nama_materi: "Kitab Ta'lim Muta'allim", kelompok: "hadist", jumlah_halaman: 80, urutan: 37 },
+  { id: "k_aqidah", nama_materi: "Kitab Aqidatul Awam", kelompok: "hadist", jumlah_halaman: 30, urutan: 38 },
+  { id: "k_mabadi", nama_materi: "Kitab Mabadi Fiqhiyyah", kelompok: "hadist", jumlah_halaman: 50, urutan: 39 },
+  { id: "k_hidayatus", nama_materi: "Kitab Hidayatus Shibyan", kelompok: "hadist", jumlah_halaman: 40, urutan: 40 },
 ];
 
 export default function CapaianMateriPanel({
@@ -376,15 +387,60 @@ export default function CapaianMateriPanel({
     };
   };
 
-  // Open Edit Modal
+  // Helper for Al-Qur'an Progress (%)
+  const getAlQuranProgress = (studentId: string | number) => {
+    const quranItems = materiList.filter(m => m.kelompok === 'alquran' || String(m.nama_materi).toLowerCase().includes("juz") || String(m.nama_materi).toLowerCase().includes("qur'an"));
+    const totalPages = 604;
+    let completedPages = 0;
+    quranItems.forEach(q => {
+      const key = `${studentId}_${q.id}`;
+      const rec = capaianRecords[key];
+      if (rec && !rec.belum_disampaikan && rec.halaman_dimaknai) {
+        completedPages += rec.halaman_dimaknai.length;
+      }
+    });
+    const percentage = totalPages > 0 ? Math.min(100, Math.round((completedPages / totalPages) * 1000) / 10) : 0;
+    return { count: completedPages, total: totalPages, percentage };
+  };
+
+  // Helper for Al-Hadist / Kitab Progress (%)
+  const getAlHadistProgress = (student: any) => {
+    const kitabItems = materiList.filter(m => m.kelompok !== 'alquran' && !String(m.nama_materi).toLowerCase().includes("juz") && !String(m.nama_materi).toLowerCase().includes("qur'an"));
+    if (kitabItems.length === 0) return { count: 0, total: 100, percentage: 0 };
+    
+    let totalPagesSum = 0;
+    let completedPagesSum = 0;
+    
+    kitabItems.forEach(kitab => {
+      const total = kitab.jumlah_halaman || 40;
+      totalPagesSum += total;
+      const key = `${student.id}_${kitab.id}`;
+      const rec = capaianRecords[key];
+      if (rec && !rec.belum_disampaikan && rec.halaman_dimaknai) {
+        completedPagesSum += rec.halaman_dimaknai.length;
+      }
+    });
+
+    const percentage = totalPagesSum > 0 ? Math.min(100, Math.round((completedPagesSum / totalPagesSum) * 1000) / 10) : 0;
+    return { count: completedPagesSum, total: totalPagesSum, percentage };
+  };
+
+  const [studentCapacities, setStudentCapacities] = useState<Record<string, { halaman_dimaknai: number[], belum_disampaikan: boolean, catatan: string }>>({});
+
+  // Open Edit Page (dedicated sub-page view)
   const handleOpenEditModal = (student: any) => {
     setEditingStudent(student);
-    const data = getCapaianData(student.id, currentMateri.id);
-    setFormBelumDisampaikan(data.belum_disampaikan);
-    setFormHalamanDimaknai(data.halaman_dimaknai || []);
-    setFormCatatan(data.catatan || "");
-    setPageRangeStart(1);
-    setIsEditModalOpen(true);
+    const caps: Record<string, { halaman_dimaknai: number[], belum_disampaikan: boolean, catatan: string }> = {};
+    materiList.forEach(m => {
+      const key = `${student.id}_${m.id}`;
+      const rec = capaianRecords[key];
+      caps[m.id] = {
+        halaman_dimaknai: rec?.halaman_dimaknai ? [...rec.halaman_dimaknai] : [],
+        belum_disampaikan: rec ? Boolean(rec.belum_disampaikan) : false,
+        catatan: rec?.catatan || ""
+      };
+    });
+    setStudentCapacities(caps);
   };
 
   // Open View Modal
@@ -431,75 +487,66 @@ export default function CapaianMateriPanel({
     });
   };
 
-  // Save Capaian Progress
-  const handleSaveCapaian = async () => {
-    if (!editingStudent || !currentMateri) return;
-
+  // Save All Capaian Progress for all materials in 1 page
+  const handleSaveAllCapacities = async () => {
+    if (!editingStudent) return;
     setIsSubmitting(true);
     try {
-      const recordKey = `${editingStudent.id}_${currentMateri.id}`;
-      const updatedByName = currentUser?.nama || currentUser?.nama_lengkap || (isWaliKamarUser ? "Wali Kamar" : "Guru Pengasuh");
-      const totalPages = currentMateri.jumlah_halaman || 40;
+      const updatedRecords = { ...capaianRecords };
+      const nowIso = new Date().toISOString();
+      const updaterName = currentUser?.nama || currentUser?.nama_lengkap || (isWaliKamarUser ? "Wali Kamar" : "Guru Pengasuh");
 
-      const newRecord: CapaianSantriRecord = {
-        id: recordKey,
-        santri_id: editingStudent.id,
-        santri_nama: editingStudent.nama_lengkap || editingStudent.nama || "",
-        kamar: editingStudent.kamar || "",
-        kelas_pengajian: editingStudent.kelas_pengajian || "",
-        materi_id: currentMateri.id,
-        materi_nama: currentMateri.nama_materi,
-        total_halaman: totalPages,
-        belum_disampaikan: formBelumDisampaikan,
-        halaman_dimaknai: formBelumDisampaikan ? [] : formHalamanDimaknai,
-        catatan: formCatatan,
-        updated_at: new Date().toISOString(),
-        updated_by: updatedByName
-      };
+      for (const m of materiList) {
+        const capData = studentCapacities[m.id] || { halaman_dimaknai: [], belum_disampaikan: false, catatan: "" };
+        const key = `${editingStudent.id}_${m.id}`;
+        const totalPages = m.jumlah_halaman || 40;
 
-      // 1. Update local state
-      const nextRecords = {
-        ...capaianRecords,
-        [recordKey]: newRecord
-      };
-      setCapaianRecords(nextRecords);
-      localStorage.setItem("capaian_materi_santri_data", JSON.stringify(nextRecords));
-
-      // 2. Upsert to Supabase
-      try {
-        const payload = {
-          id: String(recordKey),
-          santri_id: String(editingStudent.id),
+        const newRec: CapaianSantriRecord = {
+          id: key,
+          santri_id: editingStudent.id,
           santri_nama: editingStudent.nama_lengkap || editingStudent.nama || "",
           kamar: editingStudent.kamar || "",
           kelas_pengajian: editingStudent.kelas_pengajian || "",
-          materi_id: currentMateri.id,
-          materi_nama: currentMateri.nama_materi,
+          materi_id: m.id,
+          materi_nama: m.nama_materi,
           total_halaman: totalPages,
-          belum_disampaikan: formBelumDisampaikan,
-          halaman_dimaknai: formBelumDisampaikan ? [] : formHalamanDimaknai,
-          catatan: formCatatan,
-          updated_at: new Date().toISOString(),
-          updated_by: updatedByName
+          belum_disampaikan: capData.belum_disampaikan,
+          halaman_dimaknai: capData.belum_disampaikan ? [] : capData.halaman_dimaknai,
+          catatan: capData.catatan,
+          updated_at: nowIso,
+          updated_by: updaterName
         };
 
-        const { error: dbError } = await supabase.from("capaian_santri").upsert(payload);
-        if (dbError) {
-          console.error("Supabase error saving capaian_santri:", dbError);
-          if (onTriggerNotification) {
-            onTriggerNotification(`Error Supabase: ${dbError.message}`, "error");
-          }
-        } else if (onTriggerNotification) {
-          onTriggerNotification(`Capaian ${currentMateri.nama_materi} untuk ${editingStudent.nama_lengkap || editingStudent.nama} berhasil disimpan ke database!`, "success");
-        }
-      } catch (err: any) {
-        console.warn("Notice saving to Supabase:", err?.message);
+        updatedRecords[key] = newRec;
+
+        try {
+          await supabase.from("capaian_santri").upsert({
+            id: String(key),
+            santri_id: String(editingStudent.id),
+            santri_nama: editingStudent.nama_lengkap || editingStudent.nama || "",
+            kamar: editingStudent.kamar || "",
+            kelas_pengajian: editingStudent.kelas_pengajian || "",
+            materi_id: m.id,
+            materi_nama: m.nama_materi,
+            total_halaman: totalPages,
+            belum_disampaikan: capData.belum_disampaikan,
+            halaman_dimaknai: capData.belum_disampaikan ? [] : capData.halaman_dimaknai,
+            catatan: capData.catatan,
+            updated_at: nowIso,
+            updated_by: updaterName
+          }, { onConflict: 'id' });
+        } catch (err) {}
       }
 
-      setIsEditModalOpen(false);
+      setCapaianRecords(updatedRecords);
+      localStorage.setItem("capaian_materi_santri_data", JSON.stringify(updatedRecords));
+      if (onTriggerNotification) {
+        onTriggerNotification("Capaian seluruh materi santri berhasil disimpan ke Supabase!", "success");
+      }
+      setEditingStudent(null);
     } catch (err: any) {
       if (onTriggerNotification) {
-        onTriggerNotification("Gagal menyimpan capaian: " + err.message, "error");
+        onTriggerNotification("Gagal menyimpan capaian materi: " + err?.message, "error");
       }
     } finally {
       setIsSubmitting(false);
@@ -592,8 +639,30 @@ export default function CapaianMateriPanel({
       {/* 1. PAGE HEADER */}
       <PageHeader 
         category="Pembelajaran & Asrama" 
-        title="Capaian Materi & Makna Kitab" 
-        description="Pantau dan update perkembangan makna kitab/Al-Qur'an santri secara mandiri maupun rata-rata kelas."
+        title={activeMainTab === "santri" ? "Capaian Materi Siswa" : "Capaian Materi Kelas / Asrama"} 
+        description={activeMainTab === "santri" 
+          ? "Pantau dan perbarui perkembangan makna kitab dan Juz Al-Qur'an santri secara perorangan."
+          : "Pantau rata-rata capaian halaman materi dan makna kitab per kelas pengajian atau asrama kamar."
+        }
+        actionButton={
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold border border-emerald-200 dark:border-emerald-800/60">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Terhubung Supabase
+            </span>
+
+            <button
+              type="button"
+              onClick={loadInitialData}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              title="Sinkronisasi & Muat Ulang Data dari Supabase"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-blue-500" : ""}`} />
+              <span>{isLoading ? "Memuat..." : "Refresh Database"}</span>
+            </button>
+          </div>
+        }
       />
 
       {/* Wali Kamar Restriction Banner Notice if active */}
@@ -606,59 +675,227 @@ export default function CapaianMateriPanel({
         </div>
       )}
 
-      {/* 2. TAB SWITCHER UTAMA & DATABASE STATUS */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-2">
-        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/60 p-1.5 rounded-2xl">
-          <button
-            type="button"
-            onClick={() => setActiveMainTab("santri")}
-            className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-              activeMainTab === "santri"
-                ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Capaian Materi Siswa</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab("agregat")}
-            className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-              activeMainTab === "agregat"
-                ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            <span>Capaian Materi Kelas</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold border border-emerald-200 dark:border-emerald-800/60">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Terhubung Supabase
-          </span>
-
-          <button
-            type="button"
-            onClick={loadInitialData}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-            title="Sinkronisasi & Muat Ulang Data dari Supabase"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-blue-500" : ""}`} />
-            <span>{isLoading ? "Memuat..." : "Refresh Database"}</span>
-          </button>
-        </div>
-      </div>
-
       {/* ======================================================================== */}
-      {/* TAB 1: CAPAIAN PER SANTRI */}
+      {/* 2. DEDICATED EDIT PAGE: JIKA SEDANG INPUT / UBAH CAPAIAN SANTRI */}
       {/* ======================================================================== */}
-      {activeMainTab === "santri" && (
+      {editingStudent ? (
+        <div className="space-y-6 animate-fade-in pb-12">
+          {/* Top Header & Breadcrumb */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="text-xs font-semibold text-slate-500 mb-1">
+                Data Santri / Ubah Capaian Makna
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
+                {editingStudent.nama_lengkap || editingStudent.nama}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Kamar: <strong className="text-slate-700 dark:text-slate-300">{editingStudent.kamar || "—"}</strong> • NISN: {editingStudent.nisn || "—"}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingStudent(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal / Kembali
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAllCapacities}
+                disabled={isSubmitting}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSubmitting ? "Menyimpan..." : "Simpan Semua Capaian"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section Notice */}
+          <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 text-xs sm:text-sm text-emerald-800 dark:text-emerald-200 flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div>
+              <strong>Formulir Pengisian Lengkap (1 Halaman):</strong> Silakan centang halaman yang sudah dimaknai untuk setiap Juz Al-Qur'an (Juz 1–30) terlebih dahulu, kemudian Kitab-kitab Al-Hadist / Kuning di bawahnya.
+            </div>
+          </div>
+
+          {/* All Materials List in 1 Page */}
+          <div className="space-y-4">
+            {materiList.map((materi, idx) => {
+              const capData = studentCapacities[materi.id] || { halaman_dimaknai: [], belum_disampaikan: false, catatan: "" };
+              const totalPages = materi.jumlah_halaman || 40;
+              const selectedCount = capData.halaman_dimaknai.length;
+              const percentage = totalPages > 0 ? Math.min(100, Math.round((selectedCount / totalPages) * 1000) / 10) : 0;
+
+              return (
+                <div 
+                  key={materi.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4"
+                >
+                  {/* Header Kitab / Juz */}
+                  <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <h3 className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100">
+                          {materi.nama_materi}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Total: {totalPages} Halaman • Capaian: <strong className="text-emerald-600 dark:text-emerald-400">{percentage}%</strong> ({selectedCount}/{totalPages} Hal)
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Checkbox Belum Disampaikan */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`belum_${materi.id}`}
+                        checked={capData.belum_disampaikan}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setStudentCapacities(prev => ({
+                            ...prev,
+                            [materi.id]: {
+                              ...capData,
+                              belum_disampaikan: checked,
+                              halaman_dimaknai: checked ? [] : capData.halaman_dimaknai
+                            }
+                          }));
+                        }}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                      />
+                      <label htmlFor={`belum_${materi.id}`} className="text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                        Belum Disampaikan
+                      </label>
+                    </div>
+                  </div>
+
+                  {!capData.belum_disampaikan && (
+                    <div className="space-y-3 pt-1">
+                      {/* Bulk Actions */}
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Pilih Halaman Yang Sudah Dimaknai:
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allPages = Array.from({ length: totalPages }, (_, i) => i + 1);
+                              setStudentCapacities(prev => ({
+                                ...prev,
+                                [materi.id]: { ...capData, halaman_dimaknai: allPages }
+                              }));
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-lg transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800"
+                          >
+                            <CheckSquare className="w-3.5 h-3.5" />
+                            <span>Pilih Semua</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudentCapacities(prev => ({
+                                ...prev,
+                                [materi.id]: { ...capData, halaman_dimaknai: [] }
+                              }));
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Square className="w-3.5 h-3.5" />
+                            <span>Hapus Semua</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Numeric Buttons Grid */}
+                      <div className="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-12 gap-2 max-h-56 overflow-y-auto p-3 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800 justify-items-center">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => {
+                          const isChecked = capData.halaman_dimaknai.includes(num);
+                          return (
+                            <button
+                              key={num}
+                              type="button"
+                              onClick={() => {
+                                const currentArr = capData.halaman_dimaknai;
+                                const newArr = isChecked 
+                                  ? currentArr.filter(p => p !== num) 
+                                  : [...currentArr, num].sort((a, b) => a - b);
+                                setStudentCapacities(prev => ({
+                                  ...prev,
+                                  [materi.id]: { ...capData, halaman_dimaknai: newArr }
+                                }));
+                              }}
+                              className={`w-8 h-8 text-xs font-bold rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                                isChecked
+                                  ? "bg-emerald-500 text-white shadow-xs hover:bg-emerald-600"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 border border-slate-200 dark:border-slate-700"
+                              }`}
+                            >
+                              {num}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Catatan / Keterangan */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Catatan / Keterangan ({materi.nama_materi})
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Lancar, tajwid baik..."
+                      value={capData.catatan}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStudentCapacities(prev => ({
+                          ...prev,
+                          [materi.id]: { ...capData, catatan: val }
+                        }));
+                      }}
+                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom Save Bar */}
+          <div className="flex items-center justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setEditingStudent(null)}
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAllCapacities}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSubmitting ? "Menyimpan..." : "Simpan Semua Capaian"}</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* ======================================================================== */}
+          {/* TAB 1: CAPAIAN PER SANTRI */}
+          {/* ======================================================================== */}
+          {activeMainTab === "santri" && (
         <div className="space-y-6">
           {/* FILTER BAR TAB 1 */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-4">
@@ -758,17 +995,19 @@ export default function CapaianMateriPanel({
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[11px] font-bold">
                     <th className="py-3 px-4 w-12 text-center">NO</th>
-                    <th className="py-3 px-4">NAMA SANTRI</th>
+                    <th className="py-3 px-4">NAMA SANTRI & NISN</th>
                     <th className="py-3 px-4">KAMAR</th>
-                    <th className="py-3 px-4">KELAS PENGAJIAN</th>
-                    <th className="py-3 px-4 w-48 text-center">CAPAIAN (%)</th>
+                    <th className="py-3 px-4 w-44 text-center">CAPAIAN AL-QUR'AN (%)</th>
+                    <th className="py-3 px-4 w-44 text-center">CAPAIAN AL-HADIST (%)</th>
                     <th className="py-3 px-4 w-36 text-center">AKSI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                   {filteredStudents.length > 0 ? (
                     filteredStudents.map((student, idx) => {
-                      const cap = getCapaianData(student.id, currentMateri.id);
+                      const quranProg = getAlQuranProgress(student.id);
+                      const hadistProg = getAlHadistProgress(student);
+
                       return (
                         <tr 
                           key={student.id || idx}
@@ -778,8 +1017,15 @@ export default function CapaianMateriPanel({
                             {idx + 1}
                           </td>
                           <td className="py-3 px-4">
-                            <div className="font-bold text-slate-800 dark:text-slate-100">
-                              {student.nama_lengkap || student.nama}
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <div className="font-bold text-slate-800 dark:text-slate-100">
+                                  {student.nama_lengkap || student.nama}
+                                </div>
+                                <div className="text-xs text-slate-400 font-medium">
+                                  NISN: {student.nisn || student.nis || "—"}
+                                </div>
+                              </div>
                             </div>
                           </td>
                           <td className="py-3 px-4 font-medium">
@@ -787,38 +1033,39 @@ export default function CapaianMateriPanel({
                               {student.kamar || "—"}
                             </span>
                           </td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-semibold border border-blue-200/50 dark:border-blue-800/50">
-                              {student.kelas_pengajian || "—"}
-                            </span>
-                          </td>
+                          {/* Kolom 1: Capaian Al-Qur'an (%) */}
                           <td className="py-3 px-4 text-center">
-                            {cap.belum_disampaikan ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-medium">
-                                Belum Disampaikan
-                              </span>
-                            ) : (
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
-                                  <span>{cap.percentage}%</span>
-                                  <span className="text-[11px] font-normal text-slate-400">
-                                    {cap.count}/{cap.totalPages} Hal
-                                  </span>
-                                </div>
-                                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
-                                  <div
-                                    className={`h-2 rounded-full transition-all duration-300 ${
-                                      cap.percentage >= 80 
-                                        ? "bg-emerald-500" 
-                                        : cap.percentage >= 40 
-                                        ? "bg-blue-500" 
-                                        : "bg-amber-500"
-                                    }`}
-                                    style={{ width: `${cap.percentage}%` }}
-                                  />
-                                </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
+                                <span className="text-emerald-600 dark:text-emerald-400">{quranProg.percentage}%</span>
+                                <span className="text-[11px] font-normal text-slate-400">
+                                  {quranProg.count}/{quranProg.total} Hal
+                                </span>
                               </div>
-                            )}
+                              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className="h-2 rounded-full bg-emerald-500 transition-all duration-300"
+                                  style={{ width: `${quranProg.percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          {/* Kolom 2: Capaian Al-Hadist (%) */}
+                          <td className="py-3 px-4 text-center">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
+                                <span className="text-blue-600 dark:text-blue-400">{hadistProg.percentage}%</span>
+                                <span className="text-[11px] font-normal text-slate-400">
+                                  {hadistProg.count}/{hadistProg.total} Hal
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className="h-2 rounded-full bg-blue-500 transition-all duration-300"
+                                  style={{ width: `${hadistProg.percentage}%` }}
+                                />
+                              </div>
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
@@ -1014,186 +1261,7 @@ export default function CapaianMateriPanel({
           </div>
         </div>
       )}
-
-      {/* ======================================================================== */}
-      {/* MODAL 1: FORMULIR UPDATE CAPAIAN ("UBAH CAPAIAN") */}
-      {/* ======================================================================== */}
-      {isEditModalOpen && editingStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] flex flex-col my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-blue-600 text-white">
-              <div>
-                <h3 className="text-base font-bold text-white">
-                  Ubah Capaian Makna Kitab
-                </h3>
-                <p className="text-xs text-blue-100">
-                  {editingStudent.nama_lengkap || editingStudent.nama} • {editingStudent.kamar || "Kamar"} • {editingStudent.kelas_pengajian || "Kelas"}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-4 sm:p-6 overflow-y-auto space-y-5">
-              {/* Info Header Box */}
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-3.5 space-y-1 text-xs sm:text-sm">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="font-bold text-slate-800 dark:text-slate-100">
-                    Kitab: {currentMateri.nama_materi} ({currentMateri.jumlah_halaman} Halaman)
-                  </span>
-                  <span className="text-slate-500 text-xs">
-                    Riwayat: {getCapaianData(editingStudent.id, currentMateri.id).updated_by} ({getCapaianData(editingStudent.id, currentMateri.id).updated_at.slice(0, 10)})
-                  </span>
-                </div>
-              </div>
-
-              {/* Checkbox Mini: Belum Disampaikan */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="chk_belum_disampaikan"
-                  checked={formBelumDisampaikan}
-                  onChange={(e) => {
-                    setFormBelumDisampaikan(e.target.checked);
-                    if (e.target.checked) {
-                      setFormHalamanDimaknai([]);
-                    }
-                  }}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                />
-                <label 
-                  htmlFor="chk_belum_disampaikan" 
-                  className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
-                >
-                  Belum Disampaikan (Centang jika materi kitab ini belum mulai diajarkan)
-                </label>
-              </div>
-
-              {/* AREA INTERAKTIF MATRIKS TOMBOL ANGKA HALAMAN */}
-              {!formBelumDisampaikan && (
-                <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-800">
-                  {/* Bulk Actions Header */}
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Pilih Halaman Yang Sudah Dimaknai:
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSelectAllPages}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-lg transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800"
-                      >
-                        <CheckSquare className="w-3.5 h-3.5" />
-                        <span>Pilih Semua</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleClearAllPages}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                      >
-                        <Square className="w-3.5 h-3.5" />
-                        <span>Hapus Semua</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Range Tabs if book is large (>100 pages e.g. Al-Qur'an 604 hal) */}
-                  {pageRanges.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                      {pageRanges.map((r) => (
-                        <button
-                          key={r.start}
-                          type="button"
-                          onClick={() => setPageRangeStart(r.start)}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                            pageRangeStart === r.start
-                              ? "bg-blue-600 text-white shadow-xs"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-                          }`}
-                        >
-                          {r.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Realtime Progress Badge */}
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200 bg-emerald-50/50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60">
-                    <span>
-                      Terpilih: {formHalamanDimaknai.length} dari {currentMateri.jumlah_halaman} Halaman
-                    </span>
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      ({Math.round((formHalamanDimaknai.length / (currentMateri.jumlah_halaman || 1)) * 1000) / 10}%)
-                    </span>
-                  </div>
-
-                  {/* Numeric Buttons Grid */}
-                  <div className="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-12 gap-1.5 max-h-60 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800">
-                    {Array.from({ length: activePageEnd - pageRangeStart + 1 }, (_, i) => pageRangeStart + i).map((num) => {
-                      const isChecked = formHalamanDimaknai.includes(num);
-                      return (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => handleTogglePage(num)}
-                          className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                            isChecked
-                              ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
-                              : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100"
-                          }`}
-                        >
-                          {num}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Input Textarea: Catatan / Keterangan */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Catatan / Keterangan Tambahan (Opsional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Contoh: Makna lancar, bab thaharah telah tuntas dimaknai..."
-                  value={formCatatan}
-                  onChange={(e) => setFormCatatan(e.target.value)}
-                  className="w-full p-2.5 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 p-4 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveCapaian}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                <span>{isSubmitting ? "Menyimpan..." : "Simpan Capaian"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {/* ======================================================================== */}

@@ -84,7 +84,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
     setIsLoading(true);
     try {
       // 1. Fetch Classes from 'plotting' table (kolom jenis = 'kelas sekolah')
-      const classesList: ClassItem[] = [];
+      const classKeyMap = new Map<string, ClassItem>();
       try {
         const { data: plotClasses } = await supabase
           .from("plotting")
@@ -92,11 +92,18 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
           .eq("jenis", "kelas sekolah");
         if (plotClasses && plotClasses.length > 0) {
           plotClasses.forEach((c: any) => {
-            if (c.nama) {
-              classesList.push({
-                id: c.id ? Number(c.id) : c.nama,
-                nama: c.nama
-              });
+            if (c.nama && String(c.nama).trim()) {
+              const raw = String(c.nama).trim();
+              const key = raw.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+              const withoutPrefix = raw.replace(/^kelas\s*/i, "").trim();
+              const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
+              const label = match ? `Kelas ${match[1]}-${match[2].toUpperCase()}` : (/^\d+$/.test(withoutPrefix) ? `Kelas ${withoutPrefix}` : (raw.toLowerCase().startsWith("kelas") ? raw : `Kelas ${raw}`));
+              if (key && !classKeyMap.has(key)) {
+                classKeyMap.set(key, {
+                  id: c.id ? Number(c.id) : c.nama,
+                  nama: label
+                });
+              }
             }
           });
         }
@@ -105,16 +112,23 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
       }
 
       // Fallback jika kosong menggunakan schoolClasses prop
-      if (classesList.length === 0 && schoolClasses && schoolClasses.length > 0) {
+      if (classKeyMap.size === 0 && schoolClasses && schoolClasses.length > 0) {
         schoolClasses.forEach((clsName, index) => {
-          classesList.push({
-            id: 1000 + index,
-            nama: clsName
-          });
+          if (clsName && clsName.trim()) {
+            const key = clsName.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+            if (key && !classKeyMap.has(key)) {
+              classKeyMap.set(key, {
+                id: 1000 + index,
+                nama: clsName
+              });
+            }
+          }
         });
       }
 
-      const sortedClasses = classesList.sort((a, b) => a.nama.localeCompare(b.nama));
+      const sortedClasses = Array.from(classKeyMap.values()).sort((a, b) =>
+        a.nama.localeCompare(b.nama, undefined, { numeric: true, sensitivity: "base" })
+      );
       setAvailableClasses(sortedClasses);
 
       // 2. Fetch Teachers from 'guru' and map with 'pengguna' (nama_lengkap)

@@ -29,8 +29,11 @@ const MySwal = withReactContent(Swal);
 
 interface Student {
   id: string;
+  raw_id?: string;
+  santri_id?: string;
   nama_lengkap: string;
   nis: string;
+  nik?: string;
   kelas: string;
 }
 
@@ -43,6 +46,7 @@ interface SessionColumn {
 
 interface AttendanceSummary {
   studentId: string;
+  student: Student;
   nama: string;
   nis: string;
   hadir: number;
@@ -91,44 +95,110 @@ export default function RekapAbsensiSiswaPanel() {
     "Juli", "Agustus", "September", "Oktober", "November", "Desember"
   ];
 
+  const normalizeClassKey = (str: string): string => {
+    if (!str) return "";
+    return str.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+  };
+
+  const formatClassLabel = (str: string): string => {
+    if (!str) return "";
+    const clean = str.trim();
+    const withoutPrefix = clean.replace(/^kelas\s*/i, "").trim();
+    
+    const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
+    if (match) {
+      const num = match[1];
+      const letter = match[2].toUpperCase();
+      return `Kelas ${num}-${letter}`;
+    }
+    
+    if (/^\d+$/.test(withoutPrefix)) {
+      return `Kelas ${withoutPrefix}`;
+    }
+    
+    return clean.toLowerCase().startsWith("kelas") ? clean : `Kelas ${clean}`;
+  };
+
+  const isSameClass = (c1: string, c2: string): boolean => {
+    if (!c1 || !c2) return false;
+    return normalizeClassKey(c1) === normalizeClassKey(c2);
+  };
+
   // 1. Fetch available classes on mount
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        const classesSet = new Set<string>();
+        const classMap = new Map<string, string>();
+
+        const addClass = (rawName: string) => {
+          if (!rawName || !rawName.trim()) return;
+          const key = normalizeClassKey(rawName);
+          if (key && !classMap.has(key)) {
+            classMap.set(key, formatClassLabel(rawName));
+          }
+        };
 
         // Fetch from 'plotting' (jenis = 'kelas sekolah')
-        const { data: plotSchool } = await supabase
-          .from("plotting")
-          .select("nama")
-          .eq("jenis", "kelas sekolah");
-        
-        if (plotSchool) {
-          plotSchool.forEach((r: any) => {
-            if (r.nama) classesSet.add(String(r.nama).trim());
-          });
-        }
+        try {
+          const { data: plotSchool } = await supabase
+            .from("plotting")
+            .select("nama")
+            .eq("jenis", "kelas sekolah");
+          
+          if (plotSchool) {
+            plotSchool.forEach((r: any) => {
+              if (r.nama) addClass(String(r.nama));
+            });
+          }
+        } catch (e) {}
 
         // Fetch from 'kelas sekolah' table
-        const { data: dataSpace } = await supabase.from("kelas sekolah").select("kelas");
-        if (dataSpace) {
-          dataSpace.forEach((r: any) => {
-            if (r.kelas) classesSet.add(String(r.kelas).trim());
-          });
-        }
+        try {
+          const { data: dataSpace } = await supabase.from("kelas sekolah").select("kelas");
+          if (dataSpace) {
+            dataSpace.forEach((r: any) => {
+              if (r.kelas) addClass(String(r.kelas));
+            });
+          }
+        } catch (e) {}
 
-        if (classesSet.size > 0) {
-          const sorted = Array.from(classesSet).sort();
+        // Fetch from 'kelas_sekolah' table
+        try {
+          const { data: dataUnderline } = await supabase.from("kelas_sekolah").select("kelas");
+          if (dataUnderline) {
+            dataUnderline.forEach((r: any) => {
+              if (r.kelas) addClass(String(r.kelas));
+            });
+          }
+        } catch (e) {}
+
+        // Fetch from 'siswa' table
+        try {
+          const { data: dataSiswa } = await supabase.from("siswa").select("kelas_sekolah");
+          if (dataSiswa) {
+            dataSiswa.forEach((r: any) => {
+              if (r.kelas_sekolah) addClass(String(r.kelas_sekolah));
+            });
+          }
+        } catch (e) {}
+
+        if (classMap.size > 0) {
+          const sorted = Array.from(classMap.values()).sort((a, b) => {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+          });
           setClassesList(sorted);
-          setSelectedClass(sorted[0]);
+          setSelectedClass((prev) => {
+            const exists = sorted.find(c => isSameClass(c, prev));
+            return exists || sorted[0];
+          });
         } else {
-          const defaultClasses = ["Kelas 7A", "Kelas 7B", "Kelas 8A", "Kelas 8B", "Kelas 9A", "Kelas 9B"];
+          const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 7-C", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
           setClassesList(defaultClasses);
           setSelectedClass(defaultClasses[0]);
         }
       } catch (e) {
         console.warn("Failed to load classes list, using fallback:", e);
-        const defaultClasses = ["Kelas 7A", "Kelas 7B", "Kelas 8A", "Kelas 8B", "Kelas 9A", "Kelas 9B"];
+        const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 7-C", "Kelas 8-A", "Kelas 8B", "Kelas 9-A", "Kelas 9-B"];
         setClassesList(defaultClasses);
         setSelectedClass(defaultClasses[0]);
       }
@@ -156,65 +226,144 @@ export default function RekapAbsensiSiswaPanel() {
     if (!selectedClass) return;
     setIsLoading(true);
     try {
-      // Step A: Fetch students of selected class
-      const { data: classRows, error: classErr } = await supabase
-        .from("kelas sekolah")
-        .select("*")
-        .or(`kelas.eq.${selectedClass},kelas.ilike.%${selectedClass}%`);
+      // Step A: Fetch students of selected class from multiple tables
+      const studentMap = new Map<string, Student>();
 
-      if (classErr) throw classErr;
-
-      let mappedStudents: Student[] = [];
-      if (classRows && classRows.length > 0) {
-        mappedStudents = classRows.map((r: any) => ({
-          id: r.id ? String(r.id) : String(Math.random()),
-          nama_lengkap: r.nama || "-",
-          kelas: r.kelas || selectedClass,
-          nis: r.nis || "-"
-        })).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
-      } else {
-        const { data: allRows } = await supabase.from("kelas sekolah").select("*");
-        if (allRows && allRows.length > 0) {
-          const filtered = allRows.filter((r: any) => 
-            (r.kelas || "").trim().toLowerCase() === selectedClass.trim().toLowerCase() ||
-            (r.kelas || "").toLowerCase().includes(selectedClass.toLowerCase())
-          );
-          if (filtered.length > 0) {
-            mappedStudents = filtered.map((r: any) => ({
-              id: r.id ? String(r.id) : String(Math.random()),
-              nama_lengkap: r.nama || "-",
-              kelas: r.kelas || selectedClass,
-              nis: r.nis || "-"
-            })).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
-          }
+      // 1. Check 'siswa' table
+      try {
+        const { data: siswaRows } = await supabase.from("siswa").select("*");
+        if (siswaRows && siswaRows.length > 0) {
+          siswaRows.forEach((r: any) => {
+            const cls = r.kelas_sekolah || r.kelas || "";
+            if (isSameClass(cls, selectedClass)) {
+              const nameKey = (r.nama_lengkap || r.nama || "").trim().toLowerCase();
+              if (nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.id || r.nik || nameKey),
+                  raw_id: String(r.id || ""),
+                  nama_lengkap: r.nama_lengkap || r.nama || "-",
+                  kelas: selectedClass,
+                  nis: r.nisn || r.nis || r.nik || "-",
+                  nik: r.nik || ""
+                });
+              }
+            }
+          });
         }
-      }
+      } catch (e) {}
 
+      // 2. Check 'kelas sekolah' table
+      try {
+        const { data: classRows } = await supabase.from("kelas sekolah").select("*");
+        if (classRows && classRows.length > 0) {
+          classRows.forEach((r: any) => {
+            const cls = r.kelas || "";
+            if (isSameClass(cls, selectedClass)) {
+              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+              if (nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
+                  raw_id: String(r.id || ""),
+                  santri_id: String(r.santri_id || r.siswa_id || ""),
+                  nama_lengkap: r.nama || r.nama_lengkap || "-",
+                  kelas: selectedClass,
+                  nis: r.nis || r.nisn || "-",
+                  nik: r.nik || ""
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {}
+
+      // 3. Check 'kelas_sekolah' table
+      try {
+        const { data: classRowsUnder } = await supabase.from("kelas_sekolah").select("*");
+        if (classRowsUnder && classRowsUnder.length > 0) {
+          classRowsUnder.forEach((r: any) => {
+            const cls = r.kelas || "";
+            if (isSameClass(cls, selectedClass)) {
+              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+              if (nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
+                  raw_id: String(r.id || ""),
+                  santri_id: String(r.santri_id || r.siswa_id || ""),
+                  nama_lengkap: r.nama || r.nama_lengkap || "-",
+                  kelas: selectedClass,
+                  nis: r.nis || r.nisn || "-",
+                  nik: r.nik || ""
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {}
+
+      let mappedStudents = Array.from(studentMap.values()).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
       setStudents(mappedStudents);
 
       // Step B: Fetch Jurnal Mengajar for the month & class
       const lastDay = new Date(filterYear, filterMonth + 1, 0).getDate();
       const monthPrefix = `${filterYear}-${String(filterMonth + 1).padStart(2, "0")}`;
       
-      const { data: jurnals, error: jurnErr } = await supabase
+      const { data: dbJurnals, error: jurnErr } = await supabase
         .from("jurnal_mengajar")
-        .select("id, tanggal, hari, jam_ke, mata_pelajaran, materi_pembelajaran, keterangan")
-        .eq("kelas_id", selectedClass)
+        .select("id, tanggal, hari, jam_ke, mata_pelajaran, materi_pembelajaran, keterangan, kelas_id")
         .gte("tanggal", `${monthPrefix}-01`)
         .lte("tanggal", `${monthPrefix}-${String(lastDay).padStart(2, "0")}`);
 
-      if (jurnErr) throw jurnErr;
-      setRawJurnals(jurnals || []);
+      if (jurnErr) {
+        console.warn("Table jurnal_mengajar query error:", jurnErr.message);
+      }
 
-      let absRows: any[] = [];
-      if (jurnals && jurnals.length > 0) {
-        const journalIds = jurnals.map(j => j.id);
+      // Filter journals matching selectedClass
+      let matchedJurnals = (dbJurnals || []).filter(j => 
+        isSameClass(j.kelas_id || "", selectedClass) || String(j.kelas_id || "").trim() === selectedClass.trim()
+      );
+
+      // Merge cached/offline journals if any
+      const cached = localStorage.getItem("jurnal_mengajar_baru_list");
+      let localAbsensiList: any[] = [];
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          parsed.forEach((j: any) => {
+            if (j.tanggal && j.tanggal.startsWith(monthPrefix) && isSameClass(j.kelas_id || "", selectedClass)) {
+              if (!matchedJurnals.some(m => String(m.id) === String(j.id))) {
+                matchedJurnals.push(j);
+              }
+              if (j.absensi_jurnal_siswa && Array.isArray(j.absensi_jurnal_siswa)) {
+                j.absensi_jurnal_siswa.forEach((ab: any) => {
+                  localAbsensiList.push({
+                    jurnal_id: j.id,
+                    siswa_id: ab.siswa_id,
+                    status: ab.status
+                  });
+                });
+              }
+            }
+          });
+        } catch (e) {}
+      }
+
+      setRawJurnals(matchedJurnals);
+
+      // Step C: Fetch Absensi records for those journals
+      let absRows: any[] = [...localAbsensiList];
+      if (matchedJurnals.length > 0) {
+        const journalIds = matchedJurnals.map(j => j.id);
         const { data: fetchedAbs, error: absErr } = await supabase
           .from("absensi_jurnal_siswa")
           .select("*")
           .in("jurnal_id", journalIds);
+        
         if (!absErr && fetchedAbs) {
-          absRows = fetchedAbs;
+          fetchedAbs.forEach(fa => {
+            if (!absRows.some(ar => String(ar.id || '') === String(fa.id || '') && String(ar.jurnal_id) === String(fa.jurnal_id) && String(ar.siswa_id) === String(fa.siswa_id))) {
+              absRows.push(fa);
+            }
+          });
         }
       }
       setRawAbsensi(absRows);
@@ -245,7 +394,7 @@ export default function RekapAbsensiSiswaPanel() {
     if (rawJurnals && rawJurnals.length > 0) {
       return rawJurnals.map((j: any) => {
         const d = new Date(j.tanggal);
-        const day = isNaN(d.getTime()) ? "01" : String(d.getDate());
+        const day = isNaN(d.getTime()) ? "01" : String(d.getDate()).padStart(2, "0");
 
         let resolvedSesi = "";
         if (j.mata_pelajaran) {
@@ -272,7 +421,6 @@ export default function RekapAbsensiSiswaPanel() {
       }).sort((a, b) => a.tanggal.localeCompare(b.tanggal) || a.id.localeCompare(b.id));
     }
 
-    // Return empty array if no database journals exist
     return [];
   }, [rawJurnals, monthPrefix, mapelListState]);
 
@@ -290,22 +438,99 @@ export default function RekapAbsensiSiswaPanel() {
     return groups;
   }, [sessionCols]);
 
-  // Deterministic status retriever for student + column ID (real DB only)
-  const getStatusForSession = useCallback((studentId: string, colId: string): "H" | "I" | "S" | "T" | "A" | "" => {
-    const realRecord = rawAbsensi.find(
-      a => String(a.siswa_id) === String(studentId) && String(a.jurnal_id) === String(colId)
-    );
-    if (realRecord) {
-      const s = String(realRecord.status || "hadir").toLowerCase();
-      if (s === "hadir") return "H";
-      if (s === "izin") return "I";
-      if (s === "sakit") return "S";
-      if (s === "terlambat") return "T";
-      if (s === "alpa" || s === "alfa") return "A";
+  // Deterministic status retriever for student + column ID (real DB with robust fallback matching)
+  const getStatusForSession = useCallback((student: Student, colId: string): "H" | "I" | "S" | "T" | "A" => {
+    const journalAbs = rawAbsensi.filter(a => String(a.jurnal_id) === String(colId));
+    
+    if (journalAbs.length > 0) {
+      const normStudentName = student.nama_lengkap.trim().toLowerCase().replace(/\s+/g, " ");
+
+      const matchedRecord = journalAbs.find(a => {
+        const aSiswaId = String(a.siswa_id || a.santri_id || a.id || "").trim();
+        const aName = String(a.siswa_nama || a.nama || a.nama_lengkap || "").trim().toLowerCase().replace(/\s+/g, " ");
+        const aNis = String(a.siswa_nis || a.nis || a.nisn || "").trim();
+
+        const idMatches = 
+          (aSiswaId && String(student.id).trim() === aSiswaId) ||
+          (aSiswaId && student.raw_id && String(student.raw_id).trim() === aSiswaId) ||
+          (aSiswaId && student.santri_id && String(student.santri_id).trim() === aSiswaId) ||
+          (aSiswaId && student.nis && String(student.nis).trim() === aSiswaId) ||
+          (aSiswaId && student.nik && String(student.nik).trim() === aSiswaId);
+
+        const nameMatches = aName && (aName === normStudentName || normStudentName.includes(aName) || aName.includes(normStudentName));
+        const nisMatches = aNis && student.nis && aNis === String(student.nis).trim();
+
+        return idMatches || nameMatches || nisMatches;
+      });
+
+      if (matchedRecord) {
+        const s = String(matchedRecord.status || "hadir").toLowerCase().trim();
+        if (s === "hadir") return "H";
+        if (s === "izin") return "I";
+        if (s === "sakit") return "S";
+        if (s === "terlambat" || s === "telat") return "T";
+        if (s === "alpa" || s === "alfa") return "A";
+      }
+
+      // Default to "H" if class session happened and student wasn't marked absent
+      return "H";
     }
 
-    return "";
+    // Default for any conducted journal session in this class: Hadir ("H")
+    return "H";
   }, [rawAbsensi]);
+
+  // Quick toggle student status for a session directly on matrix table
+  const handleToggleCellStatus = async (student: Student, colId: string, currentStatus: "H" | "I" | "S" | "T" | "A") => {
+    const cycleMap: Record<"H" | "I" | "S" | "T" | "A", "H" | "I" | "S" | "T" | "A"> = {
+      H: "T",
+      T: "I",
+      I: "S",
+      S: "A",
+      A: "H"
+    };
+    const nextStatus = cycleMap[currentStatus] || "H";
+    const statusDbMap = {
+      H: "hadir",
+      T: "terlambat",
+      I: "izin",
+      S: "sakit",
+      A: "alpa"
+    };
+
+    const newDbStatus = statusDbMap[nextStatus];
+
+    // Optimistically update rawAbsensi
+    const existingIdx = rawAbsensi.findIndex(a => 
+      String(a.jurnal_id) === String(colId) && 
+      (String(a.siswa_id) === String(student.id) || String(a.siswa_id) === String(student.raw_id))
+    );
+
+    let updatedRaw: any[] = [...rawAbsensi];
+    if (existingIdx >= 0) {
+      updatedRaw[existingIdx] = { ...updatedRaw[existingIdx], status: newDbStatus };
+    } else {
+      updatedRaw.push({
+        jurnal_id: colId,
+        siswa_id: student.id,
+        status: newDbStatus
+      });
+    }
+    setRawAbsensi(updatedRaw);
+
+    // Save to database
+    try {
+      await supabase
+        .from("absensi_jurnal_siswa")
+        .upsert({
+          jurnal_id: colId,
+          siswa_id: student.id,
+          status: newDbStatus
+        }, { onConflict: "jurnal_id,siswa_id" });
+    } catch (e) {
+      console.warn("Quick toggle save notice:", e);
+    }
+  };
 
   // 3. Compute final records with accumulated count of green and red badges
   const rekapList = useMemo<AttendanceSummary[]>(() => {
@@ -319,7 +544,7 @@ export default function RekapAbsensiSiswaPanel() {
       const detailRows: AttendanceDetailRow[] = [];
 
       sessionCols.forEach((col) => {
-        const status = getStatusForSession(student.id, col.id);
+        const status = getStatusForSession(student, col.id);
         
         let statusLabel: "Hadir" | "Terlambat" | "Izin" | "Sakit" | "Alpa" = "Hadir";
         if (status === "H") { hadir++; statusLabel = "Hadir"; }
@@ -343,6 +568,7 @@ export default function RekapAbsensiSiswaPanel() {
 
       return {
         studentId: student.id,
+        student,
         nama: student.nama_lengkap,
         nis: student.nis,
         hadir,
@@ -430,7 +656,7 @@ export default function RekapAbsensiSiswaPanel() {
     let countAlpa = 0;
 
     const lines = students.map((student, idx) => {
-      const statuses = colsOnDate.map(col => getStatusForSession(student.id, col.id));
+      const statuses = colsOnDate.map(col => getStatusForSession(student, col.id));
 
       const emojis = statuses.map(s => {
         if (s === "H") return "✅";
@@ -734,28 +960,33 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
                       
                       {/* Cells dengan Badges */}
                       {sessionCols.map((col) => {
-                        const status = getStatusForSession(row.studentId, col.id);
+                        const status = getStatusForSession(row.student, col.id);
                         
                         // Badge styling based on status H, I, S, T, A
                         let badgeClass = "";
                         if (status === "H") {
-                          badgeClass = "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/60";
+                          badgeClass = "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60";
                         } else if (status === "I") {
-                          badgeClass = "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/60";
+                          badgeClass = "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60";
                         } else if (status === "S") {
-                          badgeClass = "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/60";
+                          badgeClass = "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60";
                         } else if (status === "T") {
-                          badgeClass = "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-100 dark:border-orange-900/60";
+                          badgeClass = "bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-900/60";
                         } else if (status === "A") {
-                          badgeClass = "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/60";
+                          badgeClass = "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60";
                         }
 
                         return (
                           <td key={col.id} className="px-1 py-2 text-center border-r border-slate-100 dark:border-slate-800">
                             <div className="flex justify-center">
-                              <span className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold ${badgeClass}`}>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCellStatus(row.student, col.id, status)}
+                                title={`Sesi: ${col.sesi} (${col.tanggal})\nKlik untuk ubah: ${status} ➔ ${status === "H" ? "T" : status === "T" ? "I" : status === "I" ? "S" : status === "S" ? "A" : "H"}`}
+                                className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold transition-all transform active:scale-90 cursor-pointer ${badgeClass}`}
+                              >
                                 {status}
-                              </span>
+                              </button>
                             </div>
                           </td>
                         );
