@@ -68,7 +68,7 @@ interface AttendanceDetailRow {
   keterangan: string;
 }
 
-export default function RekapAbsensiSiswaPanel() {
+export default function RekapAbsensiSiswaPanel({ students: santriListProp }: { students?: any[] } = {}) {
   const [classesList, setClassesList] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth());
@@ -205,81 +205,121 @@ export default function RekapAbsensiSiswaPanel() {
     if (!selectedClass) return;
     setIsLoading(true);
     try {
-      // Step A: Fetch students of selected class from multiple tables
-      const studentMap = new Map<string, Student>();
+      // Step A: Fetch students of selected class
+      let mappedStudents: Student[] = [];
 
-      // 1. Check 'siswa' table
-      try {
-        const { data: siswaRows } = await supabase.from("siswa").select("*");
-        if (siswaRows && siswaRows.length > 0) {
-          siswaRows.forEach((r: any) => {
-            const cls = r.kelas_sekolah || r.kelas || "";
-            if (isSameClass(cls, selectedClass)) {
+      if (santriListProp && santriListProp.length > 0) {
+        mappedStudents = santriListProp
+          .filter((s: any) => {
+            if (s.status && s.status !== "Aktif") return false;
+            return isSameClass(s.kelas_sekolah || "", selectedClass);
+          })
+          .map((s: any) => ({
+            id: String(s.id || s.nik || s.nama_lengkap),
+            raw_id: String(s.id || ""),
+            santri_id: String(s.id || ""),
+            nama_lengkap: s.nama_lengkap || s.nama || "-",
+            kelas: selectedClass,
+            nis: s.nisn || s.nis || s.nik || "-",
+            nik: s.nik || ""
+          }))
+          .sort((a: any, b: any) => a.nama_lengkap.localeCompare(b.nama_lengkap));
+      } else {
+        const studentMap = new Map<string, Student>();
+        const plottingMapByName = new Map<string, string>();
+        const plottingMapById = new Map<string, string>();
+
+        try {
+          const savedMeta = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
+          Object.entries(savedMeta).forEach(([idOrNik, meta]: [string, any]) => {
+            if (meta?.kelas_sekolah) plottingMapById.set(idOrNik, meta.kelas_sekolah);
+          });
+        } catch (e) {}
+
+        try {
+          const { data: classRowsUnder } = await supabase.from("kelas_sekolah").select("*");
+          if (classRowsUnder && classRowsUnder.length > 0) {
+            classRowsUnder.forEach((r: any) => {
+              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+              const sid = String(r.santri_id || r.siswa_id || r.id || "");
+              const cls = r.kelas || "";
+              if (nameKey && cls) plottingMapByName.set(nameKey, cls);
+              if (sid && cls) plottingMapById.set(sid, cls);
+            });
+          }
+        } catch (e) {}
+
+        try {
+          const { data: classRowsSpace } = await supabase.from("kelas sekolah").select("*");
+          if (classRowsSpace && classRowsSpace.length > 0) {
+            classRowsSpace.forEach((r: any) => {
+              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+              const sid = String(r.santri_id || r.siswa_id || r.id || "");
+              const cls = r.kelas || "";
+              if (nameKey && cls) plottingMapByName.set(nameKey, cls);
+              if (sid && cls) plottingMapById.set(sid, cls);
+            });
+          }
+        } catch (e) {}
+
+        try {
+          const { data: siswaRows } = await supabase.from("siswa").select("*");
+          if (siswaRows && siswaRows.length > 0) {
+            siswaRows.forEach((r: any) => {
               const nameKey = (r.nama_lengkap || r.nama || "").trim().toLowerCase();
-              if (nameKey && !studentMap.has(nameKey)) {
-                studentMap.set(nameKey, {
-                  id: String(r.id || r.nik || nameKey),
-                  raw_id: String(r.id || ""),
-                  nama_lengkap: r.nama_lengkap || r.nama || "-",
-                  kelas: selectedClass,
-                  nis: r.nisn || r.nis || r.nik || "-",
-                  nik: r.nik || ""
-                });
-              }
-            }
-          });
-        }
-      } catch (e) {}
+              const sid = String(r.id || r.nik || "");
+              const effectiveClass = 
+                plottingMapByName.get(nameKey) ||
+                (sid ? plottingMapById.get(sid) : "") ||
+                r.kelas_sekolah ||
+                "";
 
-      // 2. Check 'kelas sekolah' table
-      try {
-        const { data: classRows } = await supabase.from("kelas sekolah").select("*");
-        if (classRows && classRows.length > 0) {
-          classRows.forEach((r: any) => {
-            const cls = r.kelas || "";
-            if (isSameClass(cls, selectedClass)) {
-              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
-              if (nameKey && !studentMap.has(nameKey)) {
-                studentMap.set(nameKey, {
-                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
-                  raw_id: String(r.id || ""),
-                  santri_id: String(r.santri_id || r.siswa_id || ""),
-                  nama_lengkap: r.nama || r.nama_lengkap || "-",
-                  kelas: selectedClass,
-                  nis: r.nis || r.nisn || "-",
-                  nik: r.nik || ""
-                });
+              if (effectiveClass) {
+                if (isSameClass(effectiveClass, selectedClass) && nameKey && !studentMap.has(nameKey)) {
+                  studentMap.set(nameKey, {
+                    id: String(r.id || r.nik || nameKey),
+                    raw_id: String(r.id || ""),
+                    santri_id: String(r.id || ""),
+                    nama_lengkap: r.nama_lengkap || r.nama || "-",
+                    kelas: selectedClass,
+                    nis: r.nisn || r.nis || r.nik || "-",
+                    nik: r.nik || ""
+                  });
+                }
+              } else if (r.kelas && isSameClass(r.kelas, selectedClass)) {
+                if (nameKey && !studentMap.has(nameKey)) {
+                  studentMap.set(nameKey, {
+                    id: String(r.id || r.nik || nameKey),
+                    raw_id: String(r.id || ""),
+                    santri_id: String(r.id || ""),
+                    nama_lengkap: r.nama_lengkap || r.nama || "-",
+                    kelas: selectedClass,
+                    nis: r.nisn || r.nis || r.nik || "-",
+                    nik: r.nik || ""
+                  });
+                }
               }
-            }
-          });
-        }
-      } catch (e) {}
+            });
+          }
+        } catch (e) {}
 
-      // 3. Check 'kelas_sekolah' table
-      try {
-        const { data: classRowsUnder } = await supabase.from("kelas_sekolah").select("*");
-        if (classRowsUnder && classRowsUnder.length > 0) {
-          classRowsUnder.forEach((r: any) => {
-            const cls = r.kelas || "";
-            if (isSameClass(cls, selectedClass)) {
-              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
-              if (nameKey && !studentMap.has(nameKey)) {
-                studentMap.set(nameKey, {
-                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
-                  raw_id: String(r.id || ""),
-                  santri_id: String(r.santri_id || r.siswa_id || ""),
-                  nama_lengkap: r.nama || r.nama_lengkap || "-",
-                  kelas: selectedClass,
-                  nis: r.nis || r.nisn || "-",
-                  nik: r.nik || ""
-                });
-              }
-            }
-          });
-        }
-      } catch (e) {}
+        plottingMapByName.forEach((cls, nameKey) => {
+          if (isSameClass(cls, selectedClass) && !studentMap.has(nameKey)) {
+            studentMap.set(nameKey, {
+              id: nameKey,
+              raw_id: "",
+              santri_id: "",
+              nama_lengkap: nameKey.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+              kelas: selectedClass,
+              nis: "-",
+              nik: ""
+            });
+          }
+        });
 
-      let mappedStudents = Array.from(studentMap.values()).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
+        mappedStudents = Array.from(studentMap.values()).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
+      }
+
       setStudents(mappedStudents);
 
       // Step B: Fetch Jurnal Mengajar for the month & class

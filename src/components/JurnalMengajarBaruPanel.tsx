@@ -7,11 +7,15 @@ import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } fro
 interface JurnalMengajarBaruPanelProps {
   currentUser: any;
   onTriggerNotification: (msg: string, type: "success" | "error") => void;
+  students?: any[];
+  schoolClasses?: string[];
 }
 
 export default function JurnalMengajarBaruPanel({
   currentUser,
-  onTriggerNotification
+  onTriggerNotification,
+  students: studentsProp,
+  schoolClasses: schoolClassesProp
 }: JurnalMengajarBaruPanelProps) {
   const [jurnals, setJurnals] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -232,6 +236,11 @@ export default function JurnalMengajarBaruPanel({
         }
       };
 
+      // 0. Use schoolClassesProp if available
+      if (schoolClassesProp && schoolClassesProp.length > 0) {
+        schoolClassesProp.forEach(addClass);
+      }
+
       // 1. Fetch classes strictly from 'plotting' where jenis = 'kelas sekolah' as single source of truth
       try {
         const { data: plotSchool, error: plotErr } = await supabase
@@ -297,7 +306,7 @@ export default function JurnalMengajarBaruPanel({
     if (isModalOpen && kelas) {
       fetchStudents(kelas);
     }
-  }, [isModalOpen, kelas]);
+  }, [isModalOpen, kelas, studentsProp]);
 
   const fetchJurnals = async () => {
     setIsLoading(true);
@@ -329,16 +338,98 @@ export default function JurnalMengajarBaruPanel({
 
   const fetchStudents = async (selectedClass: string) => {
     try {
-      const studentMap = new Map<string, any>();
+      // Priority 1: Use students prop passed from App.tsx (the hydrated source of truth for active students and school plotting)
+      if (studentsProp && studentsProp.length > 0) {
+        const matched = studentsProp.filter((s: any) => {
+          if (s.status && s.status !== "Aktif") return false;
+          const cls = s.kelas_sekolah || "";
+          return isSameClass(cls, selectedClass);
+        });
 
-      // A. Query 'siswa' table
+        const mapped = matched.map((s: any) => ({
+          id: String(s.id || s.nik || s.nama_lengkap),
+          raw_id: String(s.id || ""),
+          nama_lengkap: s.nama_lengkap || s.nama || "-",
+          kelas: selectedClass,
+          nis: s.nisn || s.nis || s.nik || "-"
+        })).sort((a: any, b: any) => a.nama_lengkap.localeCompare(b.nama_lengkap));
+
+        setStudents(mapped);
+        const initial: Record<string, string> = {};
+        mapped.forEach((s: any) => { initial[s.id] = "hadir"; });
+        setAttendanceMap(initial);
+        return;
+      }
+
+      // Priority 2: Fallback / Database Query strictly prioritizing 'kelas_sekolah' plotting
+      const studentMap = new Map<string, any>();
+      const plottingMapByName = new Map<string, string>();
+      const plottingMapById = new Map<string, string>();
+
+      // Load custom metadata map from local storage if available
+      try {
+        const savedMeta = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
+        Object.entries(savedMeta).forEach(([idOrNik, meta]: [string, any]) => {
+          if (meta?.kelas_sekolah) {
+            plottingMapById.set(idOrNik, meta.kelas_sekolah);
+          }
+        });
+      } catch (e) {}
+
+      // Query 'kelas_sekolah' table
+      try {
+        const { data: classRowsUnder } = await supabase.from("kelas_sekolah").select("*");
+        if (classRowsUnder && classRowsUnder.length > 0) {
+          classRowsUnder.forEach((r: any) => {
+            const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+            const sid = String(r.santri_id || r.siswa_id || r.id || "");
+            const cls = r.kelas || "";
+            if (nameKey && cls) plottingMapByName.set(nameKey, cls);
+            if (sid && cls) plottingMapById.set(sid, cls);
+          });
+        }
+      } catch (e) {}
+
+      // Query 'kelas sekolah' table (alternative table name)
+      try {
+        const { data: classRowsSpace } = await supabase.from("kelas sekolah").select("*");
+        if (classRowsSpace && classRowsSpace.length > 0) {
+          classRowsSpace.forEach((r: any) => {
+            const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
+            const sid = String(r.santri_id || r.siswa_id || r.id || "");
+            const cls = r.kelas || "";
+            if (nameKey && cls) plottingMapByName.set(nameKey, cls);
+            if (sid && cls) plottingMapById.set(sid, cls);
+          });
+        }
+      } catch (e) {}
+
+      // Query 'siswa' table and match ONLY if effective class matches selectedClass
       try {
         const { data: siswaRows } = await supabase.from("siswa").select("*");
         if (siswaRows && siswaRows.length > 0) {
           siswaRows.forEach((r: any) => {
-            const cls = r.kelas_sekolah || r.kelas || "";
-            if (isSameClass(cls, selectedClass)) {
-              const nameKey = (r.nama_lengkap || r.nama || "").trim().toLowerCase();
+            const nameKey = (r.nama_lengkap || r.nama || "").trim().toLowerCase();
+            const sid = String(r.id || r.nik || "");
+            
+            // Plotted class has 100% precedence over static/default siswa.kelas
+            const effectiveClass = 
+              plottingMapByName.get(nameKey) ||
+              (sid ? plottingMapById.get(sid) : "") ||
+              r.kelas_sekolah ||
+              "";
+
+            if (effectiveClass) {
+              if (isSameClass(effectiveClass, selectedClass) && nameKey && !studentMap.has(nameKey)) {
+                studentMap.set(nameKey, {
+                  id: String(r.id || r.nik || nameKey),
+                  raw_id: String(r.id || ""),
+                  nama_lengkap: r.nama_lengkap || r.nama || "-",
+                  kelas: selectedClass,
+                  nis: r.nisn || r.nis || r.nik || "-"
+                });
+              }
+            } else if (r.kelas && isSameClass(r.kelas, selectedClass)) {
               if (nameKey && !studentMap.has(nameKey)) {
                 studentMap.set(nameKey, {
                   id: String(r.id || r.nik || nameKey),
@@ -353,69 +444,25 @@ export default function JurnalMengajarBaruPanel({
         }
       } catch (e) {}
 
-      // B. Query 'kelas sekolah' table
-      try {
-        const { data: classRows } = await supabase.from("kelas sekolah").select("*");
-        if (classRows && classRows.length > 0) {
-          classRows.forEach((r: any) => {
-            const cls = r.kelas || "";
-            if (isSameClass(cls, selectedClass)) {
-              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
-              if (nameKey && !studentMap.has(nameKey)) {
-                studentMap.set(nameKey, {
-                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
-                  raw_id: String(r.id || ""),
-                  nama_lengkap: r.nama || r.nama_lengkap || "-",
-                  kelas: selectedClass,
-                  nis: r.nis || r.nisn || "-"
-                });
-              }
-            }
+      // Also add students who only exist in plotting table for this class
+      plottingMapByName.forEach((cls, nameKey) => {
+        if (isSameClass(cls, selectedClass) && !studentMap.has(nameKey)) {
+          studentMap.set(nameKey, {
+            id: nameKey,
+            raw_id: "",
+            nama_lengkap: nameKey.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+            kelas: selectedClass,
+            nis: "-"
           });
         }
-      } catch (e) {}
-
-      // C. Query 'kelas_sekolah' table
-      try {
-        const { data: classRowsUnder } = await supabase.from("kelas_sekolah").select("*");
-        if (classRowsUnder && classRowsUnder.length > 0) {
-          classRowsUnder.forEach((r: any) => {
-            const cls = r.kelas || "";
-            if (isSameClass(cls, selectedClass)) {
-              const nameKey = (r.nama || r.nama_lengkap || "").trim().toLowerCase();
-              if (nameKey && !studentMap.has(nameKey)) {
-                studentMap.set(nameKey, {
-                  id: String(r.santri_id || r.siswa_id || r.id || nameKey),
-                  raw_id: String(r.id || ""),
-                  nama_lengkap: r.nama || r.nama_lengkap || "-",
-                  kelas: selectedClass,
-                  nis: r.nis || r.nisn || "-"
-                });
-              }
-            }
-          });
-        }
-      } catch (e) {}
+      });
 
       let resultList = Array.from(studentMap.values()).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap));
 
-      if (resultList.length > 0) {
-        setStudents(resultList);
-        const initial: Record<string, string> = {};
-        resultList.forEach(s => { initial[s.id] = "hadir"; });
-        setAttendanceMap(initial);
-      } else {
-        // Fallback default
-        const mock = [
-          { id: "s1", nama_lengkap: "Abdillah Wakhidul Akhir", nis: "101", kelas: selectedClass },
-          { id: "s2", nama_lengkap: "Al Keysha Fierrando", nis: "102", kelas: selectedClass },
-          { id: "s3", nama_lengkap: "Alfi Nur Aulia", nis: "103", kelas: selectedClass }
-        ];
-        setStudents(mock);
-        const initial: Record<string, string> = {};
-        mock.forEach(s => { initial[s.id] = "hadir"; });
-        setAttendanceMap(initial);
-      }
+      setStudents(resultList);
+      const initial: Record<string, string> = {};
+      resultList.forEach(s => { initial[s.id] = "hadir"; });
+      setAttendanceMap(initial);
     } catch (e) {
       console.warn("Error fetching students for journal:", e);
     }
@@ -831,7 +878,7 @@ export default function JurnalMengajarBaruPanel({
                 <div className="px-4 py-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-black text-slate-800 dark:text-slate-200">Presensi & Ringkasan Siswa</h4>
-                    <p className="text-[10px] text-slate-500">Jumlah Siswa Kelas {kelas}: {students.length} anak</p>
+                    <p className="text-[10px] text-slate-500">Jumlah Siswa {formatClassLabel(kelas)}: {students.length} anak</p>
                   </div>
 
                   <div className="flex items-center gap-1.5 flex-wrap">

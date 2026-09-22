@@ -2427,7 +2427,7 @@ export default function PresensiPanel({
           {/* B. REKAP DATA VIEW */}
           {attendanceSubTab === "rekap" && (
             rekapSubMenu === "sekolah" ? (
-              <RekapAbsensiSiswaPanel />
+              <RekapAbsensiSiswaPanel students={students} />
             ) : (
         <div className="space-y-4 animate-fade-in" id="attendance_rekap_section">
 

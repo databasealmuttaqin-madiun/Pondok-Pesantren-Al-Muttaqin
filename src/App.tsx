@@ -3146,6 +3146,8 @@ export default function App() {
                 <JurnalMengajarBaruPanel
                   currentUser={currentUser}
                   onTriggerNotification={triggerNotification}
+                  students={displayedStudents}
+                  schoolClasses={schoolClasses}
                 />
               </div>
             )}
