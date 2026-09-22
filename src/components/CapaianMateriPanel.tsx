@@ -107,6 +107,20 @@ export default function CapaianMateriPanel({
   const [capaianRecords, setCapaianRecords] = useState<Record<string, CapaianSantriRecord>>({});
   const [assignedKamarIds, setAssignedKamarIds] = useState<string[]>([]);
   const [waliKamarMapping, setWaliKamarMapping] = useState<Record<string, string>>({});
+  const [masterRecitationClasses, setMasterRecitationClasses] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("manajemen_recitation_classes");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return recitationClasses || [];
+  });
+  const [masterRooms, setMasterRooms] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("manajemen_rooms");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return rooms || [];
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   // Filters for Tab 1 (Capaian Per Santri)
@@ -181,6 +195,62 @@ export default function CapaianMateriPanel({
           const saved = localStorage.getItem("plotting_wali_kamar_data");
           if (saved) plottingList = JSON.parse(saved);
         } catch (e) {}
+      }
+
+      // Load master list of kelas pengajian strictly from 'plotting' table
+      try {
+        const { data: plotRecitation } = await supabase
+          .from("plotting")
+          .select("nama")
+          .eq("jenis", "kelas pengajian");
+
+        if (plotRecitation && plotRecitation.length > 0) {
+          const classMap = new Map<string, string>();
+          plotRecitation.forEach((r: any) => {
+            if (r.nama && String(r.nama).trim()) {
+              const raw = String(r.nama).trim();
+              const key = raw.toLowerCase();
+              if (!classMap.has(key)) {
+                classMap.set(key, raw);
+              }
+            }
+          });
+          const dbRecitationList = Array.from(classMap.values()).sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+          );
+          setMasterRecitationClasses(dbRecitationList);
+          localStorage.setItem("manajemen_recitation_classes", JSON.stringify(dbRecitationList));
+        }
+      } catch (err) {
+        console.warn("Notice fetch plotting kelas pengajian:", err);
+      }
+
+      // Load master list of kamar strictly from 'plotting' table
+      try {
+        const { data: plotRooms } = await supabase
+          .from("plotting")
+          .select("nama")
+          .eq("jenis", "kamar");
+
+        if (plotRooms && plotRooms.length > 0) {
+          const roomMap = new Map<string, string>();
+          plotRooms.forEach((r: any) => {
+            if (r.nama && String(r.nama).trim()) {
+              const raw = String(r.nama).trim();
+              const key = raw.toLowerCase();
+              if (!roomMap.has(key)) {
+                roomMap.set(key, raw);
+              }
+            }
+          });
+          const dbRoomList = Array.from(roomMap.values()).sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+          );
+          setMasterRooms(dbRoomList);
+          localStorage.setItem("manajemen_rooms", JSON.stringify(dbRoomList));
+        }
+      } catch (err) {
+        console.warn("Notice fetch plotting kamar:", err);
       }
 
       // Build Wali Kamar Name Mapping per Room
@@ -274,31 +344,103 @@ export default function CapaianMateriPanel({
     return materiList.find(m => String(m.id) === String(agregatMateriId)) || materiList[0] || DEFAULT_MATERI_LIST[0];
   }, [materiList, agregatMateriId]);
 
+  // Canonical resolvers to ensure names match strictly with plotting table
+  const getCanonicalRecitationClass = (rawName: string | undefined | null): string => {
+    if (!rawName) return "Tanpa Kelas";
+    const trimmed = String(rawName).trim();
+    if (!trimmed) return "Tanpa Kelas";
+    
+    // Check masterRecitationClasses loaded from plotting table
+    const found = masterRecitationClasses.find(
+      (c) => c && c.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (found) return found.trim();
+
+    // Check props
+    const foundProp = recitationClasses.find(
+      (c) => c && c.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (foundProp) return foundProp.trim();
+
+    return trimmed;
+  };
+
+  const getCanonicalRoom = (rawName: string | undefined | null): string => {
+    if (!rawName) return "Tanpa Kamar";
+    const trimmed = String(rawName).trim();
+    if (!trimmed) return "Tanpa Kamar";
+    
+    const found = masterRooms.find(
+      (r) => r && r.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (found) return found.trim();
+
+    const foundProp = rooms.find(
+      (r) => r && r.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (foundProp) return foundProp.trim();
+
+    return trimmed;
+  };
+
   // Unique lists of rooms and classes
   const availableRooms = useMemo(() => {
     if (isWaliKamarUser && assignedKamarIds.length > 0) {
       return assignedKamarIds;
     }
-    const setR = new Set<string>();
-    if (rooms && rooms.length > 0) {
-      rooms.forEach(r => setR.add(r));
-    }
-    students.forEach(s => {
-      if (s.kamar) setR.add(s.kamar);
+    const roomMap = new Map<string, string>();
+    masterRooms.forEach((r) => {
+      if (r && r.trim()) {
+        const key = r.trim().toLowerCase();
+        if (!roomMap.has(key)) roomMap.set(key, r.trim());
+      }
     });
-    return Array.from(setR).sort();
-  }, [rooms, students, isWaliKamarUser, assignedKamarIds]);
+    rooms.forEach((r) => {
+      if (r && r.trim()) {
+        const key = r.trim().toLowerCase();
+        if (!roomMap.has(key)) roomMap.set(key, r.trim());
+      }
+    });
+    students.forEach((s) => {
+      if (s.kamar && s.kamar.trim()) {
+        const canonical = getCanonicalRoom(s.kamar);
+        const key = canonical.toLowerCase();
+        if (!roomMap.has(key)) roomMap.set(key, canonical);
+      }
+    });
+    return Array.from(roomMap.values()).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
+  }, [masterRooms, rooms, students, isWaliKamarUser, assignedKamarIds]);
 
   const availableClasses = useMemo(() => {
-    const setC = new Set<string>();
-    if (recitationClasses && recitationClasses.length > 0) {
-      recitationClasses.forEach(c => setC.add(c));
-    }
-    students.forEach(s => {
-      if (s.kelas_pengajian) setC.add(s.kelas_pengajian);
+    const classMap = new Map<string, string>();
+    // 1. Priority: Plotting table master recitation classes
+    masterRecitationClasses.forEach((c) => {
+      if (c && c.trim()) {
+        const key = c.trim().toLowerCase();
+        if (!classMap.has(key)) classMap.set(key, c.trim());
+      }
     });
-    return Array.from(setC).sort();
-  }, [recitationClasses, students]);
+    // 2. Props / Cache
+    recitationClasses.forEach((c) => {
+      if (c && c.trim()) {
+        const key = c.trim().toLowerCase();
+        if (!classMap.has(key)) classMap.set(key, c.trim());
+      }
+    });
+    // 3. Fallback from students
+    students.forEach((s) => {
+      if (s.kelas_pengajian && s.kelas_pengajian.trim()) {
+        const canonical = getCanonicalRecitationClass(s.kelas_pengajian);
+        const key = canonical.toLowerCase();
+        if (!classMap.has(key)) classMap.set(key, canonical);
+      }
+    });
+    return Array.from(classMap.values()).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
+  }, [masterRecitationClasses, recitationClasses, students]);
 
   // Filtered Students list according to RBAC and search
   const filteredStudents = useMemo(() => {
@@ -311,14 +453,20 @@ export default function CapaianMateriPanel({
 
       // 2. Room Dropdown Filter
       if (filterKamar !== "All") {
-        if ((student.kamar || "").trim().toLowerCase() !== filterKamar.trim().toLowerCase()) {
+        const studentRoomCanonical = getCanonicalRoom(student.kamar).toLowerCase();
+        const targetRoomCanonical = filterKamar.trim().toLowerCase();
+        const rawRoom = (student.kamar || "").trim().toLowerCase();
+        if (studentRoomCanonical !== targetRoomCanonical && rawRoom !== targetRoomCanonical) {
           return false;
         }
       }
 
-      // 3. Class Dropdown Filter
+      // 3. Class Dropdown Filter (Case-insensitive & Canonical match)
       if (filterKelas !== "All") {
-        if ((student.kelas_pengajian || "").trim().toLowerCase() !== filterKelas.trim().toLowerCase()) {
+        const studentClassCanonical = getCanonicalRecitationClass(student.kelas_pengajian).toLowerCase();
+        const targetClassCanonical = filterKelas.trim().toLowerCase();
+        const rawClass = (student.kelas_pengajian || "").trim().toLowerCase();
+        if (studentClassCanonical !== targetClassCanonical && rawClass !== targetClassCanonical) {
           return false;
         }
       }
@@ -334,7 +482,7 @@ export default function CapaianMateriPanel({
 
       return true;
     });
-  }, [students, isWaliKamarUser, assignedKamarIds, filterKamar, filterKelas, searchQuery]);
+  }, [students, isWaliKamarUser, assignedKamarIds, filterKamar, filterKelas, searchQuery, masterRecitationClasses, masterRooms]);
 
   // Helper to compute progress percentage for a student & book
   const getCapaianData = (studentId: string | number, materiId: string | number) => {
@@ -571,13 +719,15 @@ export default function CapaianMateriPanel({
       }
 
       const groupName = agregatGroupMode === "kamar" 
-        ? (student.kamar || "Tanpa Kamar") 
-        : (student.kelas_pengajian || "Tanpa Kelas");
+        ? getCanonicalRoom(student.kamar)
+        : getCanonicalRecitationClass(student.kelas_pengajian);
 
       if (!groupsMap[groupName]) {
         groupsMap[groupName] = {
           name: groupName,
-          wali: agregatGroupMode === "kamar" ? (waliKamarMapping[groupName] || "Belum Dibatasi") : "Pengajar Kelas",
+          wali: agregatGroupMode === "kamar" 
+            ? (waliKamarMapping[groupName] || waliKamarMapping[student.kamar || ""] || "Belum Dibatasi") 
+            : "Pengajar Kelas",
           students: [],
           totalPagesSum: 0,
           completedPagesSum: 0
@@ -610,8 +760,8 @@ export default function CapaianMateriPanel({
         avgPageNumber,
         totalPages
       };
-    }).sort((a, b) => a.groupName.localeCompare(b.groupName, undefined, { numeric: true }));
-  }, [students, isWaliKamarUser, assignedKamarIds, agregatGroupMode, agregatMateri, waliKamarMapping, capaianRecords]);
+    }).sort((a, b) => a.groupName.localeCompare(b.groupName, undefined, { numeric: true, sensitivity: "base" }));
+  }, [students, isWaliKamarUser, assignedKamarIds, agregatGroupMode, agregatMateri, waliKamarMapping, capaianRecords, masterRecitationClasses, masterRooms]);
 
   // Pagination for book page grid if pages exceed 100
   const maxPagesToDisplay = currentMateri?.jumlah_halaman || 40;

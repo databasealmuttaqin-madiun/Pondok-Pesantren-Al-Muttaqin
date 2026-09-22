@@ -6,6 +6,7 @@ import { useEsp32NfcListener } from "../hooks/useEsp32NfcListener";
 import Esp32NfcGuideModal from "./Esp32NfcGuideModal";
 import NfcUidConverterModal from "./NfcUidConverterModal";
 import { isNfcMatch, convertNfcUid, cleanCodeString, NfcConversionResult } from "../utils/nfcConverter";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 /**
  * Normalizes an NFC token or UID (serial number) to prevent mismatch due to colons, spaces, or casing
@@ -292,7 +293,7 @@ export default function NfcRegisterPanel({
     if (!scannedCode) return;
     const target = selectedStudent || students.find(s => String(s.id) === selectedStudentId);
     if (!target) {
-      alert("Harap cari dan pilih nama santri terlebih dahulu.");
+      showWarning("Pilih Santri", "Harap cari dan pilih nama santri terlebih dahulu.");
       return;
     }
 
@@ -302,6 +303,7 @@ export default function NfcRegisterPanel({
     
     setIsRegistering(false);
     if (success) {
+      showSuccess("Kartu Berhasil Dihubungkan", `Kartu NFC berhasil didaftarkan untuk ${target.nama_lengkap}.`);
       // Clear form after successful registration
       setSelectedRoom("");
       setSelectedStudentId("");
@@ -312,8 +314,10 @@ export default function NfcRegisterPanel({
 
   // Remove the card binding
   const handleDeassignCard = async (studentId: number, studentName: string) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus serial kartu NFC dari ${studentName}?`)) {
+    const isConfirmed = await showDeleteConfirm(`kartu NFC milik "${studentName}"`, "Apakah Anda yakin ingin menghapus serial kartu NFC dari santri ini?");
+    if (isConfirmed) {
       await onUpdateNfc(studentId, null);
+      showToast(`Kartu NFC ${studentName} berhasil dihapus`, "success");
       if (scannedCode) {
         // Clear screen if deleting the currently scanned card
         const updatedStudent = students.find(s => s.id === studentId);

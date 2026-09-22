@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { BookOpen, Book, Plus, Edit2, Trash2, Search, X, Check, BookMarked, Save } from "lucide-react";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 export interface MateriPengajian {
   id: number;
@@ -80,7 +81,7 @@ export default function ManajemenMateriPanel({ currentUserRole = "viewer", onTri
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formNama.trim()) {
-      if (onTriggerNotification) onTriggerNotification("Nama materi wajib diisi", "warning");
+      showWarning("Nama Materi Diperlukan", "Nama materi wajib diisi");
       return;
     }
     
@@ -91,49 +92,50 @@ export default function ManajemenMateriPanel({ currentUserRole = "viewer", onTri
           .from("materi_pengajian")
           .update({
             kelompok: formKelompok,
-            nama_materi: formNama,
+            nama_materi: formNama.trim(),
             jumlah_halaman: formHalaman,
             urutan: formUrutan
           })
           .eq("id", editingItem.id);
           
         if (error) throw error;
-        if (onTriggerNotification) onTriggerNotification(`Berhasil mengupdate ${formNama}`, "success");
+        showSuccess("Berhasil", `Materi "${formNama}" berhasil diperbarui.`);
       } else {
         const { error } = await supabase
           .from("materi_pengajian")
           .insert({
             kelompok: formKelompok,
-            nama_materi: formNama,
+            nama_materi: formNama.trim(),
             jumlah_halaman: formHalaman,
             urutan: formUrutan
           });
           
         if (error) throw error;
-        if (onTriggerNotification) onTriggerNotification(`Berhasil menambahkan ${formNama}`, "success");
+        showSuccess("Berhasil", `Materi "${formNama}" berhasil ditambahkan.`);
       }
       setIsModalOpen(false);
       loadData();
     } catch (err: any) {
       console.error(err);
-      if (onTriggerNotification) onTriggerNotification("Gagal menyimpan data: " + err.message, "error");
+      showError("Gagal Menyimpan", err.message || "Terjadi kesalahan saat menyimpan materi.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id: number, nama: string) => {
-    if (!window.confirm(`Yakin ingin menghapus materi "${nama}"?`)) return;
+    const isConfirmed = await showDeleteConfirm(`materi "${nama}"`);
+    if (!isConfirmed) return;
     
     try {
       const { error } = await supabase.from("materi_pengajian").delete().eq("id", id);
       if (error) throw error;
       
-      if (onTriggerNotification) onTriggerNotification(`Materi ${nama} berhasil dihapus`, "success");
+      showToast(`Materi "${nama}" berhasil dihapus`, "success");
       loadData();
     } catch (err: any) {
       console.error(err);
-      if (onTriggerNotification) onTriggerNotification("Gagal menghapus data: " + err.message, "error");
+      showError("Gagal Menghapus", err.message || "Terjadi kesalahan saat menghapus materi.");
     }
   };
 

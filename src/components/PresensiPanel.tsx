@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
+import { showConfirm, showDeleteConfirm, showToast } from "../utils/sweetalert";
 import { SantriData, supabase } from "../supabaseClient";
 import { parseNfcPayload, normalizeNfcId } from "./NfcRegisterPanel";
 import { BrowserQRCodeReader, BrowserCodeReader, IScannerControls } from "@zxing/browser";
@@ -1857,24 +1858,40 @@ export default function PresensiPanel({
     setIsLoadingPrayerDetail(true);
 
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("absensi")
         .select("*")
-        .eq("tanggal", dateToUse)
         .ilike("nama", (student.nama_lengkap || "").trim());
+
+      if (rekapTimeframe === "harian" || !rekapTimeframe) {
+        query = query.eq("tanggal", dateToUse);
+      } else if (rekapTimeframe === "mingguan") {
+        const { monday, sunday } = getWeekRange(dateToUse);
+        const y1 = monday.getFullYear(), m1 = String(monday.getMonth() + 1).padStart(2, "0"), d1 = String(monday.getDate()).padStart(2, "0");
+        const y2 = sunday.getFullYear(), m2 = String(sunday.getMonth() + 1).padStart(2, "0"), d2 = String(sunday.getDate()).padStart(2, "0");
+        query = query.gte("tanggal", `${y1}-${m1}-${d1}`).lte("tanggal", `${y2}-${m2}-${d2}`);
+      } else if (rekapTimeframe === "bulanan") {
+        const d = new Date(dateToUse);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const lastDay = new Date(y, d.getMonth() + 1, 0).getDate();
+        query = query.gte("tanggal", `${y}-${m}-01`).lte("tanggal", `${y}-${m}-${String(lastDay).padStart(2, "0")}`);
+      }
+
+      const { data, error } = await query.order("tanggal", { ascending: true });
 
       if (!error && data && data.length > 0) {
         setStudentPrayerRecords(data);
       } else {
         const localMatches = (rawAttendanceRows || []).filter(
-          (r: any) => r.tanggal === dateToUse && (r.nama || "").toLowerCase() === (student.nama_lengkap || "").toLowerCase()
+          (r: any) => (r.nama || "").toLowerCase() === (student.nama_lengkap || "").toLowerCase()
         );
         setStudentPrayerRecords(localMatches);
       }
     } catch (err) {
       console.warn("Error fetching student prayer detail:", err);
       const localMatches = (rawAttendanceRows || []).filter(
-        (r: any) => r.tanggal === dateToUse && (r.nama || "").toLowerCase() === (student.nama_lengkap || "").toLowerCase()
+        (r: any) => (r.nama || "").toLowerCase() === (student.nama_lengkap || "").toLowerCase()
       );
       setStudentPrayerRecords(localMatches);
     } finally {
@@ -2725,7 +2742,7 @@ export default function PresensiPanel({
               </div>
             </div>
 
-            {/* Table (Columns: Nama, Hadir, Telat, Izin, Alfa) */}
+            {/* Table (Columns: Nama, Hadir, Telat, Izin, Alfa, Aksi) */}
             <div className="overflow-x-auto w-full">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -2734,7 +2751,8 @@ export default function PresensiPanel({
                     <th className="py-3.5 px-4 text-center w-24 sm:w-32">Hadir</th>
                     <th className="py-3.5 px-4 text-center w-24 sm:w-32">Telat</th>
                     <th className="py-3.5 px-4 text-center w-24 sm:w-32">Izin</th>
-                    <th className="py-3.5 px-4 text-center w-24 sm:w-32 sm:pr-6">Alfa</th>
+                    <th className="py-3.5 px-4 text-center w-24 sm:w-32">Alfa</th>
+                    <th className="py-3.5 px-4 text-center w-24 sm:pr-6">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs font-semibold">
@@ -2765,15 +2783,26 @@ export default function PresensiPanel({
                           <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200">
                             {pPeriodStats.sakit + pPeriodStats.pulang}
                           </td>
-                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200 sm:pr-6">
+                          <td className="py-3.5 px-4 text-center font-bold text-slate-700 dark:text-slate-200">
                             {pPeriodStats.alpa}
+                          </td>
+                          <td className="py-3.5 px-4 text-center sm:pr-6">
+                            <button
+                              type="button"
+                              onClick={() => openStudentPrayerDetail(student)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold transition-colors cursor-pointer text-xs"
+                              title="Lihat Rincian Sholat"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Detail</span>
+                            </button>
                           </td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr>
-                      <td colSpan={5} className="py-12 text-center text-slate-400 text-xs font-semibold">
+                      <td colSpan={6} className="py-12 text-center text-slate-400 text-xs font-semibold">
                         {isSesiSelected && rekapBelumAbsenFilter === "belum_absen" ? (
                           <div className="space-y-1">
                             <p className="text-sm font-bold text-emerald-600">Alhamdulillah! Semua santri sudah melakukan absensi pada sesi ini.</p>
@@ -3008,9 +3037,16 @@ export default function PresensiPanel({
                   <label className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Edit Template Pesan</label>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm("Reset template ke default?")) {
+                    onClick={async () => {
+                      const ok = await showConfirm({
+                        title: "Reset Template?",
+                        text: "Kembalikan template pesan WhatsApp ke format bawaan (default)?",
+                        confirmButtonText: "Ya, Reset",
+                        icon: "question"
+                      });
+                      if (ok) {
                         setWaTemplate(`*LAPORAN KEHADIRAN SANTRI*\n\nAssalamualaikum Wr. Wb.\n\nYth. Orang Tua/Wali dari *{nama}*,\n\nMenginfokan bahwa santri tersebut telah tercatat mengikuti presensi:\n\n- *Sesi*: {sesi}\n- *Kegiatan*: {tipe}\n- *Waktu*: {waktu} WIB\n- *Tanggal*: {tanggal}\n- *Status Kehadiran*: *{status}*\n\nTerima kasih atas perhatian dan dukungannya.\n\n_Pondok Pesantren Al Muttaqin Madiun_`);
+                        showToast("Template direset ke default", "success");
                       }
                     }}
                     className="text-[9px] font-bold text-[#3e46ca] dark:text-indigo-400 hover:underline cursor-pointer"
@@ -3086,9 +3122,11 @@ export default function PresensiPanel({
               {waLogs.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (confirm("Apakah Anda yakin ingin menghapus semua histori log pengiriman WA?")) {
+                  onClick={async () => {
+                    const ok = await showDeleteConfirm("Semua Log WhatsApp", "Apakah Anda yakin ingin menghapus seluruh histori log pengiriman WA?");
+                    if (ok) {
                       setWaLogs([]);
+                      showToast("Histori log berhasil dibersihkan", "success");
                     }
                   }}
                   className="text-[10px] font-black uppercase text-rose-500 hover:text-rose-700 transition-colors flex items-center gap-1 cursor-pointer"
@@ -3630,319 +3668,246 @@ export default function PresensiPanel({
         initialUid={converterInitialUid}
       />
 
-      {/* MODAL RINCIAN 5 WAKTU SHOLAT BERJAMAAH */}
+      {/* MODAL RINCIAN PRESENSI SHOLAT SISWA (DESAIN REKAP ABSENSI SEKOLAH) */}
       {selectedStudentForPrayerDetail && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in overflow-y-auto"
+          className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-xs"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSelectedStudentForPrayerDetail(null);
           }}
         >
-          <div className="bg-white dark:bg-[#111c44] border border-slate-200/80 dark:border-slate-800 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-scale-up my-auto flex flex-col max-h-[92vh]">
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[85vh]">
             {/* Header */}
-            <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white relative">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Rincian Kehadiran Siswa
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                  {selectedStudentForPrayerDetail.nama_lengkap} • NISN: {selectedStudentForPrayerDetail.nisn || selectedStudentForPrayerDetail.nis || "-"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedStudentForPrayerDetail(null)}
-                className="absolute top-4 right-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-                title="Tutup Modal"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                title="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
-
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/10 border-2 border-white/20 overflow-hidden shrink-0 shadow-md flex items-center justify-center text-3xl">
-                  {selectedStudentForPrayerDetail.foto ? (
-                    <img 
-                      src={selectedStudentForPrayerDetail.foto} 
-                      alt="" 
-                      className="w-full h-full object-cover" 
-                    />
-                  ) : (
-                    <span>{selectedStudentForPrayerDetail.jenis_kelamin === "P" ? "🧕" : "👳"}</span>
-                  )}
-                </div>
-
-                <div className="min-w-0 pr-8">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-indigo-200">
-                      Rincian Presensi Sholat
-                    </span>
-                    <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200">
-                      5 Waktu Sholat
-                    </span>
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-black text-white mt-1 leading-snug truncate">
-                    {selectedStudentForPrayerDetail.nama_lengkap}
-                  </h3>
-                  <div className="flex items-center gap-3 text-xs text-indigo-200/90 font-medium mt-1 flex-wrap">
-                    <span>Kamar: <strong>{selectedStudentForPrayerDetail.kamar || "Belum Set"}</strong></span>
-                    {selectedStudentForPrayerDetail.nfc_id && (
-                      <>
-                        <span>•</span>
-                        <span>NFC: {selectedStudentForPrayerDetail.nfc_id}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Date navigator bar */}
-              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5 text-xs text-white/90">
-                  <Calendar className="w-4 h-4 text-indigo-300" />
-                  <span className="font-bold">{formatIndoDate(prayerDetailDate)}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const d = new Date(prayerDetailDate);
-                      d.setDate(d.getDate() - 1);
-                      handlePrayerDateChange(d.toISOString().slice(0, 10));
-                    }}
-                    className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold text-white transition-colors cursor-pointer flex items-center gap-1"
-                    title="Hari Sebelumnya"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Kemarin</span>
-                  </button>
-                  <input
-                    type="date"
-                    value={prayerDetailDate}
-                    onChange={(e) => {
-                      if (e.target.value) handlePrayerDateChange(e.target.value);
-                    }}
-                    className="text-xs bg-white/15 border border-white/20 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-white/40 cursor-pointer"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const d = new Date(prayerDetailDate);
-                      d.setDate(d.getDate() + 1);
-                      handlePrayerDateChange(d.toISOString().slice(0, 10));
-                    }}
-                    className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold text-white transition-colors cursor-pointer flex items-center gap-1"
-                    title="Hari Selanjutnya"
-                  >
-                    <span className="hidden sm:inline">Besok</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
               {isLoadingPrayerDetail ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400">
                   <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-xs font-bold">Memuat rincian sholat santri...</span>
+                  <span className="text-xs font-bold">Memuat rincian kehadiran sholat...</span>
                 </div>
               ) : (() => {
-                // Calculate detailed statistics for the 5 prayers
-                const prayerDetails = PRAYER_SCHEDULE.map(ps => {
-                  const detail = getPrayerDetailForSession(ps.key, selectedStudentForPrayerDetail, prayerDetailDate);
-                  return {
-                    ...ps,
-                    ...detail
-                  };
-                });
+                let detailRows: Array<{
+                  tanggal: string;
+                  sesi: string;
+                  status: "Hadir" | "Terlambat" | "Izin" | "Sakit" | "Alpa";
+                  keterangan: string;
+                }> = [];
 
-                const hadirBerjamaah = prayerDetails.filter(p => p.status === "hadir").length;
-                const terlambat = prayerDetails.filter(p => p.status === "terlambat").length;
-                const izinSakit = prayerDetails.filter(p => p.status === "sakit" || p.status === "izin" || p.status === "pulang").length;
-                const tidakHadir = prayerDetails.filter(p => p.status === "alpa" || p.status === "unmarked").length;
-                const persenTuntas = Math.round(((hadirBerjamaah + terlambat) / 5) * 100);
+                let hadirCount = 0;
+                let terlambatCount = 0;
+                let izinCount = 0;
+                let sakitCount = 0;
+                let alpaCount = 0;
+
+                if (rekapTimeframe === "harian" || !rekapTimeframe) {
+                  detailRows = PRAYER_SCHEDULE.map(ps => {
+                    const detail = getPrayerDetailForSession(ps.key, selectedStudentForPrayerDetail, prayerDetailDate);
+                    let st: "Hadir" | "Terlambat" | "Izin" | "Sakit" | "Alpa" = "Alpa";
+                    let ket = "Sesi Sholat Berjamaah";
+
+                    if (detail.status === "hadir") {
+                      st = "Hadir";
+                      hadirCount++;
+                      ket = detail.waktu ? `Sesi Sholat Berjamaah (${detail.waktu} WIB)` : "Sesi Sholat Berjamaah";
+                    } else if (detail.status === "terlambat") {
+                      st = "Terlambat";
+                      terlambatCount++;
+                      ket = detail.waktu ? `Sesi Sholat Berjamaah - Terlambat (${detail.waktu} WIB)` : "Sesi Sholat Berjamaah (Terlambat)";
+                    } else if (detail.status === "izin" || detail.status === "pulang") {
+                      st = "Izin";
+                      izinCount++;
+                      ket = detail.status === "pulang" ? "Izin Pulang" : "Izin";
+                    } else if (detail.status === "sakit") {
+                      st = "Sakit";
+                      sakitCount++;
+                      ket = "Sakit";
+                    } else {
+                      st = "Alpa";
+                      alpaCount++;
+                      ket = "Tidak Hadir / Belum Absen";
+                    }
+
+                    return {
+                      tanggal: prayerDetailDate,
+                      sesi: ps.label.toUpperCase(),
+                      status: st,
+                      keterangan: ket
+                    };
+                  });
+                } else {
+                  // Weekly / Monthly calculation
+                  const pStats = selectedStudentForPrayerDetail.pPeriodStats || getStudentPeriodStats(selectedStudentForPrayerDetail.id, rekapTimeframe, selectedDate, "sholat");
+                  hadirCount = pStats.hadir;
+                  terlambatCount = pStats.terlambat;
+                  izinCount = pStats.pulang;
+                  sakitCount = pStats.sakit;
+                  alpaCount = pStats.alpa;
+
+                  const dates = Object.keys(pStats.sessionsData || {}).sort((a, b) => b.localeCompare(a));
+                  dates.forEach(dStr => {
+                    PRAYER_SCHEDULE.forEach(ps => {
+                      const normKey = (s: string) => (s || "").toLowerCase().replace(/ashar/g, "asar").replace(/zuhur/g, "dzuhur").replace(/dhuhur/g, "dzuhur").trim();
+                      const matchedSess = sessions.find(s => normKey(s.label || s.id).includes(normKey(ps.key)));
+                      const rawSt = matchedSess ? (pStats.sessionsData[dStr]?.[matchedSess.id] || "unmarked") : "unmarked";
+                      
+                      if (rawSt && rawSt !== "unmarked") {
+                        let st: "Hadir" | "Terlambat" | "Izin" | "Sakit" | "Alpa" = "Alpa";
+                        let ket = "Sesi Sholat Berjamaah";
+                        if (rawSt === "hadir") {
+                          st = "Hadir";
+                          ket = "Sesi Sholat Berjamaah";
+                        } else if (rawSt === "terlambat") {
+                          st = "Terlambat";
+                          ket = "Sesi Sholat Berjamaah (Terlambat)";
+                        } else if (rawSt === "izin" || rawSt === "pulang") {
+                          st = "Izin";
+                          ket = rawSt === "pulang" ? "Izin Pulang" : "Izin";
+                        } else if (rawSt === "sakit") {
+                          st = "Sakit";
+                          ket = "Sakit";
+                        } else {
+                          st = "Alpa";
+                          ket = "Tidak Hadir";
+                        }
+                        detailRows.push({
+                          tanggal: dStr,
+                          sesi: ps.label.toUpperCase(),
+                          status: st,
+                          keterangan: ket
+                        });
+                      }
+                    });
+                  });
+
+                  if (detailRows.length === 0) {
+                    detailRows = PRAYER_SCHEDULE.map(ps => {
+                      const detail = getPrayerDetailForSession(ps.key, selectedStudentForPrayerDetail, selectedDate);
+                      let st: "Hadir" | "Terlambat" | "Izin" | "Sakit" | "Alpa" = "Alpa";
+                      let ket = "Sesi Sholat Berjamaah";
+                      if (detail.status === "hadir") st = "Hadir";
+                      else if (detail.status === "terlambat") st = "Terlambat";
+                      else if (detail.status === "izin" || detail.status === "pulang") st = "Izin";
+                      else if (detail.status === "sakit") st = "Sakit";
+                      else st = "Alpa";
+                      return {
+                        tanggal: selectedDate,
+                        sesi: ps.label.toUpperCase(),
+                        status: st,
+                        keterangan: ket
+                      };
+                    });
+                  }
+                }
 
                 return (
                   <>
-                    {/* Ringkasan 4 Kartu KPI */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
-                        <span className="text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400 tracking-wider">
-                          Berjamaah
-                        </span>
-                        <div className="flex items-baseline gap-1 mt-0.5">
-                          <strong className="text-xl font-black text-emerald-800 dark:text-emerald-300">{hadirBerjamaah}</strong>
-                          <span className="text-[10px] text-emerald-600 font-bold">/ 5</span>
-                        </div>
-                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Tepat Waktu</span>
+                    {/* Profile Card Summary */}
+                    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-4 border border-slate-150 dark:border-slate-800/80 grid grid-cols-5 text-center divide-x divide-slate-200 dark:divide-slate-700">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Hadir</span>
+                        <span className="text-base font-extrabold text-slate-700 dark:text-slate-200 font-mono">{hadirCount}</span>
                       </div>
-
-                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
-                        <span className="text-[10px] font-extrabold uppercase text-amber-700 dark:text-amber-400 tracking-wider">
-                          Telat / Masbuk
-                        </span>
-                        <div className="flex items-baseline gap-1 mt-0.5">
-                          <strong className="text-xl font-black text-amber-800 dark:text-amber-300">{terlambat}</strong>
-                          <span className="text-[10px] text-amber-600 font-bold">/ 5</span>
-                        </div>
-                        <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Terlambat</span>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Terlambat</span>
+                        <span className="text-base font-extrabold text-slate-700 dark:text-slate-200 font-mono">{terlambatCount}</span>
                       </div>
-
-                      <div className="p-3 bg-sky-50 dark:bg-sky-950/30 border border-sky-200/70 dark:border-sky-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
-                        <span className="text-[10px] font-extrabold uppercase text-sky-700 dark:text-sky-400 tracking-wider">
-                          Izin / Sakit
-                        </span>
-                        <div className="flex items-baseline gap-1 mt-0.5">
-                          <strong className="text-xl font-black text-sky-800 dark:text-sky-300">{izinSakit}</strong>
-                          <span className="text-[10px] text-sky-600 font-bold">/ 5</span>
-                        </div>
-                        <span className="text-[9px] text-sky-600 dark:text-sky-400 font-medium">Udzur Syar'i</span>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Izin</span>
+                        <span className="text-base font-extrabold text-slate-700 dark:text-slate-200 font-mono">{izinCount}</span>
                       </div>
-
-                      <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-900/50 rounded-2xl flex flex-col items-center text-center shadow-3xs">
-                        <span className="text-[10px] font-extrabold uppercase text-rose-700 dark:text-rose-400 tracking-wider">
-                          Alfa / Belum
-                        </span>
-                        <div className="flex items-baseline gap-1 mt-0.5">
-                          <strong className="text-xl font-black text-rose-800 dark:text-rose-300">{tidakHadir}</strong>
-                          <span className="text-[10px] text-rose-600 font-bold">/ 5</span>
-                        </div>
-                        <span className="text-[9px] text-rose-600 dark:text-rose-400 font-medium">Tidak Hadir</span>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Sakit</span>
+                        <span className="text-base font-extrabold text-slate-700 dark:text-slate-200 font-mono">{sakitCount}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Alpa</span>
+                        <span className="text-base font-extrabold text-slate-700 dark:text-slate-200 font-mono">{alpaCount}</span>
                       </div>
                     </div>
 
-                    {/* Evaluasi Status Bar */}
-                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
-                      hadirBerjamaah === 5 
-                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-                        : terlambat > 0 && tidakHadir === 0
-                        ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300"
-                        : "bg-indigo-500/10 border-indigo-500/30 text-indigo-800 dark:text-indigo-300"
-                    }`}>
-                      <div className="flex items-center gap-2">
-                        {hadirBerjamaah === 5 ? (
-                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                        ) : (
-                          <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                        )}
-                        <span className="font-semibold">
-                          {hadirBerjamaah === 5
-                            ? "Alhamdulillah! Santri ini melaksanakan seluruh 5 waktu sholat secara berjamaah tepat waktu."
-                            : `Kehadiran Sholat Berjamaah: ${persenTuntas}% (${hadirBerjamaah + terlambat} dari 5 waktu dihadiri).`}
-                        </span>
-                      </div>
-                      <span className="font-black text-sm shrink-0">{persenTuntas}%</span>
-                    </div>
-
-                    {/* List 5 Waktu Sholat */}
-                    <div className="space-y-2.5">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                        <span>Rincian Status Per Waktu Sholat</span>
-                        <span className="text-[11px] font-medium text-slate-400">Jadwal Masjid Pesantren</span>
-                      </h4>
-
-                      <div className="space-y-2">
-                        {prayerDetails.map((prayer) => {
-                          const isHadir = prayer.status === "hadir";
-                          const isTelat = prayer.status === "terlambat";
-                          const isSakit = prayer.status === "sakit";
-                          const isIzin = prayer.status === "izin" || prayer.status === "pulang";
-                          const isAlfa = prayer.status === "alpa" || prayer.status === "unmarked";
-
-                          return (
-                            <div 
-                              key={prayer.key}
-                              className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                                isHadir 
-                                  ? "bg-emerald-50/40 dark:bg-emerald-950/15 border-emerald-200/80 dark:border-emerald-900/40"
-                                  : isTelat
-                                  ? "bg-amber-50/40 dark:bg-amber-950/15 border-amber-200/80 dark:border-amber-900/40"
-                                  : isSakit || isIzin
-                                  ? "bg-sky-50/40 dark:bg-sky-950/15 border-sky-200/80 dark:border-sky-900/40"
-                                  : "bg-slate-50 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-800"
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-lg shrink-0 shadow-3xs">
-                                  {prayer.icon}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h5 className="text-sm font-extrabold text-slate-800 dark:text-white">
-                                      {prayer.name}
-                                    </h5>
-                                    
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    {isHadir && (
-                                      <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                        Dilaksanakan Berjamaah (Tepat Waktu)
-                                      </span>
-                                    )}
-                                    {isTelat && (
-                                      <span className="text-[11px] text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
-                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                                        Terlambat / Masbuk Pada Jamaah
-                                      </span>
-                                    )}
-                                    {isSakit && (
-                                      <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold flex items-center gap-1">
-                                        <Info className="w-3.5 h-3.5 text-sky-600" />
-                                        Tidak Sholat Berjamaah (Sakit)
-                                      </span>
-                                    )}
-                                    {isIzin && (
-                                      <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold flex items-center gap-1">
-                                        <Info className="w-3.5 h-3.5 text-sky-600" />
-                                        Tidak Sholat Berjamaah (Izin/Pulang)
-                                      </span>
-                                    )}
-                                    {isAlfa && (
-                                      <span className="text-[11px] text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1">
-                                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                                        Tidak Mengikuti Berjamaah (Alfa / Belum Absen)
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1 self-stretch sm:self-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 dark:border-slate-800">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                  isHadir 
-                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300/60"
-                                    : isTelat
-                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300/60"
-                                    : isSakit || isIzin
-                                    ? "bg-sky-100 text-sky-800 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-300/60"
-                                    : "bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300/60"
-                                }`}>
-                                  {isHadir ? "Berjamaah" : isTelat ? "Terlambat" : isSakit ? "Sakit" : isIzin ? "Izin" : "Alfa"}
-                                </span>
-                                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-slate-400" />
-                                  {prayer.waktu ? (
-                                    <strong>Jam {prayer.waktu} WIB</strong>
-                                  ) : (
-                                    <span className="italic text-slate-400">Tidak ada jam scan</span>
-                                  )}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    {/* Attendance Log Table */}
+                    <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-semibold uppercase tracking-wider">
+                            <th className="px-4 py-2.5">Tanggal</th>
+                            <th className="px-4 py-2.5">Mata Pelajaran / Sesi</th>
+                            <th className="px-4 py-2.5 text-center">Status</th>
+                            <th className="px-4 py-2.5">Keterangan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                          {detailRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                                Tidak ada riwayat presensi terekam untuk periode ini.
+                              </td>
+                            </tr>
+                          ) : (
+                            detailRows.map((row, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                                <td className="px-4 py-2.5 font-mono text-slate-700 dark:text-slate-200">
+                                  {row.tanggal}
+                                </td>
+                                <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 uppercase font-semibold">
+                                  {row.sesi}
+                                </td>
+                                <td className="px-4 py-2.5 text-center">
+                                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    row.status === "Hadir"
+                                      ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                      : row.status === "Terlambat"
+                                      ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+                                      : row.status === "Izin"
+                                      ? "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300"
+                                      : row.status === "Sakit"
+                                      ? "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+                                      : "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
+                                  }`}>
+                                    {row.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">
+                                  {row.keterangan}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </>
                 );
               })()}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Data disinkronkan secara real-time dari mesin absensi & database
-              </span>
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
               <button
                 type="button"
                 onClick={() => setSelectedStudentForPrayerDetail(null)}
-                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-xs cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
               >
-                Tutup Rincian
+                Tutup
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { SantriData, supabase } from "../supabaseClient";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm, showConfirm } from "../utils/sweetalert";
 
 interface ManagementPanelProps {
   students: SantriData[];
@@ -120,7 +121,7 @@ export default function ManagementPanel({
 
     const formatted = roomName.trim();
     if (rooms.includes(formatted)) {
-      alert("Nama kamar sudah terdaftar!");
+      showWarning("Nama Kamar Sudah Ada", `Nama kamar "${formatted}" sudah terdaftar!`);
       return;
     }
 
@@ -150,6 +151,7 @@ export default function ManagementPanel({
     setRoomName("");
     setRoomBuilding("");
     setShowAddRoom(false);
+    showToast(`Kamar "${formatted}" berhasil dibuat & disinkronkan.`, "success");
     triggerFeedback(`Kamar "${formatted}" berhasil dibuat & disinkronkan ke database.`);
   };
 
@@ -160,7 +162,7 @@ export default function ManagementPanel({
 
     const formatted = recitationName.trim();
     if (recitationClasses.includes(formatted)) {
-      alert("Nama kelas pengajian sudah terdaftar!");
+      showWarning("Nama Kelas Sudah Ada", `Nama kelas pengajian "${formatted}" sudah terdaftar!`);
       return;
     }
 
@@ -188,6 +190,7 @@ export default function ManagementPanel({
 
     setRecitationName("");
     setShowAddRecitation(false);
+    showToast(`Kelas Pengajian "${formatted}" berhasil dibuat & disinkronkan.`, "success");
     triggerFeedback(`Kelas Pengajian "${formatted}" berhasil dibuat & disinkronkan.`);
   };
 
@@ -198,7 +201,7 @@ export default function ManagementPanel({
 
     const formatted = schoolName.trim();
     if (schoolClasses.includes(formatted)) {
-      alert("Nama kelas sekolah sudah terdaftar!");
+      showWarning("Nama Kelas Sudah Ada", `Nama kelas sekolah "${formatted}" sudah terdaftar!`);
       return;
     }
 
@@ -226,12 +229,16 @@ export default function ManagementPanel({
 
     setSchoolName("");
     setShowAddSchool(false);
+    showToast(`Kelas Sekolah "${formatted}" berhasil dibuat & disinkronkan.`, "success");
     triggerFeedback(`Kelas Sekolah "${formatted}" berhasil dibuat & disinkronkan.`);
   };
 
   // Delete Entity Options completely
   const handleDeleteOption = async (itemToDelete: string) => {
-    const confirmVal = window.confirm(`Apakah Anda yakin ingin menghapus ${modeInfo.label} "${itemToDelete}"? Semua siswa yang di-plot ke sini akan dikosongkan pemetaannya.`);
+    const confirmVal = await showDeleteConfirm(
+      `${modeInfo.label} "${itemToDelete}"`,
+      `Apakah Anda yakin ingin menghapus ${modeInfo.label} "${itemToDelete}"? Semua siswa yang di-plot ke sini akan dikosongkan pemetaannya.`
+    );
     if (!confirmVal) return;
 
     const targetLower = itemToDelete.trim().toLowerCase();
@@ -245,7 +252,7 @@ export default function ManagementPanel({
       // Database delete
       try {
         await supabase.from("kamar").delete().ilike("kamar", itemToDelete);
-        await supabase.from("plotting").delete().ilike("nama", itemToDelete).eq("jenis", "kamar");
+        await supabase.from("plotting").delete().or(`nama.ilike.${itemToDelete},nama.ilike.%${itemToDelete.trim()}%`).eq("jenis", "kamar");
         await supabase.from("siswa").update({ kamar: "" }).ilike("kamar", itemToDelete);
       } catch (e: any) {
         console.warn("Supabase delete error:", e.message);
@@ -259,25 +266,29 @@ export default function ManagementPanel({
       // Database delete
       try {
         await supabase.from("kelas_pengajian").delete().ilike("kelas", itemToDelete);
-        await supabase.from("plotting").delete().ilike("nama", itemToDelete).eq("jenis", "kelas pengajian");
+        await supabase.from("plotting").delete().or(`nama.ilike.${itemToDelete},nama.ilike.%${itemToDelete.replace(/^kelas\s*/i, "").trim()}%`).eq("jenis", "kelas pengajian");
       } catch (e: any) {
         console.warn("Supabase delete error:", e.message);
       }
 
     } else if (activeMode === "sekolah") {
-      const updated = schoolClasses.filter((r) => r.trim().toLowerCase() !== targetLower);
+      const cleanSchool = itemToDelete.replace(/^kelas\s*/i, "").trim();
+      const updated = schoolClasses.filter((r) => {
+        const rClean = r.replace(/^kelas\s*/i, "").trim().toLowerCase();
+        return rClean !== cleanSchool.toLowerCase() && r.toLowerCase() !== targetLower;
+      });
       setSchoolClasses(updated);
       localStorage.setItem("manajemen_school_classes", JSON.stringify(updated));
 
       // Database delete (supports both space and underscore tables)
       try {
-        await supabase.from("kelas sekolah").delete().ilike("kelas", itemToDelete);
+        await supabase.from("kelas sekolah").delete().or(`kelas.ilike.${itemToDelete},kelas.ilike.%${cleanSchool}%`);
       } catch {}
       try {
-        await supabase.from("kelas_sekolah").delete().ilike("kelas", itemToDelete);
+        await supabase.from("kelas_sekolah").delete().or(`kelas.ilike.${itemToDelete},kelas.ilike.%${cleanSchool}%`);
       } catch {}
       try {
-        await supabase.from("plotting").delete().ilike("nama", itemToDelete).eq("jenis", "kelas sekolah");
+        await supabase.from("plotting").delete().or(`nama.ilike.${itemToDelete},nama.ilike.%${cleanSchool}%`).eq("jenis", "kelas sekolah");
       } catch (e: any) {
         console.warn("Supabase delete error:", e.message);
       }

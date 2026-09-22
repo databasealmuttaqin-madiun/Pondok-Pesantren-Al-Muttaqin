@@ -18,6 +18,7 @@ import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 const MySwal = withReactContent(Swal);
 
@@ -203,21 +204,22 @@ export default function MasterMataPelajaranPanel() {
   };
 
   const handleDelete = async (id: string, namaMapel: string) => {
-    if (!confirm(`Hapus mata pelajaran "${namaMapel}"?`)) return;
+    const isConfirmed = await showDeleteConfirm(`mata pelajaran "${namaMapel}"`);
+    if (!isConfirmed) return;
 
     try {
       const { error } = await supabase.from("mata_pelajaran").delete().eq("id", id);
       if (error) {
-        showFeedback("error", `Gagal menghapus: ${error.message}`);
+        showError("Gagal Menghapus", error.message);
         return;
       }
 
       const filtered = items.filter(it => it.id !== id);
       setItems(filtered);
       localStorage.setItem("master_mata_pelajaran_data", JSON.stringify(filtered));
-      showFeedback("success", `Mata pelajaran "${namaMapel}" berhasil dihapus.`);
+      showToast(`Mata pelajaran "${namaMapel}" berhasil dihapus`, "success");
     } catch (err: any) {
-      showFeedback("error", `Terjadi kesalahan: ${err?.message}`);
+      showError("Terjadi Kesalahan", err?.message);
     }
   };
 

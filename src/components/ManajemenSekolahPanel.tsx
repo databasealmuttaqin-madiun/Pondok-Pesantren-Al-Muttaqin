@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { supabase, SantriData } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm, showConfirm } from "../utils/sweetalert";
 import { 
   DAYS_OF_WEEK, 
   parsePeriod,
@@ -372,15 +373,18 @@ export default function ManajemenSekolahPanel({
   };
 
   const handleDeletePeriod = async (id: string) => {
-    if (!confirm("Hapus jam pelajaran ini?")) return;
+    const isConfirmed = await showDeleteConfirm("jam pelajaran ini");
+    if (!isConfirmed) return;
     try {
       const { error } = await supabase.from("jam_pelajaran").delete().eq("id", id);
       if (error) throw error;
+      showToast("Jam pelajaran berhasil dihapus", "success");
       triggerFeedback("success", "Jam pelajaran dihapus");
     } catch (err) {
       const updated = lessonPeriods.filter(p => p.id !== id);
       setLessonPeriods(updated);
       localStorage.setItem("school_lesson_periods", JSON.stringify(updated));
+      showToast("Jam pelajaran dihapus", "success");
       triggerFeedback("success", "Dihapus secara offline!");
     }
     fetchPeriods();
@@ -455,15 +459,18 @@ export default function ManajemenSekolahPanel({
   };
 
   const handleDeleteSchedule = async (id: string) => {
-    if (!confirm("Hapus jadwal ini?")) return;
+    const isConfirmed = await showDeleteConfirm("jadwal ini");
+    if (!isConfirmed) return;
     try {
       const { error } = await supabase.from("jadwal_pelajaran").delete().eq("id", id);
       if (error) throw error;
+      showToast("Jadwal berhasil dihapus", "success");
       triggerFeedback("success", "Jadwal berhasil dihapus");
     } catch (err) {
       const updated = schedules.filter(s => s.id !== id);
       setSchedules(updated);
       localStorage.setItem("school_schedules", JSON.stringify(updated));
+      showToast("Jadwal offline dihapus", "success");
       triggerFeedback("success", "Jadwal offline dihapus!");
     }
     fetchSchedules();
@@ -515,15 +522,18 @@ export default function ManajemenSekolahPanel({
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!confirm("Hapus pengumuman ini?")) return;
+    const isConfirmed = await showDeleteConfirm("pengumuman ini");
+    if (!isConfirmed) return;
     try {
       const { error } = await supabase.from("pengumuman_guru").delete().eq("id", id);
       if (error) throw error;
+      showToast("Pengumuman berhasil dihapus", "success");
       triggerFeedback("success", "Pengumuman berhasil dihapus");
     } catch (err) {
       const updated = announcements.filter(a => a.id !== id);
       setAnnouncements(updated);
       localStorage.setItem("school_announcements", JSON.stringify(updated));
+      showToast("Dihapus offline", "success");
       triggerFeedback("success", "Dihapus offline!");
     }
     fetchAnnouncements();
@@ -557,16 +567,32 @@ export default function ManajemenSekolahPanel({
   };
 
   const handleDeleteClass = async (classNameToDelete: string) => {
-    if (!confirm(`Hapus kelas "${classNameToDelete}"? Semua siswa yang diplot di kelas ini akan kehilangan penempatannya.`)) return;
+    const isConfirmed = await showDeleteConfirm(
+      `kelas "${classNameToDelete}"`,
+      `Apakah Anda yakin ingin menghapus kelas "${classNameToDelete}"? Semua siswa yang diplot di kelas ini akan kehilangan penempatannya.`
+    );
+    if (!isConfirmed) return;
 
-    const updated = schoolClasses.filter(c => c !== classNameToDelete);
+    const clean = classNameToDelete.replace(/^kelas\s*/i, "").trim();
+    const updated = schoolClasses.filter(c => {
+      const cClean = c.replace(/^kelas\s*/i, "").trim().toLowerCase();
+      return cClean !== clean.toLowerCase() && c.toLowerCase() !== classNameToDelete.toLowerCase();
+    });
     setSchoolClasses(updated);
     localStorage.setItem("manajemen_school_classes", JSON.stringify(updated));
 
     try {
-      await supabase.from("plotting").delete().eq("nama", classNameToDelete).eq("jenis", "kelas sekolah");
+      await supabase.from("plotting").delete().or(`nama.ilike.${classNameToDelete},nama.ilike.%${clean}%`).eq("jenis", "kelas sekolah");
+      try {
+        await supabase.from("kelas sekolah").delete().or(`kelas.ilike.${classNameToDelete},kelas.ilike.%${clean}%`);
+      } catch {}
+      try {
+        await supabase.from("kelas_sekolah").delete().or(`kelas.ilike.${classNameToDelete},kelas.ilike.%${clean}%`);
+      } catch {}
+      showToast(`Kelas ${classNameToDelete} berhasil dihapus`, "success");
       triggerFeedback("success", `Kelas ${classNameToDelete} berhasil dihapus`);
     } catch (err) {
+      showToast(`Kelas dihapus offline`, "success");
       triggerFeedback("success", `Kelas dihapus offline!`);
     }
   };

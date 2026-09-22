@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Plus, BookOpen, Calendar, Clock, Trash2, Edit3, X, CheckCircle2, AlertCircle, Printer, Search } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { parsePeriod } from "../lib/periodHelper";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 interface JurnalMengajarBaruPanelProps {
   currentUser: any;
@@ -231,46 +232,26 @@ export default function JurnalMengajarBaruPanel({
         }
       };
 
-      // 1. Fetch classes from plotting where jenis = 'kelas sekolah'
+      // 1. Fetch classes strictly from 'plotting' where jenis = 'kelas sekolah' as single source of truth
       try {
-        const { data: plotSchool } = await supabase
+        const { data: plotSchool, error: plotErr } = await supabase
           .from("plotting")
           .select("nama")
           .eq("jenis", "kelas sekolah");
         
-        if (plotSchool) {
+        if (!plotErr && plotSchool && plotSchool.length > 0) {
           plotSchool.forEach((r: any) => {
             if (r.nama) addClass(String(r.nama));
           });
-        }
-      } catch (e) {}
-
-      // 2. Fetch from 'kelas sekolah' / 'kelas_sekolah' table
-      try {
-        const { data: dataSpace } = await supabase.from("kelas sekolah").select("kelas");
-        if (dataSpace) {
-          dataSpace.forEach((r: any) => {
-            if (r.kelas) addClass(String(r.kelas));
-          });
-        }
-      } catch (e) {}
-
-      try {
-        const { data: dataUnderline } = await supabase.from("kelas_sekolah").select("kelas");
-        if (dataUnderline) {
-          dataUnderline.forEach((r: any) => {
-            if (r.kelas) addClass(String(r.kelas));
-          });
-        }
-      } catch (e) {}
-
-      // 3. Fetch from 'siswa'
-      try {
-        const { data: dataSiswa } = await supabase.from("siswa").select("kelas_sekolah");
-        if (dataSiswa) {
-          dataSiswa.forEach((r: any) => {
-            if (r.kelas_sekolah) addClass(String(r.kelas_sekolah));
-          });
+        } else {
+          // Fallback only if offline / plotting query failed
+          const saved = localStorage.getItem("manajemen_school_classes");
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) parsed.forEach(addClass);
+            } catch {}
+          }
         }
       } catch (e) {}
 
@@ -284,7 +265,7 @@ export default function JurnalMengajarBaruPanel({
           return exists || sortedClasses[0];
         });
       } else {
-        const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 7-C", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
+        const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
         setclassList(defaultClasses);
         setKelas(defaultClasses[0]);
       }
@@ -532,13 +513,15 @@ export default function JurnalMengajarBaruPanel({
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Hapus jurnal mengajar ini beserta data absensinya?")) {
+    const isConfirmed = await showDeleteConfirm("jurnal mengajar ini beserta data absensinya");
+    if (isConfirmed) {
       try {
         await supabase.from("jurnal_mengajar").delete().eq("id", id);
       } catch (e) {}
       const updated = jurnals.filter(j => j.id !== id);
       setJurnals(updated);
       localStorage.setItem("jurnal_mengajar_baru_list", JSON.stringify(updated));
+      showToast("Jurnal berhasil dihapus.", "success");
       onTriggerNotification("Jurnal berhasil dihapus.", "success");
     }
   };

@@ -27,6 +27,7 @@ import {
   FileCheck
 } from "lucide-react";
 import { supabase, SantriData, TABLE_NAME } from "../supabaseClient";
+import { showSuccess, showError, showWarning, showToast, showConfirm, showDeleteConfirm } from "../utils/sweetalert";
 
 export interface SiswaLulus {
   id: string | number;
@@ -381,11 +382,11 @@ export default function SiswaLulusMutasiPanel({
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formNama.trim()) {
-      alert("Harap masukkan nama siswa.");
+      showWarning("Nama Siswa Diperlukan", "Harap masukkan atau pilih nama siswa.");
       return;
     }
     if (!formAlasan.trim()) {
-      alert(`Harap masukkan alasan ${viewMode === "lulus" ? "kelulusan" : "mutasi"}.`);
+      showWarning("Alasan Diperlukan", `Harap masukkan alasan ${viewMode === "lulus" ? "kelulusan" : "mutasi"}.`);
       return;
     }
 
@@ -677,9 +678,10 @@ export default function SiswaLulusMutasiPanel({
         onRestoreStudent(studentToRestore as SantriData);
       }
       if (onDataChanged) onDataChanged();
-    } catch (err) {
+      showSuccess("Berhasil Dikembalikan", `Data siswa "${studentToRestore.nama_lengkap}" berhasil dipindahkan kembali ke daftar siswa aktif.`);
+    } catch (err: any) {
       console.warn("Gagal mengembalikan siswa ke data aktif:", err);
-      alert("Gagal mengembalikan siswa. Silakan coba kembali.");
+      showError("Gagal Mengembalikan Siswa", err?.message || "Silakan coba kembali.");
     }
   };
 

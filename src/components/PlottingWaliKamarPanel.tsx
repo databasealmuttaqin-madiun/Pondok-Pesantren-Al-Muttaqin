@@ -74,18 +74,23 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch Rooms from 'plotting' (jenis = 'kamar') or rooms prop
-      const roomsSet = new Set<string>(rooms);
+      // 1. Fetch Rooms strictly from 'plotting' (jenis = 'kamar')
+      const roomsSet = new Set<string>();
       try {
-        const { data: plotRooms } = await supabase
+        const { data: plotRooms, error: plotRoomsErr } = await supabase
           .from("plotting")
           .select("nama")
           .eq("jenis", "kamar");
-        if (plotRooms) {
-          plotRooms.forEach((r: any) => { if (r.nama) roomsSet.add(r.nama); });
+        if (!plotRoomsErr && plotRooms && plotRooms.length > 0) {
+          plotRooms.forEach((r: any) => { if (r.nama && String(r.nama).trim()) roomsSet.add(String(r.nama).trim()); });
+        } else if (rooms && rooms.length > 0) {
+          rooms.forEach(r => { if (r && r.trim()) roomsSet.add(r.trim()); });
         }
       } catch (err) {
         console.warn("Error fetching rooms from plotting:", err);
+        if (rooms && rooms.length > 0) {
+          rooms.forEach(r => { if (r && r.trim()) roomsSet.add(r.trim()); });
+        }
       }
       setAvailableRooms(Array.from(roomsSet).sort());
 

@@ -320,3 +320,50 @@ body {
   border-color: #1c1f35 !important;
 }
 
+/* SweetAlert2 custom styling enhancements */
+.swal2-container {
+  z-index: 99999 !important;
+  font-family: var(--font-sans) !important;
+}
+
+.swal2-popup {
+  border-radius: 1rem !important;
+  padding: 1.5rem !important;
+}
+
+.swal2-title {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+}
+
+.swal2-styled {
+  border-radius: 0.75rem !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  padding: 0.625rem 1.25rem !important;
+  box-shadow: none !important;
+}
+
+.dark .swal2-popup {
+  background: #111322 !important;
+  color: #f8fafc !important;
+  border: 1px solid #1e293b !important;
+}
+
+.dark .swal2-title {
+  color: #f8fafc !important;
+}
+
+.dark .swal2-html-container {
+  color: #cbd5e1 !important;
+}
+
+.dark .swal2-input,
+.dark .swal2-textarea,
+.dark .swal2-select {
+  background: #0b0c16 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+

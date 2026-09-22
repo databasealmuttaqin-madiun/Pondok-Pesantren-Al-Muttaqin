@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Edit3, Shield, User, Key, Check, AlertCircle, ChevronDown, X, Search, FileText, Copy } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import MultiSelectTagInput from "./MultiSelectTagInput";
+import { showSuccess, showError, showWarning, showConfirm, showDeleteConfirm, showToast } from "../utils/sweetalert";
 
 interface PenggunaData {
   id: string;
@@ -126,9 +127,28 @@ export default function ManajemenPenggunaPanel() {
       try {
         const { data, error } = await supabase.from("plotting").select("jenis, nama");
         if (!error && data) {
-          const roomsDb = data.filter((item: any) => item.jenis === "kamar").map((item: any) => item.nama);
-          const schoolDb = data.filter((item: any) => item.jenis === "sekolah").map((item: any) => item.nama);
-          const recitationDb = data.filter((item: any) => item.jenis === "pengajian").map((item: any) => item.nama);
+          const roomsDb = data.filter((item: any) => item.jenis === "kamar").map((item: any) => item.nama && String(item.nama).trim()).filter(Boolean);
+          
+          const schoolClassMap = new Map<string, string>();
+          data.filter((item: any) => item.jenis === "kelas sekolah" || item.jenis === "sekolah").forEach((item: any) => {
+            if (item.nama && String(item.nama).trim()) {
+              const raw = String(item.nama).trim();
+              const key = raw.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+              const withoutPrefix = raw.replace(/^kelas\s*/i, "").trim();
+              const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
+              const label = match ? `Kelas ${match[1]}-${match[2].toUpperCase()}` : (/^\d+$/.test(withoutPrefix) ? `Kelas ${withoutPrefix}` : (raw.toLowerCase().startsWith("kelas") ? raw : `Kelas ${raw}`));
+              if (key && !schoolClassMap.has(key)) {
+                schoolClassMap.set(key, label);
+              }
+            }
+          });
+          const schoolDb = Array.from(schoolClassMap.values()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+
+          const recitationDb = Array.from(new Set(
+            data.filter((item: any) => item.jenis === "kelas pengajian" || item.jenis === "pengajian")
+              .map((item: any) => item.nama && String(item.nama).trim())
+              .filter(Boolean)
+          )).sort();
           
           if (roomsDb.length > 0) setOptRooms(roomsDb);
           if (schoolDb.length > 0) setOptSchoolClasses(schoolDb);
@@ -311,7 +331,7 @@ export default function ManajemenPenggunaPanel() {
     
     // Require password for new user
     if (!editingId && !password.trim()) {
-      alert("Password diperlukan untuk pengguna baru.");
+      showWarning("Password Diperlukan", "Silakan masukkan password untuk pengguna baru.");
       return;
     }
 
@@ -398,15 +418,17 @@ export default function ManajemenPenggunaPanel() {
 
       await fetchUsers();
       closeForm();
+      showSuccess("Berhasil", editingId ? "Data pengguna berhasil diperbarui!" : "Pengguna baru berhasil ditambahkan!");
     } catch (err: any) {
-      alert("Gagal menyimpan pengguna: " + err.message);
+      showError("Gagal Menyimpan", err.message || "Terjadi kesalahan saat menyimpan data.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDelete = async (id: string, uname: string) => {
-    if (!window.confirm(`Yakin ingin menghapus pengguna "${uname}"?`)) return;
+    const isConfirmed = await showDeleteConfirm(`pengguna "${uname}"`);
+    if (!isConfirmed) return;
     try {
       setIsLoading(true);
       const { error } = await supabase.from("pengguna").delete().eq("id", id);
@@ -418,8 +440,9 @@ export default function ManajemenPenggunaPanel() {
       localStorage.setItem("user_additional_details", JSON.stringify(localDetails));
 
       await fetchUsers();
+      showToast(`Pengguna "${uname}" berhasil dihapus`, "success");
     } catch (err: any) {
-      alert("Gagal menghapus: " + err.message);
+      showError("Gagal Menghapus", err.message || "Terjadi kesalahan saat menghapus pengguna.");
     } finally {
       setIsLoading(false);
     }
@@ -442,12 +465,15 @@ export default function ManajemenPenggunaPanel() {
         
       if (error) throw error;
       
-      alert(`Akun berhasil disetujui dan data otomatis ditambahkan ke Master Data ${approvalPeranUtama === 'pengurus' ? 'Pengurus' : 'Guru'}!`);
+      showSuccess(
+        "Persetujuan Berhasil",
+        `Akun berhasil disetujui dan data otomatis ditambahkan ke Master Data ${approvalPeranUtama === 'pengurus' ? 'Pengurus' : 'Guru'}!`
+      );
       setApprovalUser(null);
       await fetchUsers();
     } catch (error: any) {
       console.error("Gagal melakukan approval:", error);
-      alert("Terjadi kesalahan sistem: " + error.message);
+      showError("Terjadi Kesalahan", error.message || "Gagal menyetujui akun pengguna.");
     } finally {
       setIsLoading(false);
     }

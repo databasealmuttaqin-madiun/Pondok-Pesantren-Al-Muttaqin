@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { Target, Plus, Edit2, Trash2, Search, X, Calendar, Filter, Save, BookOpen } from "lucide-react";
 import { SearchableSelect } from "./ui/SearchableSelect";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 export interface TargetPengajian {
   id: number;
@@ -132,10 +133,12 @@ export default function TargetPengajianPanel({
     const selectedMateri = materiList.find(m => m.id === formMateriId);
     if (selectedMateri) {
       if (formHalSelesai > selectedMateri.jumlah_halaman) {
+        showWarning("Halaman Tidak Valid", `Halaman selesai tidak boleh melebihi jumlah halaman materi (${selectedMateri.jumlah_halaman} Hal)`);
         if (onTriggerNotification) onTriggerNotification(`Halaman selesai tidak boleh melebihi jumlah halaman materi (${selectedMateri.jumlah_halaman} Hal)`, "error");
         return;
       }
       if (formHalMulai > formHalSelesai) {
+        showWarning("Halaman Tidak Valid", "Halaman mulai tidak boleh lebih besar dari halaman selesai");
         if (onTriggerNotification) onTriggerNotification("Halaman mulai tidak boleh lebih besar dari halaman selesai", "error");
         return;
       }
@@ -159,6 +162,7 @@ export default function TargetPengajianPanel({
           .eq("id", editingItem.id);
           
         if (error) throw error;
+        showSuccess("Berhasil", "Target capaian pengajian berhasil diperbarui.");
         if (onTriggerNotification) onTriggerNotification(`Berhasil mengupdate target`, "success");
       } else {
         const { error } = await supabase
@@ -166,12 +170,14 @@ export default function TargetPengajianPanel({
           .insert(payload);
           
         if (error) throw error;
+        showSuccess("Berhasil", "Target capaian pengajian berhasil ditambahkan.");
         if (onTriggerNotification) onTriggerNotification(`Berhasil menambahkan target baru`, "success");
       }
       setIsModalOpen(false);
       loadData();
     } catch (err: any) {
       console.error(err);
+      showError("Gagal Menyimpan", err.message || "Terjadi kesalahan saat menyimpan target.");
       if (onTriggerNotification) onTriggerNotification("Gagal menyimpan data: " + err.message, "error");
     } finally {
       setIsSubmitting(false);
@@ -179,16 +185,19 @@ export default function TargetPengajianPanel({
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm(`Yakin ingin menghapus target capaian ini?`)) return;
+    const isConfirmed = await showDeleteConfirm("target capaian ini");
+    if (!isConfirmed) return;
     
     try {
       const { error } = await supabase.from("target_pengajian").delete().eq("id", id);
       if (error) throw error;
       
+      showToast("Target capaian berhasil dihapus", "success");
       if (onTriggerNotification) onTriggerNotification(`Target berhasil dihapus`, "success");
       loadData();
     } catch (err: any) {
       console.error(err);
+      showError("Gagal Menghapus", err.message || "Terjadi kesalahan saat menghapus target.");
       if (onTriggerNotification) onTriggerNotification("Gagal menghapus data: " + err.message, "error");
     }
   };

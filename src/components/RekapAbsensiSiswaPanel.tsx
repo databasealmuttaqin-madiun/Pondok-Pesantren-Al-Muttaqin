@@ -138,47 +138,26 @@ export default function RekapAbsensiSiswaPanel() {
           }
         };
 
-        // Fetch from 'plotting' (jenis = 'kelas sekolah')
+        // Fetch strictly from 'plotting' (jenis = 'kelas sekolah') as the single source of truth
         try {
-          const { data: plotSchool } = await supabase
+          const { data: plotSchool, error: plotErr } = await supabase
             .from("plotting")
             .select("nama")
             .eq("jenis", "kelas sekolah");
           
-          if (plotSchool) {
+          if (!plotErr && plotSchool && plotSchool.length > 0) {
             plotSchool.forEach((r: any) => {
               if (r.nama) addClass(String(r.nama));
             });
-          }
-        } catch (e) {}
-
-        // Fetch from 'kelas sekolah' table
-        try {
-          const { data: dataSpace } = await supabase.from("kelas sekolah").select("kelas");
-          if (dataSpace) {
-            dataSpace.forEach((r: any) => {
-              if (r.kelas) addClass(String(r.kelas));
-            });
-          }
-        } catch (e) {}
-
-        // Fetch from 'kelas_sekolah' table
-        try {
-          const { data: dataUnderline } = await supabase.from("kelas_sekolah").select("kelas");
-          if (dataUnderline) {
-            dataUnderline.forEach((r: any) => {
-              if (r.kelas) addClass(String(r.kelas));
-            });
-          }
-        } catch (e) {}
-
-        // Fetch from 'siswa' table
-        try {
-          const { data: dataSiswa } = await supabase.from("siswa").select("kelas_sekolah");
-          if (dataSiswa) {
-            dataSiswa.forEach((r: any) => {
-              if (r.kelas_sekolah) addClass(String(r.kelas_sekolah));
-            });
+          } else {
+            // Fallback to local storage if offline
+            const saved = localStorage.getItem("manajemen_school_classes");
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) parsed.forEach(addClass);
+              } catch {}
+            }
           }
         } catch (e) {}
 
@@ -192,13 +171,13 @@ export default function RekapAbsensiSiswaPanel() {
             return exists || sorted[0];
           });
         } else {
-          const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 7-C", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
+          const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
           setClassesList(defaultClasses);
           setSelectedClass(defaultClasses[0]);
         }
       } catch (e) {
         console.warn("Failed to load classes list, using fallback:", e);
-        const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 7-C", "Kelas 8-A", "Kelas 8B", "Kelas 9-A", "Kelas 9-B"];
+        const defaultClasses = ["Kelas 7-A", "Kelas 7-B", "Kelas 8-A", "Kelas 8-B", "Kelas 9-A", "Kelas 9-B"];
         setClassesList(defaultClasses);
         setSelectedClass(defaultClasses[0]);
       }

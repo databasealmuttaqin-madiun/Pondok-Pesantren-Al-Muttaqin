@@ -3,6 +3,7 @@ import { Store, Plus, Trash2, Search, Edit3, Check, X, RefreshCw, CheckCircle2, 
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 const MySwal = withReactContent(Swal);
 
@@ -128,7 +129,8 @@ export default function MasterKantinPanel() {
   };
 
   const handleDeleteItem = async (id: number, nama: string) => {
-    if (!confirm(`Hapus unit kantin "${nama}"?`)) return;
+    const isConfirmed = await showDeleteConfirm(`unit kantin "${nama}"`);
+    if (!isConfirmed) return;
     
     const updated = kantinList.filter((k) => k.id !== id);
     setKantinList(updated);
@@ -144,10 +146,10 @@ export default function MasterKantinPanel() {
       if (error) {
         console.warn("Supabase plotting delete warning:", error.message);
       }
-      showFeedback("success", `Unit kantin "${nama}" berhasil dihapus.`);
+      showToast(`Unit kantin "${nama}" berhasil dihapus`, "success");
     } catch (error: any) {
       console.warn("Error deleting from plotting:", error?.message);
-      showFeedback("success", `Unit kantin "${nama}" dihapus dari data lokal.`);
+      showToast(`Unit kantin "${nama}" dihapus`, "success");
     }
   };
 

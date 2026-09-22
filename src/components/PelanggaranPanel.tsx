@@ -23,6 +23,7 @@ import {
 import { supabase, SantriData } from "../supabaseClient";
 import { SearchableSelect } from "./ui/SearchableSelect";
 import { PageHeader } from "./ui/PageHeader";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 export interface PelanggaranData {
   id: number | string;
@@ -462,7 +463,8 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
 
   // Hapus catatan pelanggaran
   const handleDeleteRecord = async (id: number | string, name: string) => {
-    if (!window.confirm(`Yakin ingin menghapus catatan pelanggaran untuk "${name}"?`)) return;
+    const isConfirmed = await showDeleteConfirm(`pelanggaran untuk "${name}"`);
+    if (!isConfirmed) return;
 
     const updatedList = pelanggaranList.filter((rec) => rec.id !== id);
     setPelanggaranList(updatedList);
@@ -473,6 +475,7 @@ export const PelanggaranPanel: React.FC<PelanggaranPanelProps> = ({
       if (error) console.warn("Gagal hapus dari Supabase:", error.message);
     } catch {}
 
+    showToast(`Catatan pelanggaran "${name}" berhasil dihapus`, "success");
     if (triggerNotification) {
       triggerNotification(`Catatan pelanggaran ${name} telah dihapus dari database`, "warning");
     }

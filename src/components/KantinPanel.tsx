@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 export interface TransaksiKantin {
   id: string | number;
@@ -275,7 +276,7 @@ export default function KantinPanel({
     const uangKeluarNum = parseInt(uangKeluarStr.replace(/\D/g, "") || "0", 10);
     
     if (uangMasukNum === 0 && uangKeluarNum === 0) {
-      alert("Harap masukkan nominal uang masuk atau keluar!");
+      showWarning("Nominal Kosong", "Harap masukkan nominal uang masuk atau keluar!");
       return;
     }
 
@@ -336,7 +337,8 @@ export default function KantinPanel({
   };
 
   const handleDelete = async (id: string | number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus data ini?")) return;
+    const isConfirmed = await showDeleteConfirm("data transaksi ini");
+    if (!isConfirmed) return;
     try {
       const item = transaksiList.find((t) => t.id === id);
       const updated = transaksiList.filter((t) => t.id !== id);
@@ -346,9 +348,11 @@ export default function KantinPanel({
       if (item && !item.isLocalOnly) {
         await supabase.from("pembukuan_kantin").delete().eq("id", id);
       }
+      showToast("Data transaksi berhasil dihapus", "success");
       triggerNotification?.("Data berhasil dihapus", "success");
     } catch (error) {
       console.error(error);
+      showError("Gagal Menghapus", "Terjadi kesalahan saat menghapus data transaksi.");
     }
   };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { Clock, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
 
 export default function ManajemenSesiPanel() {
   const [sesiList, setSesiList] = useState<any[]>([]);
@@ -30,40 +31,49 @@ export default function ManajemenSesiPanel() {
   };
 
   const handleSaveAdd = async () => {
-    if (!editForm.nama_sesi) return;
+    if (!editForm.nama_sesi.trim()) {
+      showWarning("Nama Sesi Diperlukan", "Harap isi nama sesi mengaji.");
+      return;
+    }
     
     const { error } = await supabase
       .from("sesi_mengaji")
-      .insert([{ nama_sesi: editForm.nama_sesi, urutan: editForm.urutan }]);
+      .insert([{ nama_sesi: editForm.nama_sesi.trim(), urutan: editForm.urutan }]);
       
     if (error) {
-      alert("Gagal menambah sesi: " + error.message);
+      showError("Gagal Menambah Sesi", error.message);
     } else {
       setShowAddForm(false);
       setEditForm({ nama_sesi: "", urutan: 0 });
+      showSuccess("Berhasil", "Sesi mengaji baru berhasil ditambahkan.");
       fetchSesi();
     }
   };
 
   const handleSaveEdit = async (id: string) => {
-    if (!editForm.nama_sesi) return;
+    if (!editForm.nama_sesi.trim()) {
+      showWarning("Nama Sesi Diperlukan", "Nama sesi tidak boleh kosong.");
+      return;
+    }
     
     const { error } = await supabase
       .from("sesi_mengaji")
-      .update({ nama_sesi: editForm.nama_sesi, urutan: editForm.urutan })
+      .update({ nama_sesi: editForm.nama_sesi.trim(), urutan: editForm.urutan })
       .eq("id", id);
       
     if (error) {
-      alert("Gagal mengubah sesi: " + error.message);
+      showError("Gagal Mengubah Sesi", error.message);
     } else {
       setIsEditing(null);
       setEditForm({ nama_sesi: "", urutan: 0 });
+      showToast("Sesi berhasil diperbarui", "success");
       fetchSesi();
     }
   };
 
   const handleDelete = async (id: string, nama: string) => {
-    if (!window.confirm(`Yakin ingin menghapus sesi "${nama}"?`)) return;
+    const isConfirmed = await showDeleteConfirm(`sesi "${nama}"`);
+    if (!isConfirmed) return;
     
     const { error } = await supabase
       .from("sesi_mengaji")
@@ -71,8 +81,9 @@ export default function ManajemenSesiPanel() {
       .eq("id", id);
       
     if (error) {
-      alert("Gagal menghapus sesi: " + error.message);
+      showError("Gagal Menghapus Sesi", error.message);
     } else {
+      showToast(`Sesi "${nama}" berhasil dihapus`, "success");
       fetchSesi();
     }
   };

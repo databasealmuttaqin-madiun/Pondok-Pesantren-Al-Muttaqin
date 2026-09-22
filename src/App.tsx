@@ -204,6 +204,15 @@ export default function App() {
     return saved ? JSON.parse(saved) : {};
   });
 
+  // Helper to normalize values with master lists (case-insensitive)
+  const normalizeMasterValue = (val: string | undefined | null, masterList: string[]): string => {
+    if (!val) return "";
+    const trimmed = String(val).trim();
+    if (!trimmed) return "";
+    const match = masterList.find((m) => m && m.trim().toLowerCase() === trimmed.toLowerCase());
+    return match ? match.trim() : trimmed;
+  };
+
   // Helper to hydrate students with all status sources including cloud status_siswa, cloud plotting and local storage
   const hydrateWithAllStatusSources = (
     list: SantriData[],
@@ -225,13 +234,17 @@ export default function App() {
       
       // NFC Mapping override
       const cloudNfcId = cloudNfcMap ? cloudNfcMap[nameKey] : null;
+
+      const rawKamar = (cloudPlot?.kamar !== undefined ? cloudPlot.kamar : (localPlot.kamar !== undefined ? localPlot.kamar : formatted.kamar)) || "";
+      const rawPengajian = (cloudPlot?.kelas_pengajian !== undefined ? cloudPlot.kelas_pengajian : (localPlot.kelas_pengajian !== undefined ? localPlot.kelas_pengajian : formatted.kelas_pengajian)) || "";
+      const rawSekolah = (cloudPlot?.kelas_sekolah !== undefined ? cloudPlot.kelas_sekolah : (localPlot.kelas_sekolah !== undefined ? localPlot.kelas_sekolah : formatted.kelas_sekolah)) || "";
       
       return {
         ...formatted,
         status: cloudStatus || "Aktif",
-        kamar: (cloudPlot?.kamar !== undefined ? cloudPlot.kamar : (localPlot.kamar !== undefined ? localPlot.kamar : formatted.kamar)) || "",
-        kelas_pengajian: (cloudPlot?.kelas_pengajian !== undefined ? cloudPlot.kelas_pengajian : (localPlot.kelas_pengajian !== undefined ? localPlot.kelas_pengajian : formatted.kelas_pengajian)) || "",
-        kelas_sekolah: (cloudPlot?.kelas_sekolah !== undefined ? cloudPlot.kelas_sekolah : (localPlot.kelas_sekolah !== undefined ? localPlot.kelas_sekolah : formatted.kelas_sekolah)) || "",
+        kamar: normalizeMasterValue(rawKamar, rooms),
+        kelas_pengajian: normalizeMasterValue(rawPengajian, recitationClasses),
+        kelas_sekolah: normalizeMasterValue(rawSekolah, schoolClasses),
         nfc_id: cloudNfcId || formatted.nfc_id || "",
       };
     });
@@ -524,15 +537,27 @@ export default function App() {
           console.warn("Table 'kelas sekolah' school assignment load error:", err);
         }
 
-        // 4. Load master list of kamar from 'plotting' table
+        // 4. Load master list of kamar strictly from 'plotting' table
         try {
-          const { data: plotRooms } = await supabase
+          const { data: plotRooms, error: plotRoomsErr } = await supabase
             .from("plotting")
             .select("nama")
             .eq("jenis", "kamar");
 
-          if (plotRooms && plotRooms.length > 0) {
-            const dbRoomList = plotRooms.map((r) => r.nama).filter(Boolean);
+          if (!plotRoomsErr && plotRooms) {
+            const roomMap = new Map<string, string>();
+            plotRooms.forEach((r: any) => {
+              if (r.nama && String(r.nama).trim()) {
+                const raw = String(r.nama).trim();
+                const key = raw.toLowerCase();
+                if (!roomMap.has(key)) {
+                  roomMap.set(key, raw);
+                }
+              }
+            });
+            const dbRoomList = Array.from(roomMap.values()).sort((a, b) =>
+              a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+            );
             setRooms(dbRoomList);
             localStorage.setItem("manajemen_rooms", JSON.stringify(dbRoomList));
           }
@@ -540,15 +565,27 @@ export default function App() {
           console.warn("Gagal memuat master daftar kamar dari plotting:", err);
         }
 
-        // 5. Load master list of kelas pengajian from 'plotting' table
+        // 5. Load master list of kelas pengajian strictly from 'plotting' table
         try {
-          const { data: plotRecitation } = await supabase
+          const { data: plotRecitation, error: plotRecitationErr } = await supabase
             .from("plotting")
             .select("nama")
             .eq("jenis", "kelas pengajian");
 
-          if (plotRecitation && plotRecitation.length > 0) {
-            const dbRecitationList = plotRecitation.map((r) => r.nama).filter(Boolean);
+          if (!plotRecitationErr && plotRecitation) {
+            const classMap = new Map<string, string>();
+            plotRecitation.forEach((r: any) => {
+              if (r.nama && String(r.nama).trim()) {
+                const raw = String(r.nama).trim();
+                const key = raw.toLowerCase();
+                if (!classMap.has(key)) {
+                  classMap.set(key, raw);
+                }
+              }
+            });
+            const dbRecitationList = Array.from(classMap.values()).sort((a, b) =>
+              a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+            );
             setRecitationClasses(dbRecitationList);
             localStorage.setItem("manajemen_recitation_classes", JSON.stringify(dbRecitationList));
           }
@@ -556,14 +593,14 @@ export default function App() {
           console.warn("Gagal memuat master kelas pengajian dari plotting:", err);
         }
 
-        // 6. Load master list of kelas sekolah from 'plotting' table
+        // 6. Load master list of kelas sekolah strictly from 'plotting' table (Single Source of Truth)
         try {
-          const { data: plotSchool } = await supabase
+          const { data: plotSchool, error: plotSchoolErr } = await supabase
             .from("plotting")
             .select("nama")
             .eq("jenis", "kelas sekolah");
 
-          if (plotSchool && plotSchool.length > 0) {
+          if (!plotSchoolErr && plotSchool) {
             const classMap = new Map<string, string>();
             plotSchool.forEach((r: any) => {
               if (r.nama && String(r.nama).trim()) {
@@ -587,15 +624,17 @@ export default function App() {
           console.warn("Gagal memuat master kelas sekolah dari plotting:", err);
         }
 
-        // 6b. Load master list of kantin from 'plotting' table
+        // 6b. Load master list of kantin strictly from 'plotting' table
         try {
-          const { data: plotKantin } = await supabase
+          const { data: plotKantin, error: plotKantinErr } = await supabase
             .from("plotting")
             .select("nama")
             .eq("jenis", "kantin");
 
-          if (plotKantin && plotKantin.length > 0) {
-            const dbKantinList = plotKantin.map((k) => k.nama).filter(Boolean);
+          if (!plotKantinErr && plotKantin) {
+            const dbKantinList = Array.from(new Set(
+              plotKantin.map((k: any) => k.nama && String(k.nama).trim()).filter(Boolean)
+            )).sort();
             localStorage.setItem("master_kantin_list", JSON.stringify(dbKantinList));
           }
         } catch (err) {
