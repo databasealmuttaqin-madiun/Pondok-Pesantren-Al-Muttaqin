@@ -64,13 +64,13 @@ export default function JurnalMengajarBaruPanel({
 
   const normalizeClassKey = (str: string): string => {
     if (!str) return "";
-    return str.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+    return str.toLowerCase().replace(/\bkelas\b/gi, "").replace(/[^a-z0-9]/g, "");
   };
 
   const formatClassLabel = (str: string): string => {
     if (!str) return "";
     const clean = str.trim();
-    const withoutPrefix = clean.replace(/^kelas\s*/i, "").trim();
+    const withoutPrefix = clean.replace(/^(kelas\s*)+/i, "").trim();
     
     const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
     if (match) {
@@ -83,7 +83,7 @@ export default function JurnalMengajarBaruPanel({
       return `Kelas ${withoutPrefix}`;
     }
     
-    return clean.toLowerCase().startsWith("kelas") ? clean : `Kelas ${clean}`;
+    return withoutPrefix ? `Kelas ${withoutPrefix}` : clean;
   };
 
   const isSameClass = (c1: string, c2: string): boolean => {
@@ -341,7 +341,8 @@ export default function JurnalMengajarBaruPanel({
       // Priority 1: Use students prop passed from App.tsx (the hydrated source of truth for active students and school plotting)
       if (studentsProp && studentsProp.length > 0) {
         const matched = studentsProp.filter((s: any) => {
-          if (s.status && s.status !== "Aktif") return false;
+          // Do not exclude students who are on Sakit/Pulang/Haid; they are valid enrolled students of this class
+          if (s.status_santri === "Lulus" || s.status_santri === "Mutasi" || s.is_lulus || s.is_mutasi) return false;
           const cls = s.kelas_sekolah || "";
           return isSameClass(cls, selectedClass);
         });
@@ -351,12 +352,21 @@ export default function JurnalMengajarBaruPanel({
           raw_id: String(s.id || ""),
           nama_lengkap: s.nama_lengkap || s.nama || "-",
           kelas: selectedClass,
-          nis: s.nisn || s.nis || s.nik || "-"
+          nis: s.nisn || s.nis || s.nik || "-",
+          daily_status: s.status || "Aktif"
         })).sort((a: any, b: any) => a.nama_lengkap.localeCompare(b.nama_lengkap));
 
         setStudents(mapped);
         const initial: Record<string, string> = {};
-        mapped.forEach((s: any) => { initial[s.id] = "hadir"; });
+        mapped.forEach((s: any) => {
+          if (s.daily_status === "Sakit") {
+            initial[s.id] = "sakit";
+          } else if (s.daily_status === "Pulang" || s.daily_status === "Izin") {
+            initial[s.id] = "izin";
+          } else {
+            initial[s.id] = "hadir";
+          }
+        });
         setAttendanceMap(initial);
         return;
       }

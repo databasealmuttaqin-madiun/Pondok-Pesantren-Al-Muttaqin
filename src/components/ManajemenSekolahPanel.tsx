@@ -737,7 +737,7 @@ export default function ManajemenSekolahPanel({
                   <option value="">-- PILIH KELAS --</option>
                   {schoolClasses.map((cls) => (
                     <option key={cls} value={cls}>
-                      Kelas {cls}
+                      {cls.toLowerCase().startsWith("kelas") ? cls : `Kelas ${cls}`}
                     </option>
                   ))}
                 </select>
@@ -777,7 +777,7 @@ export default function ManajemenSekolahPanel({
                         <div className="space-y-2">
                           <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-1.5">
                             <span className="font-extrabold text-xs text-slate-900 dark:text-slate-100 block">
-                              Kelas {clsName}
+                              {clsName.toLowerCase().startsWith("kelas") ? clsName : `Kelas ${clsName}`}
                             </span>
                             <span className="text-[10px] text-indigo-650 dark:text-indigo-400 font-black bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full font-mono">
                               {mapped.length} Siswa
@@ -875,7 +875,7 @@ export default function ManajemenSekolahPanel({
                 {schoolClasses.map((cls) => (
                   <div key={cls} className="flex items-center justify-between p-3.5 bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200/60 dark:border-slate-850 rounded-2xl hover:border-slate-300 transition-colors">
                     <span className="font-extrabold text-xs text-slate-800 dark:text-slate-200">
-                      Kelas {cls}
+                      {cls.toLowerCase().startsWith("kelas") ? cls : `Kelas ${cls}`}
                     </span>
                     <button
                       onClick={() => handleDeleteClass(cls)}

@@ -97,13 +97,13 @@ export default function RekapAbsensiSiswaPanel({ students: santriListProp }: { s
 
   const normalizeClassKey = (str: string): string => {
     if (!str) return "";
-    return str.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
+    return str.toLowerCase().replace(/\bkelas\b/gi, "").replace(/[^a-z0-9]/g, "");
   };
 
   const formatClassLabel = (str: string): string => {
     if (!str) return "";
     const clean = str.trim();
-    const withoutPrefix = clean.replace(/^kelas\s*/i, "").trim();
+    const withoutPrefix = clean.replace(/^(kelas\s*)+/i, "").trim();
     
     const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
     if (match) {
@@ -116,7 +116,7 @@ export default function RekapAbsensiSiswaPanel({ students: santriListProp }: { s
       return `Kelas ${withoutPrefix}`;
     }
     
-    return clean.toLowerCase().startsWith("kelas") ? clean : `Kelas ${clean}`;
+    return withoutPrefix ? `Kelas ${withoutPrefix}` : clean;
   };
 
   const isSameClass = (c1: string, c2: string): boolean => {
@@ -211,7 +211,7 @@ export default function RekapAbsensiSiswaPanel({ students: santriListProp }: { s
       if (santriListProp && santriListProp.length > 0) {
         mappedStudents = santriListProp
           .filter((s: any) => {
-            if (s.status && s.status !== "Aktif") return false;
+            if (s.status_santri === "Lulus" || s.status_santri === "Mutasi" || s.is_lulus || s.is_mutasi) return false;
             return isSameClass(s.kelas_sekolah || "", selectedClass);
           })
           .map((s: any) => ({
