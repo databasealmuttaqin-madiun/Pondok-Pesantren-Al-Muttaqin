@@ -37,7 +37,9 @@ import MasterMataPelajaranPanel from "./components/MasterMataPelajaranPanel";
 import PlottingGuruMapelPanel from "./components/PlottingGuruMapelPanel";
 import RekapAbsensiGuruPanel from "./components/RekapAbsensiGuruPanel";
 import PlottingJamAbsensiPanel from "./components/PlottingJamAbsensiPanel";
-import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone, FileSpreadsheet, QrCode, TrendingUp } from "lucide-react";
+import ManajemenHakAksesPanel from "./components/ManajemenHakAksesPanel";
+import { getUserAllEffectivePermissions, evaluateUserPermission, normalizeMenuKey } from "./utils/permissionUtils";
+import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone, FileSpreadsheet, QrCode, TrendingUp, Lock } from "lucide-react";
 
 const DEMO_SANTRI: SantriData[] = [];
 
@@ -103,7 +105,14 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "hak_akses" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      if (path === "/hak-akses" || hash === "#hak-akses" || hash === "#/hak-akses") {
+        return "hak_akses";
+      }
+    }
     const saved = localStorage.getItem("admin_user");
     if (saved) {
       try {
@@ -120,6 +129,27 @@ export default function App() {
     }
     return "dashboard";
   });
+
+  // Sync /hak-akses route on window location change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const handleLocationChange = () => {
+        const path = window.location.pathname.toLowerCase();
+        const hash = window.location.hash.toLowerCase();
+        if (path === "/hak-akses" || hash === "#hak-akses" || hash === "#/hak-akses") {
+          setActiveTab("hak_akses");
+          setIsManajemenPondokExpanded(true);
+        }
+      };
+      window.addEventListener("popstate", handleLocationChange);
+      window.addEventListener("hashchange", handleLocationChange);
+      handleLocationChange();
+      return () => {
+        window.removeEventListener("popstate", handleLocationChange);
+        window.removeEventListener("hashchange", handleLocationChange);
+      };
+    }
+  }, []);
   const [isSekolahExpanded, setIsSekolahExpanded] = useState(true);
   const [isPerizinanExpanded, setIsPerizinanExpanded] = useState(true);
   const [isRekapExpanded, setIsRekapExpanded] = useState(true);
@@ -1368,6 +1398,7 @@ export default function App() {
     { id: "pondok_guru", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Guru Pondok", label: "Plotting Guru Pondok", shortLabel: "Guru Pondok", icon: GraduationCap, roles: ["super admin", "admin"] },
     { id: "pondok_kantin", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Master Kantin", label: "Master Kantin", shortLabel: "Kantin", icon: Store, roles: ["super admin", "admin"] },
     { id: "pengguna", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
+    { id: "hak_akses", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Hak Akses & Peran", label: "Hak Akses & Peran", shortLabel: "Hak Akses", icon: Lock, roles: ["super admin", "admin"] },
 
     // MANAJEMEN SEKOLAH GROUP WITH SUBMENUS
     { id: "sekolah_plotting", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Plotting Kelas", label: "Plotting Kelas Sekolah", shortLabel: "Plotting", icon: Sliders, roles: ["super admin", "admin", "guru SMP"] },
@@ -1417,29 +1448,36 @@ export default function App() {
     if (tabId === "absensi_guru" || tabId === "presensi_guru" || tabId === "jurnal_mengajar" || tabId === "daftar_guru_sekolah" || tabId === "dashboard_guru" || tabId === "rekap_absensi_guru" || tabId === "rekap_guru") return "guru_sekolah";
     if (tabId === "rekap_sekolah") return "rekap_sekolah";
     if (["manajemen_materi", "target_pengajian", "capaian_materi", "capaian_materi_kelas", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(tabId)) return "pengajian";
-    if (tabId === "pengguna") return "admin_only";
+    if (tabId === "pengguna" || tabId === "hak_akses") return "admin_only";
     return null;
   };
 
-  const accessibleTabs = allTabs.filter(t => {
-    const userPermissions = (currentUser as any)?.permissions || [];
-    
-    // Check custom permissions first if available
-    if (userPermissions.length > 0) {
-      if (userRole === "super admin") return true;
-      if (t.id === "pengguna" && userRole !== "admin" && userRole !== "super admin") return false;
-      const permId = getTabPermissionId(t.id);
-      if (permId === "dasbor") return true; // Dasbor always available if has permissions
-      if (permId && userPermissions.includes(permId)) return true;
-      if (!permId && t.roles.includes(userRole)) return true;
-      return false;
+  const accessibleTabs = useMemo(() => {
+    if (userRole === "super admin" || userRole === "superadmin") {
+      return allTabs;
     }
 
-    // Fallback to role-based access
-    if (t.group === "KANTIN") return hasKantinAccess;
-    if (userRole === "kantin") return false;
-    return t.roles.includes(userRole);
-  });
+    const effectivePerms = getUserAllEffectivePermissions(currentUser);
+
+    return allTabs.filter(t => {
+      // 1. Check if user is restricted from admin settings
+      if ((t.id === "pengguna" || t.id === "hak_akses") && userRole !== "admin" && userRole !== "super admin") {
+        return false;
+      }
+
+      // 2. Normalize tab ID to catalog menu key and evaluate hybrid effective permission
+      const menuKey = normalizeMenuKey(t.id);
+      if (effectivePerms[menuKey]) {
+        // Business Rule: If can_view is false in hybrid calculation, HIDE from Sidebar
+        return effectivePerms[menuKey].can_view;
+      }
+
+      // Fallback to role-based access
+      if (t.group === "KANTIN") return hasKantinAccess;
+      if (userRole === "kantin") return false;
+      return t.roles.includes(userRole);
+    });
+  }, [allTabs, currentUser, userRole, hasKantinAccess]);
 
   useEffect(() => {
     if (currentUser) {
@@ -2398,7 +2436,7 @@ export default function App() {
             )}
 
             {/* 4A. PLOTTING PONDOK GROUP (ACCORDION) */}
-            {accessibleTabs.some(t => t.group === "MANAJEMEN_PONDOK") && (!sidebarSearchQuery || "plotting pondok sesi kamar ngaji kantin akun pengguna".includes(sidebarSearchQuery.toLowerCase())) && (
+            {accessibleTabs.some(t => t.group === "MANAJEMEN_PONDOK") && (!sidebarSearchQuery || "plotting pondok sesi kamar ngaji kantin akun pengguna hak akses peran role permission".includes(sidebarSearchQuery.toLowerCase())) && (
               <div 
                 className="w-full pt-1.5 relative group/flyout"
                 onMouseEnter={() => setHoveredFlyout("manajemen_pondok")}
@@ -2421,7 +2459,7 @@ export default function App() {
                     <button
                       onClick={() => setIsManajemenPondokExpanded(!isManajemenPondokExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["pondok_sesi", "pondok_kamar", "pondok_pengajian_plotting", "pondok_wali_kamar", "pondok_guru", "pondok_kantin", "pengguna"].includes(activeTab)
+                        ["pondok_sesi", "pondok_kamar", "pondok_pengajian_plotting", "pondok_wali_kamar", "pondok_guru", "pondok_kantin", "pengguna", "hak_akses"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
@@ -3437,6 +3475,11 @@ export default function App() {
             {activeTab === "pengguna" && (
               <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
                 <ManajemenPenggunaPanel />
+              </div>
+            )}
+            {activeTab === "hak_akses" && (
+              <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
+                <ManajemenHakAksesPanel />
               </div>
             )}
             </ErrorBoundary>

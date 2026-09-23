@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Edit3, Shield, User, Key, Check, AlertCircle, ChevronDown, X, Search, FileText, Copy } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Trash2, Shield, User, Key, Check, AlertCircle, X, Lock, SlidersHorizontal } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import MultiSelectTagInput from "./MultiSelectTagInput";
-import { showSuccess, showError, showWarning, showConfirm, showDeleteConfirm, showToast } from "../utils/sweetalert";
+import { showSuccess, showError, showDeleteConfirm, showToast } from "../utils/sweetalert";
+import ModalEditAksesPengguna from "./ModalEditAksesPengguna";
 
 interface PenggunaData {
   id: string;
@@ -10,8 +10,9 @@ interface PenggunaData {
   nama: string;
   nama_lengkap?: string;
   role: string;
+  role_id?: string;
   peran_utama?: string;
-  permissions?: string[];
+  permissions?: any;
   status_akun?: string;
   tugas_tambahan?: string[];
   gender?: string;
@@ -29,26 +30,13 @@ export default function ManajemenPenggunaPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Form State
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [nama, setNama] = useState("");
-  const [role, setRole] = useState("guru pondok");
-  const [gender, setGender] = useState("Semua");
+  // Access Override Modal State
+  const [selectedUserForAkses, setSelectedUserForAkses] = useState<PenggunaData | null>(null);
 
-  // Multi-selection states
-  const [isPondok, setIsPondok] = useState(true);
-  const [isSekolah, setIsSekolah] = useState(true);
-  const [selectedJabatans, setSelectedJabatans] = useState<string[]>(["guru pondok"]);
-  
   // Approval State
   const [approvalUser, setApprovalUser] = useState<PenggunaData | null>(null);
   const [approvalPeranUtama, setApprovalPeranUtama] = useState<string>("guru_pondok");
   const [approvalPermissions, setApprovalPermissions] = useState<string[]>([]);
-  const [tugasTambahanDb, setTugasTambahanDb] = useState<{id: number, nama: string, jenis_tugas_tambahan: string}[]>([]);
   
   const PERMISSIONS_LIST = [
     { id: "dasbor", label: "Dasbor" },
@@ -76,30 +64,6 @@ export default function ManajemenPenggunaPanel() {
     "super_admin": PERMISSIONS_LIST.map(p => p.id)
   };
 
-  // Custom multi-select component states
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  
-  const [tugasKamar, setTugasKamar] = useState("");
-  const [tugasKelasSekolah, setTugasKelasSekolah] = useState("");
-  const [tugasKelasPengajian, setTugasKelasPengajian] = useState("");
-  const [tugasMapel, setTugasMapel] = useState("");
-  const [tugasKantin, setTugasKantin] = useState("Semua");
-
-  // Master options lists
-  const [optRooms, setOptRooms] = useState<string[]>([]);
-  const [optSchoolClasses, setOptSchoolClasses] = useState<string[]>([]);
-  const [optRecitationClasses, setOptRecitationClasses] = useState<string[]>([]);
-  const [optKantin, setOptKantin] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem("master_kantin_list");
-      return saved ? JSON.parse(saved) : ["Kantin Utama", "Kantin Putra", "Kantin Putri"];
-    } catch {
-      return ["Kantin Utama", "Kantin Putra", "Kantin Putri"];
-    }
-  });
-
   const roles = [
     { id: "super admin", label: "Super Admin" },
     { id: "admin", label: "Admin" },
@@ -113,87 +77,6 @@ export default function ManajemenPenggunaPanel() {
     { id: "SMA", label: "SMA (Legacy)" },
     { id: "SMP", label: "SMP (Legacy)" }
   ];
-
-  // Load plotting options on mount
-  useEffect(() => {
-    const loadOptions = async () => {
-      const r = JSON.parse(localStorage.getItem("manajemen_rooms") || "[]");
-      const s = JSON.parse(localStorage.getItem("manajemen_school_classes") || "[]");
-      const p = JSON.parse(localStorage.getItem("manajemen_recitation_classes") || "[]");
-      setOptRooms(r);
-      setOptSchoolClasses(s);
-      setOptRecitationClasses(p);
-
-      try {
-        const { data, error } = await supabase.from("plotting").select("jenis, nama");
-        if (!error && data) {
-          const roomsDb = data.filter((item: any) => item.jenis === "kamar").map((item: any) => item.nama && String(item.nama).trim()).filter(Boolean);
-          
-          const schoolClassMap = new Map<string, string>();
-          data.filter((item: any) => item.jenis === "kelas sekolah" || item.jenis === "sekolah").forEach((item: any) => {
-            if (item.nama && String(item.nama).trim()) {
-              const raw = String(item.nama).trim();
-              const key = raw.toLowerCase().replace(/^kelas\s*/i, "").replace(/[^a-z0-9]/g, "");
-              const withoutPrefix = raw.replace(/^kelas\s*/i, "").trim();
-              const match = withoutPrefix.match(/^(\d+)\s*[-_]?\s*([a-zA-Z]+)$/);
-              const label = match ? `Kelas ${match[1]}-${match[2].toUpperCase()}` : (/^\d+$/.test(withoutPrefix) ? `Kelas ${withoutPrefix}` : (raw.toLowerCase().startsWith("kelas") ? raw : `Kelas ${raw}`));
-              if (key && !schoolClassMap.has(key)) {
-                schoolClassMap.set(key, label);
-              }
-            }
-          });
-          const schoolDb = Array.from(schoolClassMap.values()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-
-          const recitationDb = Array.from(new Set(
-            data.filter((item: any) => item.jenis === "kelas pengajian" || item.jenis === "pengajian")
-              .map((item: any) => item.nama && String(item.nama).trim())
-              .filter(Boolean)
-          )).sort();
-          
-          if (roomsDb.length > 0) setOptRooms(roomsDb);
-          if (schoolDb.length > 0) setOptSchoolClasses(schoolDb);
-          if (recitationDb.length > 0) setOptRecitationClasses(recitationDb);
-        }
-      } catch (err) {
-        console.warn("Failed to load options from DB:", err);
-      }
-
-      try {
-        const { data: tugasData, error: tugasError } = await supabase.from("tugas_tambahan").select("*");
-        if (!tugasError && tugasData) {
-          setTugasTambahanDb(tugasData);
-        }
-      } catch (err) {
-        console.warn("Failed to load tugas_tambahan:", err);
-      }
-    };
-    loadOptions();
-  }, []);
-
-  // Propose correct system role based on selected jabatans
-  useEffect(() => {
-    if (selectedJabatans.length > 0) {
-      const hasSekolah = selectedJabatans.some(j => ["wali_kelas", "guru_mapel", "kepala_sekolah", "wakil_kepala_sekolah"].includes(j));
-      const hasPondok = selectedJabatans.some(j => ["guru pondok", "wali_kamar"].includes(j));
-      
-      if (hasSekolah) {
-        setRole("guru SMP");
-      } else if (hasPondok) {
-        setRole("guru pondok");
-      }
-    }
-  }, [selectedJabatans]);
-
-  // Click outside multi-select dropdown handler
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -211,8 +94,8 @@ export default function ManajemenPenggunaPanel() {
         return (rawList || []).map((u: any) => {
           const extra = localDetails[u.username] || {};
           const peran = u.peran_utama || u.role || extra.peran_utama || extra.role || "guru_pondok";
-          const rawPermissions = u.permissions || extra.permissions || [];
-          const userPerms = Array.isArray(rawPermissions) ? rawPermissions : [];
+          const roleId = u.role_id || extra.role_id || "";
+          const rawPermissions = u.permissions ?? extra.permissions ?? {};
           const rawTugasTambahan = u.tugas_tambahan || extra.tugas_tambahan || [];
           const userTugasTambahan = Array.isArray(rawTugasTambahan) ? rawTugasTambahan : [];
 
@@ -222,8 +105,9 @@ export default function ManajemenPenggunaPanel() {
             nama_lengkap: u.nama_lengkap || u.nama || extra.nama_lengkap || extra.nama || u.username,
             peran_utama: peran,
             role: peran,
+            role_id: roleId,
             status_akun: u.status_akun || extra.status_akun || "approved",
-            permissions: userPerms,
+            permissions: rawPermissions,
             tugas_tambahan: userTugasTambahan,
             gender: u.gender || extra.gender || "Semua",
             bagian: u.bagian || extra.bagian || (peran === "admin" || peran === "super_admin" || peran === "super admin" ? "pondok,sekolah" : peran === "guru_sekolah" || peran === "guru SMP" ? "sekolah" : "pondok"),
@@ -259,172 +143,6 @@ export default function ManajemenPenggunaPanel() {
   useEffect(() => {
     fetchUsers();
   }, []);
-
-  const openForm = (user?: PenggunaData) => {
-    if (user) {
-      setEditingId(user.id);
-      setUsername(user.username || "");
-      setPassword(""); // Don't fetch password, require new one if editing
-      setNama(user.nama_lengkap || user.nama || "");
-      const r = user.peran_utama || user.role || "guru_pondok";
-      setRole(r);
-      setGender(user.gender || "Semua");
-      
-      const bag = user.bagian || "pondok,sekolah";
-      if (bag === "kedua") {
-        setIsPondok(true);
-        setIsSekolah(true);
-      } else {
-        setIsPondok(bag.includes("pondok"));
-        setIsSekolah(bag.includes("sekolah"));
-      }
-
-      const jab = user.jabatan || "guru pondok";
-      const rawJabs = jab.split(",").map(j => j.trim()).filter(Boolean);
-      const mappedJList = rawJabs.map(j => {
-        if (j === "guru pondok") return "guru pondok";
-        if (j === "guru mapel" || j === "guru mata pelajaran" || j === "guru_mapel") return "guru_mapel";
-        if (j === "pamong kamar" || j === "wali kamar" || j === "wali_kamar") return "wali_kamar";
-        if (j === "wali kelas" || j === "wali kelas sekolah" || j === "wali_kelas") return "wali_kelas";
-        if (j === "kepala sekolah" || j === "kepala_sekolah") return "kepala_sekolah";
-        if (j === "wakil kepala sekolah" || j === "wakil_kepala_sekolah") return "wakil_kepala_sekolah";
-        return j;
-      });
-      setSelectedJabatans(mappedJList);
-
-      setTugasKamar(user.tugas_kamar || "");
-      setTugasKelasSekolah(user.tugas_kelas_sekolah || "");
-      setTugasKelasPengajian(user.tugas_kelas_pengajian || "");
-      setTugasMapel(user.tugas_mapel || "");
-      setTugasKantin(user.tugas_kantin || "Semua");
-    } else {
-      setEditingId(null);
-      setUsername("");
-      setPassword("");
-      setNama("");
-      setRole("guru_pondok");
-      setGender("Semua");
-      setIsPondok(true);
-      setIsSekolah(true);
-      setSelectedJabatans(["guru pondok"]);
-      setTugasKamar("");
-      setTugasKelasSekolah("");
-      setTugasKelasPengajian("");
-      setTugasMapel("");
-      setTugasKantin("Semua");
-    }
-    setIsDropdownOpen(false);
-    setSearchQuery("");
-    setIsFormOpen(true);
-  };
-
-  const closeForm = () => {
-    setIsFormOpen(false);
-    setEditingId(null);
-    setIsDropdownOpen(false);
-    setSearchQuery("");
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !nama.trim()) return;
-    
-    // Require password for new user
-    if (!editingId && !password.trim()) {
-      showWarning("Password Diperlukan", "Silakan masukkan password untuk pengguna baru.");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-
-      // Join multi-select values
-      const bList: string[] = [];
-      if (isPondok) bList.push("pondok");
-      if (isSekolah) bList.push("sekolah");
-      const finalBagian = bList.length > 0 ? bList.join(",") : "pondok,sekolah";
-
-      const finalJabatan = selectedJabatans.join(",");
-      
-      const mappedPeran = 
-        role === "guru SMP" || role === "guru_sekolah" || role === "SMP" || role === "SMA" ? "guru_sekolah" :
-        role === "guru pondok" || role === "guru_pondok" || role === "pondok" ? "guru_pondok" :
-        role === "super admin" || role === "super_admin" ? "super_admin" :
-        role;
-
-      // 1. Save copy to localStorage custom details map
-      const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
-      localDetails[username.trim()] = {
-        nama: nama.trim(),
-        nama_lengkap: nama.trim(),
-        peran_utama: mappedPeran,
-        role: mappedPeran,
-        gender: gender,
-        bagian: finalBagian,
-        jabatan: finalJabatan,
-        tugas_kamar: selectedJabatans.includes("wali_kamar") ? tugasKamar : "",
-        tugas_kelas_sekolah: (selectedJabatans.includes("wali_kelas") || selectedJabatans.includes("guru_mapel")) ? tugasKelasSekolah : "",
-        tugas_kelas_pengajian: selectedJabatans.includes("guru pondok") ? tugasKelasPengajian : "",
-        tugas_mapel: selectedJabatans.includes("guru_mapel") ? tugasMapel : "",
-        tugas_kantin: selectedJabatans.includes("kantin") ? tugasKantin : "",
-        tugas_tambahan: selectedJabatans
-      };
-      localStorage.setItem("user_additional_details", JSON.stringify(localDetails));
-
-      // 2. Exact database schema payload for public.pengguna
-      const dbPayload: any = {
-        username: username.trim(),
-        nama: nama.trim(),
-        nama_lengkap: nama.trim(),
-        peran_utama: mappedPeran,
-        gender: gender,
-        status_akun: "approved",
-        permissions: PERMISSION_PRESETS[mappedPeran] || [],
-        tugas_tambahan: selectedJabatans
-      };
-
-      if (password.trim()) {
-        dbPayload.password = password;
-      }
-
-      // 3. Save to Supabase
-      if (editingId) {
-        const { error } = await supabase.from("pengguna").update(dbPayload).eq("id", editingId);
-        if (error) {
-          console.warn("Update with dbPayload failed, attempting fallback:", error.message);
-          const fallbackPayload: any = {
-            username: username.trim(),
-            nama: nama.trim(),
-            gender: gender
-          };
-          if (password.trim()) fallbackPayload.password = password;
-          const { error: basicError } = await supabase.from("pengguna").update(fallbackPayload).eq("id", editingId);
-          if (basicError) throw basicError;
-        }
-      } else {
-        const { error } = await supabase.from("pengguna").insert([dbPayload]);
-        if (error) {
-          console.warn("Insert with dbPayload failed, attempting fallback:", error.message);
-          const fallbackPayload: any = {
-            username: username.trim(),
-            nama: nama.trim(),
-            gender: gender
-          };
-          if (password.trim()) fallbackPayload.password = password;
-          const { error: basicError } = await supabase.from("pengguna").insert([fallbackPayload]);
-          if (basicError) throw basicError;
-        }
-      }
-
-      await fetchUsers();
-      closeForm();
-      showSuccess("Berhasil", editingId ? "Data pengguna berhasil diperbarui!" : "Pengguna baru berhasil ditambahkan!");
-    } catch (err: any) {
-      showError("Gagal Menyimpan", err.message || "Terjadi kesalahan saat menyimpan data.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleDelete = async (id: string, uname: string) => {
     const isConfirmed = await showDeleteConfirm(`pengguna "${uname}"`);
@@ -501,374 +219,10 @@ export default function ManajemenPenggunaPanel() {
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white tracking-tight">Manajemen Pengguna</h1>
-            <p className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">Atur akun staf dan hak akses (Admin, Guru, Pengurus).</p>
+            <p className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">Daftar akun staf, hak akses, dan persetujuan akun.</p>
           </div>
         </div>
-        <button
-          onClick={() => openForm()}
-          className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/20"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Pengguna</span>
-        </button>
       </div>
-
-      {isFormOpen && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/40 backdrop-blur-sm animate-in zoom-in-95 duration-200">
-          <div className="min-h-screen px-4 py-12 flex items-center justify-center">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 relative">
-              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-850 flex items-center justify-between bg-slate-50 dark:bg-[#0a0c16] rounded-t-3xl">
-              <h3 className="font-black text-slate-800 dark:text-slate-100 text-lg flex items-center gap-2">
-                <User className="w-5 h-5 text-indigo-500" />
-                {editingId ? "Edit Pengguna" : "Tambah Pengguna Baru"}
-              </h3>
-              <button onClick={closeForm} className="p-2 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-all">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Username (ID Custom)</label>
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Misal: satrio.guru"
-                  className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Password {editingId && <span className="text-amber-500 font-normal normal-case tracking-normal">(Kosongkan jika tidak ingin mengubah)</span>}
-                </label>
-                <input
-                  type="password"
-                  required={!editingId}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan password..."
-                  className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Nama Lengkap</label>
-                <input
-                  type="text"
-                  required
-                  value={nama}
-                  onChange={(e) => setNama(e.target.value)}
-                  placeholder="Nama Lengkap Staf"
-                  className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">Bagian Tugas</label>
-                <div className="flex gap-4 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-900">
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={isPondok}
-                      onChange={(e) => setIsPondok(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Pondok (Kepesantrenan)
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={isSekolah}
-                      onChange={(e) => setIsSekolah(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Sekolah (Formal)
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-2 relative" ref={dropdownRef}>
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                  Tugas / Jabatan (Bisa Pilih Lebih Dari Satu)
-                </label>
-                
-                {/* Custom Multi-Select Input Box */}
-                <div 
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className={`w-full min-h-[46px] flex flex-wrap items-center gap-2 px-4 py-2 bg-[#f8fafc] dark:bg-slate-950 border rounded-2xl cursor-pointer transition-all ${
-                    isDropdownOpen 
-                      ? "border-blue-600 dark:border-blue-500 ring-2 ring-blue-500/20 bg-white dark:bg-slate-900" 
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
-                  }`}
-                >
-                  {selectedJabatans.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedJabatans.map(jid => {
-                        const itemsList = [
-                          { id: "guru pondok", label: "Guru Pondok" },
-                          { id: "guru_mapel", label: "Guru Mata Pelajaran" },
-                          { id: "wali_kamar", label: "Wali Kamar" },
-                          { id: "wali_kelas", label: "Wali Kelas Sekolah" },
-                          { id: "kepala_sekolah", label: "Kepala Sekolah" },
-                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" },
-                          { id: "kantin", label: "Petugas Kantin" }
-                        ];
-                        const item = itemsList.find(j => j.id === jid);
-                        const label = item ? item.label : jid;
-                        return (
-                          <span 
-                            key={jid} 
-                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-100 dark:border-blue-950/60 animate-in zoom-in-95 duration-150"
-                          >
-                            <span>{label}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedJabatans(selectedJabatans.filter(j => j !== jid));
-                              }}
-                              className="hover:bg-blue-100 dark:hover:bg-blue-900/60 p-0.5 rounded transition-colors text-blue-500 hover:text-blue-700 cursor-pointer"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <span className="text-xs font-bold text-slate-450 dark:text-slate-500 select-none">
-                      Pilih Tugas / Jabatan...
-                    </span>
-                  )}
-
-                  {/* Chevron Icon */}
-                  <div className="ml-auto pl-2 text-slate-450 dark:text-slate-500 shrink-0">
-                    <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isDropdownOpen ? "rotate-180" : ""}`} />
-                  </div>
-                </div>
-
-                {/* Dropdown Menu Overlay */}
-                {isDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                    {/* Search Field */}
-                    <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 flex items-center gap-2">
-                      <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Ketik untuk mencari..."
-                        onClick={(e) => e.stopPropagation()} // Prevent dropdown close on input click
-                        className="w-full text-xs font-bold bg-transparent border-none outline-none focus:ring-0 text-slate-800 dark:text-white placeholder-slate-400"
-                      />
-                      {searchQuery && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSearchQuery("");
-                          }}
-                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Available options list */}
-                    <div className="max-h-52 overflow-y-auto py-1">
-                      {(() => {
-                        const itemsList = [
-                          { id: "guru pondok", label: "Guru Pondok" },
-                          { id: "guru_mapel", label: "Guru Mata Pelajaran" },
-                          { id: "wali_kamar", label: "Wali Kamar" },
-                          { id: "wali_kelas", label: "Wali Kelas Sekolah" },
-                          { id: "kepala_sekolah", label: "Kepala Sekolah" },
-                          { id: "wakil_kepala_sekolah", label: "Wakil Kepala Sekolah" },
-                          { id: "kantin", label: "Petugas Kantin" }
-                        ];
-                        const filtered = itemsList.filter(item => {
-                          const isNotSelected = !selectedJabatans.includes(item.id);
-                          const matchesSearch = item.label.toLowerCase().includes(searchQuery.toLowerCase());
-                          return isNotSelected && matchesSearch;
-                        });
-
-                        if (filtered.length === 0) {
-                          return (
-                            <div className="px-4 py-3.5 text-xs text-slate-400 dark:text-slate-500 text-center font-bold">
-                              {searchQuery ? "Tidak ada hasil ditemukan." : "Semua opsi telah terpilih."}
-                            </div>
-                          );
-                        }
-
-                        return filtered.map(item => (
-                          <div
-                            key={item.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedJabatans([...selectedJabatans, item.id]);
-                              setSearchQuery("");
-                            }}
-                            className="px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors flex items-center justify-between"
-                          >
-                            <span>{item.label}</span>
-                            <span className="text-[10px] text-blue-500 font-extrabold opacity-0 hover:opacity-100 transition-opacity">Pilih</span>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Conditional Duty Assignment Inputs */}
-              {selectedJabatans.includes("guru_mapel") && (
-                <div className="space-y-2 p-3.5 bg-indigo-50/50 dark:bg-indigo-950/10 rounded-2xl border border-indigo-100/50 dark:border-indigo-950/30 animate-in fade-in duration-200">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">Konfigurasi Guru Mapel</span>
-                  
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Mata Pelajaran Apa?</label>
-                    <input
-                      type="text"
-                      required
-                      value={tugasMapel}
-                      onChange={(e) => setTugasMapel(e.target.value)}
-                      placeholder="Misal: Matematika, Fisika, PAI"
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Di Kelas Berapa?</label>
-                      <span className="text-[9px] text-indigo-500 font-extrabold italic">Bisa pilih lebih dari satu kelas</span>
-                    </div>
-                    <MultiSelectTagInput
-                      selectedValues={tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean)}
-                      onChange={(vals) => setTugasKelasSekolah(vals.join(", "))}
-                      options={optSchoolClasses}
-                      placeholder="Pilih kelas sekolah..."
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedJabatans.includes("wali_kelas") && !selectedJabatans.includes("guru_mapel") && (
-                <div className="space-y-2 p-3.5 bg-blue-50/50 dark:bg-blue-950/10 rounded-2xl border border-blue-100/50 dark:border-blue-950/30 animate-in fade-in duration-200">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 block">Konfigurasi Wali Kelas</span>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Tugas Kelas Sekolah</label>
-                    <MultiSelectTagInput
-                      selectedValues={tugasKelasSekolah.split(",").map(c => c.trim()).filter(Boolean)}
-                      onChange={(vals) => setTugasKelasSekolah(vals.join(", "))}
-                      options={optSchoolClasses}
-                      placeholder="Pilih kelas sekolah..."
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedJabatans.includes("guru pondok") && (
-                <div className="space-y-2 p-3.5 bg-purple-50/50 dark:bg-purple-950/10 rounded-2xl border border-purple-100/50 dark:border-purple-950/30 animate-in fade-in duration-200">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 block">Konfigurasi Guru Pondok</span>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Tugas Kelas Pengajian</label>
-                    <MultiSelectTagInput
-                      selectedValues={tugasKelasPengajian.split(",").map(c => c.trim()).filter(Boolean)}
-                      onChange={(vals) => setTugasKelasPengajian(vals.join(", "))}
-                      options={optRecitationClasses.length > 0 ? optRecitationClasses : ["Cepatan SMP", "Lambatan SMP", "Bacaan SMP", "Pegon SMP", "Kelas Tajwid", "Kelas Makhraj"]}
-                      placeholder="Pilih kelas pengajian..."
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedJabatans.includes("wali_kamar") && (
-                <div className="space-y-2 p-3.5 bg-emerald-50/50 dark:bg-emerald-950/10 rounded-2xl border border-emerald-100/50 dark:border-emerald-950/30 animate-in fade-in duration-200">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">Konfigurasi Wali Kamar</span>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Tugas Kamar Santri</label>
-                    <select
-                      value={tugasKamar}
-                      onChange={(e) => setTugasKamar(e.target.value)}
-                      required
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                    >
-                      <option value="">-- Pilih Kamar --</option>
-                      {optRooms.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Role / Akses Sistem</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                >
-                  {roles.map(r => (
-                    <option key={r.id} value={r.id}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedJabatans.includes("kantin") && (
-                <div className="space-y-2 p-3.5 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 animate-in fade-in duration-200">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 block">Konfigurasi Penugasan Kantin</span>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Kantin yang Dikelola</label>
-                    <select
-                      value={tugasKantin}
-                      onChange={(e) => setTugasKantin(e.target.value)}
-                      className="w-full text-xs font-bold leading-normal px-4 py-2.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                    >
-                      <option value="Semua">Semua Kantin</option>
-                      {optKantin.map(k => (
-                        <option key={k} value={k}>{k}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Batasi Akses Santri (Gender)</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="w-full text-xs font-bold leading-normal px-4 py-3 bg-[#f8fafc] dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-white transition-all shadow-inner"
-                >
-                  <option value="Semua">Semua Santri (Bisa akses L & P)</option>
-                  <option value="L">Khusus Santri Putra (Laki-laki)</option>
-                  <option value="P">Khusus Santri Putri (Perempuan)</option>
-                </select>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-850">
-                <button type="button" onClick={closeForm} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-                  Batal
-                </button>
-                <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold text-xs shadow-lg flex items-center gap-2">
-                  {isLoading ? "Menyimpan..." : (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>Simpan</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-        </div>
-      )}
 
       {/* List */}
       <div className="bg-white dark:bg-[#111322] rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-800/50 min-h-[400px]">
@@ -916,6 +270,13 @@ export default function ManajemenPenggunaPanel() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => setSelectedUserForAkses(user)}
+                      className="p-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:hover:bg-indigo-600 dark:text-indigo-400 dark:hover:text-white rounded-lg transition-colors"
+                      title="Kelola Peran & Izin Khusus (Override)"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                    </button>
                     {user.status_akun === 'pending' && (
                       <button onClick={() => { 
                         setApprovalUser(user); 
@@ -928,10 +289,7 @@ export default function ManajemenPenggunaPanel() {
                         <Check className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    <button onClick={() => openForm(user)} className="p-1.5 bg-slate-200 hover:bg-sky-500 dark:bg-slate-800 dark:hover:bg-sky-600 text-slate-600 hover:text-white dark:text-slate-300 rounded-lg transition-colors">
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => handleDelete(user.id, user.username)} className="p-1.5 bg-slate-200 hover:bg-red-500 dark:bg-slate-800 dark:hover:bg-red-600 text-slate-600 hover:text-white dark:text-slate-300 rounded-lg transition-colors">
+                    <button onClick={() => handleDelete(user.id, user.username)} className="p-1.5 bg-slate-200 hover:bg-red-500 dark:bg-slate-800 dark:hover:bg-red-600 text-slate-600 hover:text-white dark:text-slate-300 rounded-lg transition-colors" title="Hapus Pengguna">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -1010,7 +368,7 @@ export default function ManajemenPenggunaPanel() {
                 </div>
 
                 <div className="mt-2 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     <div className="text-[10px] font-black px-2 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-md uppercase tracking-wider">
                       {roles.find(r => r.id === user.role)?.label || user.role}
                     </div>
@@ -1020,16 +378,33 @@ export default function ManajemenPenggunaPanel() {
                       </div>
                     )}
                   </div>
-                  <div className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
-                    <Key className="w-3 h-3" />
-                    Custom Auth
-                  </div>
+                  <button
+                    onClick={() => setSelectedUserForAkses(user)}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer border border-indigo-200/50 dark:border-indigo-800/50"
+                  >
+                    <Lock className="w-3 h-3" />
+                    <span>Akses & Role</span>
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Modal Edit Akses & Override */}
+      {selectedUserForAkses && (
+        <ModalEditAksesPengguna
+          user={selectedUserForAkses}
+          isOpen={Boolean(selectedUserForAkses)}
+          onClose={() => setSelectedUserForAkses(null)}
+          onSuccess={(updated) => {
+            setUsers(prev => prev.map(u => (u.id === updated.id || (u.username && u.username === updated.username)) ? { ...u, ...updated } : u));
+            setSelectedUserForAkses(null);
+            fetchUsers();
+          }}
+        />
+      )}
 
       {/* Approval Modal */}
       {approvalUser && (
