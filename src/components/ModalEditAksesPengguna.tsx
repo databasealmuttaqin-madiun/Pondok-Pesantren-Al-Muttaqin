@@ -166,11 +166,94 @@ export default function ModalEditAksesPengguna({
         console.warn("Could not query fresh user record:", fErr);
       }
 
-      // 3. Match Role in loadedRoles
-      const matchedRole =
-        loadedRoles.find(r => r.id === userRoleRef || r.name.toLowerCase() === userRoleRef.toLowerCase()) ||
-        loadedRoles.find(r => r.name.toLowerCase().includes(userRoleRef.toLowerCase())) ||
-        loadedRoles[0];
+      // 3. Match Role in loadedRoles using smart matching
+      const matchUserToRole = (
+        targetUser: any,
+        roleRef: string,
+        allRoles: AppRole[]
+      ): AppRole => {
+        if (!allRoles || allRoles.length === 0) {
+          return { id: "role-guru-pondok", name: "Guru Pondok", is_system_default: true };
+        }
+
+        // 1. Direct match by ID
+        if (roleRef) {
+          const directId = allRoles.find(r => r.id === roleRef);
+          if (directId) return directId;
+        }
+
+        // Collect candidate strings from user object
+        const candidates = [
+          roleRef,
+          targetUser?.role_id,
+          targetUser?.peran_utama,
+          targetUser?.role,
+          targetUser?.jabatan,
+          targetUser?.bagian
+        ]
+          .filter(Boolean)
+          .map(s => String(s).toLowerCase().replace(/_/g, " ").replace(/-/g, " ").trim());
+
+        // 2. Exact name match
+        for (const cand of candidates) {
+          if (!cand) continue;
+          const exact = allRoles.find(r => {
+            const rNorm = r.name.toLowerCase().replace(/_/g, " ").replace(/-/g, " ").trim();
+            return rNorm === cand;
+          });
+          if (exact) return exact;
+        }
+
+        // 3. Keyword / semantic matching
+        for (const cand of candidates) {
+          if (!cand) continue;
+          if (cand.includes("super admin") || cand.includes("superadmin")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("super admin"));
+            if (found) return found;
+          }
+          if (cand.includes("admin") && !cand.includes("guru") && !cand.includes("sekolah")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("admin") && !r.name.toLowerCase().includes("super"));
+            if (found) return found;
+          }
+          if (cand.includes("guru sekolah") || cand.includes("sekolah") || cand.includes("smp") || cand.includes("sma") || cand.includes("ma") || cand.includes("mapel")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("sekolah") || r.name.toLowerCase().includes("formal"));
+            if (found) return found;
+          }
+          if (cand.includes("guru") || cand.includes("pondok") || cand.includes("pengajian") || cand.includes("ustadz")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("pondok") || r.name.toLowerCase().includes("guru"));
+            if (found) return found;
+          }
+          if (cand.includes("kamar") || cand.includes("asrama")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("kamar") || r.name.toLowerCase().includes("asrama"));
+            if (found) return found;
+          }
+          if (cand.includes("kantin")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("kantin"));
+            if (found) return found;
+          }
+          if (cand.includes("pimpinan") || cand.includes("pengasuh") || cand.includes("kyai")) {
+            const found = allRoles.find(r => r.name.toLowerCase().includes("pimpinan") || r.name.toLowerCase().includes("pengasuh"));
+            if (found) return found;
+          }
+        }
+
+        // 4. Safe fallback: If user belongs to school vs pondok
+        const isSchool = candidates.some(c => c.includes("sekolah") || c.includes("smp") || c.includes("sma"));
+        if (isSchool) {
+          const schoolRole = allRoles.find(r => r.name.toLowerCase().includes("sekolah") || r.name.toLowerCase().includes("formal"));
+          if (schoolRole) return schoolRole;
+        }
+
+        const defaultGuruPondok = allRoles.find(r => r.name.toLowerCase().includes("pondok") || r.name.toLowerCase().includes("guru"));
+        if (defaultGuruPondok) return defaultGuruPondok;
+
+        const nonAdminRole = allRoles.find(r => !r.name.toLowerCase().includes("admin"));
+        if (nonAdminRole) return nonAdminRole;
+
+        return allRoles[0];
+      };
+
+      const matchedRole = matchUserToRole(user, userRoleRef, loadedRoles);
 
       const activeRoleId = matchedRole?.id || loadedRoles[0]?.id || "";
       setSelectedRoleId(activeRoleId);
