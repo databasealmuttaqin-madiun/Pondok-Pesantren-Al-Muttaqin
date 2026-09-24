@@ -22,7 +22,8 @@ import {
   CORE_SIDEBAR_MENUS,
   PermissionAction,
   MenuPermissionsMap,
-  normalizePermission
+  normalizePermission,
+  getDefaultPermissionsForRole
 } from "../utils/permissionUtils";
 
 interface ModalEditAksesPenggunaProps {
@@ -331,35 +332,10 @@ export default function ModalEditAksesPengguna({
 
       // 3. Fallback standard presets
       if (!found) {
-        const lower = roleName.toLowerCase();
-        if (lower.includes("super admin") || lower.includes("super_admin")) {
-          CORE_SIDEBAR_MENUS.forEach(m => {
-            perms[m.key] = { can_view: true, can_input: true, can_edit: true, can_delete: true };
-          });
-        } else if (lower.includes("admin")) {
-          CORE_SIDEBAR_MENUS.forEach(m => {
-            perms[m.key] = { can_view: true, can_input: true, can_edit: true, can_delete: m.key !== "manajemen_hak_akses" };
-          });
-        } else if (lower.includes("guru sekolah")) {
-          perms["dashboard"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
-          perms["dashboard_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
-          perms["presensi_guru"] = { can_view: true, can_input: true, can_edit: false, can_delete: false };
-          perms["jurnal_mengajar"] = { can_view: true, can_input: true, can_edit: true, can_delete: true };
-          perms["rekap_absensi_sekolah"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
-          perms["manajemen_sekolah"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-        } else if (lower.includes("guru") || lower.includes("pondok")) {
-          perms["dashboard"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
-          perms["data_santri"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-          perms["kelas_pengajian"] = { can_view: true, can_input: true, can_edit: true, can_delete: true };
-          perms["capaian_materi"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-          perms["rekap_absensi_pengajian"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-        } else if (lower.includes("kamar")) {
-          perms["dashboard"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
-          perms["kamar_asrama"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-          perms["perizinan_sakit"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-          perms["perizinan_sambang"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-          perms["capaian_materi"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-        }
+        const defaultPreset = getDefaultPermissionsForRole(roleName);
+        Object.keys(defaultPreset).forEach(k => {
+          if (perms[k]) perms[k] = defaultPreset[k];
+        });
       }
 
       setRolePermissions(perms);
