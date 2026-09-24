@@ -2,6 +2,20 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Lock, CheckCircle2, Shield, X, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { fetchRolePermissionsAsync } from "../utils/permissionUtils";
+
+interface RoleOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+const DEFAULT_DB_ROLES: RoleOption[] = [
+  { id: "5dc38b56-a7cd-459c-9eee-e3ad4d877d51", name: "Guru Pondok" },
+  { id: "8210ec88-1832-49d0-bb3c-5181b875c6e5", name: "Guru Sekolah" },
+  { id: "10c7deeb-3f3c-423f-aa51-2f1269404619", name: "Admin Ponpes" },
+  { id: "22a21a1d-80e0-41b8-b396-7fef6bc76134", name: "Super Admin" }
+];
 
 interface GuruRegisterModalProps {
   isOpen: boolean;
@@ -15,21 +29,48 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<"guru_pondok" | "guru_sekolah" | "pengurus" | "kantin" | "admin" | "super_admin">("guru_pondok");
+  
+  const [availableRoles, setAvailableRoles] = useState<RoleOption[]>(DEFAULT_DB_ROLES);
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("5dc38b56-a7cd-459c-9eee-e3ad4d877d51");
   
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   useEffect(() => {
+    const fetchDbRoles = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("roles")
+          .select("id, name, description")
+          .order("created_at", { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          const cleanRoles = data.filter((r: any) => 
+            !String(r.name || "").toLowerCase().includes("kantin") &&
+            !String(r.name || "").toLowerCase().includes("pengurus")
+          );
+          if (cleanRoles.length > 0) {
+            setAvailableRoles(cleanRoles);
+            setSelectedRoleId((prev) => {
+              const exists = cleanRoles.find(r => r.id === prev);
+              return exists ? prev : cleanRoles[0].id;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Notice: Fetching roles from DB:", err);
+      }
+    };
+
     if (isOpen) {
       setNamaLengkap("");
       setUsername("");
       setPassword("");
-      setSelectedRole("guru_pondok");
       setErrorMsg("");
       setSuccessMsg("");
       setShowPassword(false);
+      fetchDbRoles();
     }
   }, [isOpen]);
 
@@ -65,14 +106,19 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
     setIsLoading(true);
 
     try {
+      const matchedRole = availableRoles.find(r => r.id === selectedRoleId) || availableRoles[0];
+      const rolePerms = await fetchRolePermissionsAsync(matchedRole.id, matchedRole.name);
+
       const dbPengguna: any = {
         nama: namaLengkap.trim(),
         nama_lengkap: namaLengkap.trim(),
         username: cleanUsername,
         password: password,
-        peran_utama: selectedRole,
+        peran_utama: matchedRole.name,
+        role: matchedRole.name,
+        role_id: matchedRole.id,
         status_akun: "pending",
-        permissions: [],
+        permissions: rolePerms,
         tugas_tambahan: []
       };
 
@@ -81,7 +127,7 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
       localDetails[cleanUsername] = {
         ...dbPengguna,
         status: "pending",
-        bagian: selectedRole
+        bagian: matchedRole.name.toLowerCase().includes("sekolah") ? "sekolah" : "pondok"
       };
       localStorage.setItem("user_additional_details", JSON.stringify(localDetails));
 
@@ -97,7 +143,9 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
           const legacyFallback = {
             username: cleanUsername,
             nama: namaLengkap.trim(),
-            password: password
+            password: password,
+            peran_utama: matchedRole.name,
+            role: matchedRole.name
           };
           const { error: legErr } = await supabase.from("pengguna").insert([legacyFallback]);
           if (legErr) {
@@ -283,20 +331,19 @@ export default function GuruRegisterModal({ isOpen, onClose, onSuccessLogin, isD
                         <Shield className="w-4.5 h-4.5" />
                       </div>
                       <select
-                        value={selectedRole}
-                        onChange={(e) => setSelectedRole(e.target.value as any)}
+                        value={selectedRoleId}
+                        onChange={(e) => setSelectedRoleId(e.target.value)}
                         className={`w-full pl-10 pr-10 py-3 rounded-2xl border text-sm font-semibold transition-all focus:ring-2 focus:ring-blue-500/50 outline-none appearance-none cursor-pointer ${
                           isDarkMode 
                             ? "bg-[#0a0c16] border-[#1d2138] focus:border-blue-500 text-white" 
                             : "bg-slate-50 border-slate-200 focus:border-blue-500 text-slate-800"
                         }`}
                       >
-                        <option value="guru_pondok">Guru Pondok</option>
-                        <option value="guru_sekolah">Guru Sekolah</option>
-                        <option value="pengurus">Pengurus</option>
-                        <option value="kantin">Kantin</option>
-                        <option value="admin">Admin</option>
-                        <option value="super_admin">Super Admin</option>
+                        {availableRoles.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
                       </select>
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

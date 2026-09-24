@@ -71,20 +71,12 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
             userRole = "admin";
           } else if (rLower.includes("pengurus") || rLower.includes("kamar") || rLower.includes("asrama")) {
             userRole = "pengurus";
-          } else if (rLower === "guru pondok" || rLower === "guru_pondok" || rLower === "pondok" || rLower.includes("pondok") || rLower.includes("ustadz")) {
-            const hasOnlyKantin = (tugasTambahanList.length > 0 && tugasTambahanList.every((t: any) => String(t).toLowerCase().includes("kantin"))) ||
-              cleanUsername.includes("kantin");
-            if (hasOnlyKantin) {
-              userRole = "kantin";
-            } else {
-              userRole = "guru pondok";
-            }
           } else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru_sekolah" || rLower === "guru SMP" || rLower === "smp" || rLower === "sma" || rLower.includes("sekolah") || rLower.includes("formal")) {
             userRole = "guru SMP";
           } else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") {
             userRole = "siswa";
-          } else if (rLower.includes("kantin")) {
-            userRole = "kantin";
+          } else if (rLower === "guru pondok" || rLower === "guru_pondok" || rLower === "pondok" || rLower.includes("pondok") || rLower.includes("ustadz")) {
+            userRole = "guru pondok";
           }
 
           const matchedKantinDuty = tugasTambahanList.find((t: any) => String(t).toLowerCase().includes("kantin")) || 
@@ -95,15 +87,30 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
             userRole === "siswa" ? "L" : "Semua"
           );
 
+          let resolvedPerms = user.permissions;
+          if (typeof resolvedPerms === "string") {
+            try { resolvedPerms = JSON.parse(resolvedPerms); } catch {}
+          }
+          if (!resolvedPerms || (typeof resolvedPerms === "object" && Object.keys(resolvedPerms).length === 0)) {
+            let extraPerms = extra.permissions;
+            if (typeof extraPerms === "string") {
+              try { extraPerms = JSON.parse(extraPerms); } catch {}
+            }
+            if (extraPerms && Object.keys(extraPerms).length > 0) {
+              resolvedPerms = extraPerms;
+            }
+          }
+
           const dbUserVal = {
+            id: user.id ? String(user.id) : undefined,
             username: user.username,
             role: userRole,
-            peran_utama: user.peran_utama || extra.peran_utama,
-            permissions: user.permissions || extra.permissions || [],
+            peran_utama: user.peran_utama || extra.peran_utama || userRole,
+            permissions: resolvedPerms || {},
             name: user.nama || user.nama_lengkap || user.username,
             gender: inferredGender,
             bagian: user.bagian || extra.bagian || (userRole === "admin" || userRole === "super admin" ? "kedua" : userRole === "guru SMP" ? "sekolah" : "pondok"),
-            jabatan: user.jabatan || extra.jabatan || (userRole === "kantin" ? "petugas kantin" : userRole === "admin" || userRole === "super admin" ? "pengurus" : userRole === "guru SMP" ? "guru mapel" : "guru pondok"),
+            jabatan: user.jabatan || extra.jabatan || (userRole === "admin" || userRole === "super admin" ? "pengurus" : userRole === "guru SMP" ? "guru mapel" : "guru pondok"),
             tugas_kamar: user.tugas_kamar || extra.tugas_kamar || "",
             tugas_kelas_sekolah: user.tugas_kelas_sekolah || extra.tugas_kelas_sekolah || "",
             tugas_kelas_pengajian: user.tugas_kelas_pengajian || extra.tugas_kelas_pengajian || "",

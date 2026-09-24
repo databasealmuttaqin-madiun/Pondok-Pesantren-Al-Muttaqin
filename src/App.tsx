@@ -55,10 +55,11 @@ const getInitials = (name?: string) => {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<{
+    id?: string;
     username: string;
     role: string;
     peran_utama?: string;
-    permissions?: string[];
+    permissions?: any;
     name: string;
     gender?: string;
     bagian?: string;
@@ -113,6 +114,50 @@ export default function App() {
       window.removeEventListener("permissions_updated", handleUserUpdate);
     };
   }, []);
+
+  // Synchronize active currentUser with latest permissions and role from database
+  useEffect(() => {
+    if (!currentUser?.username && !currentUser?.id) return;
+
+    const syncUserFromDatabase = async () => {
+      try {
+        let query = supabase.from("pengguna").select("*");
+        if (currentUser.id) {
+          query = query.eq("id", currentUser.id);
+        } else {
+          query = query.eq("username", currentUser.username);
+        }
+        const { data, error } = await query.maybeSingle();
+        if (!error && data) {
+          let dbPerms = data.permissions;
+          if (typeof dbPerms === "string") {
+            try { dbPerms = JSON.parse(dbPerms); } catch {}
+          }
+          const latestRole = data.peran_utama || data.role || currentUser.role;
+
+          const permsStr = JSON.stringify(dbPerms || {});
+          const currentPermsStr = JSON.stringify(currentUser.permissions || {});
+          if (permsStr !== currentPermsStr || latestRole !== currentUser.role) {
+            setCurrentUser(prev => {
+              if (!prev) return null;
+              const updated = {
+                ...prev,
+                role: latestRole,
+                peran_utama: latestRole,
+                permissions: dbPerms || prev.permissions
+              };
+              localStorage.setItem("admin_user", JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Sync user from database notice:", err);
+      }
+    };
+
+    syncUserFromDatabase();
+  }, [currentUser?.username, currentUser?.id]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -1594,22 +1639,19 @@ export default function App() {
     const effectivePerms = getUserAllEffectivePermissions(currentUser);
 
     return allTabs.filter(t => {
-      // 1. Check if user is restricted from admin settings
-      if ((t.id === "pengguna" || t.id === "hak_akses") && !roleLower.includes("admin")) {
-        return false;
-      }
-
-      // 2. Normalize tab ID to catalog menu key and evaluate hybrid effective permission
+      // 1. Normalize tab ID to catalog menu key and evaluate hybrid effective permission
       const menuKey = normalizeMenuKey(t.id);
       const effectivePerm = effectivePerms[menuKey] || effectivePerms[t.id];
 
-      if (effectivePerm !== undefined) {
+      if (effectivePerm !== undefined && typeof effectivePerm.can_view === "boolean") {
         // Business Rule: Strict visibility check - hide completely if can_view is false
-        const isVisible = effectivePerm.can_view === true;
-        return isVisible;
+        return effectivePerm.can_view === true;
       }
 
       // Fallback to role-based access
+      if ((t.id === "pengguna" || t.id === "hak_akses") && !roleLower.includes("admin")) {
+        return false;
+      }
       if (t.group === "KANTIN") return hasKantinAccess;
       if (userRole === "kantin") return false;
       return t.roles.includes(userRole);

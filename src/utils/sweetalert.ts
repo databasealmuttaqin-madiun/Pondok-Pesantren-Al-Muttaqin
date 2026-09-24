@@ -123,6 +123,8 @@ export const showConfirm = async (
         icon?: SweetAlertIcon;
         confirmButtonText?: string;
         cancelButtonText?: string;
+        confirmButtonColor?: string;
+        cancelButtonColor?: string;
         isDanger?: boolean;
       },
   text?: string,
@@ -136,6 +138,8 @@ export const showConfirm = async (
   let confirmText = "Ya, Lanjutkan";
   let cancelText = "Batal";
   let dangerMode = isDanger;
+  let customConfirmColor: string | undefined = undefined;
+  let customCancelColor: string | undefined = undefined;
 
   if (typeof titleOrConfig === "object") {
     title = titleOrConfig.title;
@@ -145,6 +149,8 @@ export const showConfirm = async (
     confirmText = titleOrConfig.confirmButtonText || "Ya, Lanjutkan";
     cancelText = titleOrConfig.cancelButtonText || "Batal";
     dangerMode = titleOrConfig.isDanger ?? false;
+    customConfirmColor = titleOrConfig.confirmButtonColor;
+    customCancelColor = titleOrConfig.cancelButtonColor;
   } else {
     title = titleOrConfig;
   }
@@ -158,8 +164,8 @@ export const showConfirm = async (
     showCancelButton: true,
     confirmButtonText: confirmText,
     cancelButtonText: cancelText,
-    confirmButtonColor: dangerMode ? "#dc2626" : "#0284c7",
-    cancelButtonColor: isDarkMode() ? "#334155" : "#94a3b8",
+    confirmButtonColor: customConfirmColor || (dangerMode ? "#dc2626" : "#0284c7"),
+    cancelButtonColor: customCancelColor || (isDarkMode() ? "#334155" : "#94a3b8"),
     reverseButtons: true,
   });
 

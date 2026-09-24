@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { supabase } from "../supabaseClient";
 import {
   Home,
   UserPlus,
@@ -564,6 +565,15 @@ export function calculateEffectivePermissions(
 ): MenuPermissionsMap {
   const effective: MenuPermissionsMap = {};
 
+  // Parse user overrides if stringified JSON
+  if (typeof userOverrides === "string") {
+    try {
+      userOverrides = JSON.parse(userOverrides);
+    } catch {
+      userOverrides = {};
+    }
+  }
+
   // Parse user overrides if stored as legacy array of strings or object
   let overrideMap: Record<string, Partial<PermissionAction>> = {};
   if (Array.isArray(userOverrides)) {
@@ -585,6 +595,24 @@ export function calculateEffectivePermissions(
 }
 
 /**
+ * Normalizes role names/identifiers to standard keys
+ */
+export function normalizeRoleSlug(roleNameOrId?: string): string {
+  if (!roleNameOrId) return "guru_pondok";
+  const str = String(roleNameOrId).toLowerCase().trim();
+  if (str.includes("super admin") || str.includes("super_admin") || str.includes("superadmin")) return "super_admin";
+  if (str.includes("admin")) return "admin";
+  if (str.includes("wali kelas") || str.includes("wali_kelas")) return "wali_kelas";
+  if (str.includes("wali kamar") || str.includes("wali_kamar") || str.includes("kamar") || str.includes("asrama")) return "wali_kamar";
+  if (str.includes("guru sekolah") || str.includes("guru_sekolah") || str.includes("guru smp") || str.includes("smp") || str.includes("sma") || str.includes("sekolah")) return "guru_sekolah";
+  if (str.includes("pengurus")) return "pengurus";
+  if (str.includes("pimpinan") || str.includes("pengasuh") || str.includes("kyai")) return "pimpinan";
+  if (str.includes("guru pondok") || str.includes("guru_pondok") || str.includes("pondok") || str.includes("ustadz")) return "guru_pondok";
+  if (str.includes("kantin")) return "kantin";
+  return str.replace(/[^a-z0-9]/g, "_");
+}
+
+/**
  * Generate sensible default permissions based on role name
  */
 export function getDefaultPermissionsForRole(roleName: string): MenuPermissionsMap {
@@ -603,28 +631,43 @@ export function getDefaultPermissionsForRole(roleName: string): MenuPermissionsM
     CORE_SIDEBAR_MENUS.forEach(m => {
       perms[m.key] = { can_view: true, can_input: true, can_edit: true, can_delete: m.key !== "hak_akses" };
     });
-  } else if (lower.includes("guru sekolah") || lower.includes("guru smp") || lower.includes("sekolah")) {
-    // Sekolah defaults
+  } else if (lower.includes("wali kelas") || lower.includes("wali_kelas")) {
+    // Wali Kelas: Monitoring rombel & KBM kelas, TANPA konfigurasi manajemen sekolah
     perms["dashboard"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["dashboard_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["presensi_guru"] = { can_view: true, can_input: true, can_edit: false, can_delete: false };
-    perms["jurnal_mengajar"] = { can_view: true, can_input: true, can_edit: true, can_delete: true };
+    perms["jurnal_mengajar"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     perms["rekap_absensi_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["rekap_sekolah"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["list"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["warga_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["pelanggaran_input"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     perms["pelanggaran_rekap"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
-    perms["sekolah_plotting"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_wali_kelas"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_guru_sekolah"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_mapel"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_guru_mapel"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_buat_kelas"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_jam"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_jadwal"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_pengumuman"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
-    perms["sekolah_jam_absensi"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
+    perms["sekolah_pengumuman"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+  } else if (lower.includes("guru sekolah") || lower.includes("guru smp") || lower.includes("sekolah")) {
+    // Guru Sekolah: Hanya modul harian guru (KBM & Presensi).
+    // Modul MANAJEMEN SEKOLAH (Plotting Kelas, Wali Kelas, Guru Sekolah, Mata Pelajaran, Guru Mapel, Buat Rombel, Jam Mengajar, Jadwal Pelajaran, Jam Absensi) SELURUHNYA NONAKTIF (false).
+    perms["dashboard"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    perms["dashboard_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    perms["presensi_guru"] = { can_view: true, can_input: true, can_edit: false, can_delete: false };
+    perms["jurnal_mengajar"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
+    perms["rekap_absensi_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    perms["rekap_sekolah"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    perms["list"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    perms["warga_guru"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    perms["pelanggaran_input"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
+    perms["pelanggaran_rekap"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
+    // Seluruh 10 modul MANAJEMEN SEKOLAH dipastikan false:
+    perms["sekolah_plotting"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_wali_kelas"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_guru_sekolah"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_mapel"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_guru_mapel"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_buat_kelas"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_jam"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_jadwal"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_pengumuman"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+    perms["sekolah_jam_absensi"] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
   } else if (lower.includes("guru") || lower.includes("pondok") || lower.includes("ustadz")) {
     // Guru Pondok defaults
     perms["dashboard"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
@@ -679,6 +722,133 @@ export function getDefaultPermissionsForRole(roleName: string): MenuPermissionsM
 }
 
 /**
+ * Synchronously retrieves role permissions from localStorage cache with alias fallbacks,
+ * defaulting to sensible role defaults if not cached.
+ */
+export function getRolePermissionsSync(roleId?: string, roleName?: string): MenuPermissionsMap {
+  const slug = normalizeRoleSlug(roleName || roleId);
+  const rawName = roleName ? String(roleName).trim() : "";
+  const rawId = roleId ? String(roleId).trim() : "";
+
+  const cacheKeysToTry = [
+    rawId ? `role_perms_cache_${rawId}` : null,
+    rawName ? `role_perms_cache_${rawName}` : null,
+    rawName ? `role_perms_cache_${rawName.toLowerCase()}` : null,
+    `role_perms_cache_${slug}`,
+    `role_perms_cache_role-${slug}`
+  ].filter(Boolean) as string[];
+
+  for (const k of cacheKeysToTry) {
+    const cached = localStorage.getItem(k);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+          return parsed;
+        }
+      } catch {}
+    }
+  }
+
+  return getDefaultPermissionsForRole(roleName || roleId || "guru_pondok");
+}
+
+/**
+ * Asynchronously fetches permissions for a role:
+ * 1. Checks localStorage cache (with all alias/slug forms)
+ * 2. Queries Supabase role_permissions & roles tables
+ * 3. Falls back to getDefaultPermissionsForRole
+ */
+export async function fetchRolePermissionsAsync(roleId?: string, roleName?: string): Promise<MenuPermissionsMap> {
+  const slug = normalizeRoleSlug(roleName || roleId);
+  const rawName = roleName ? String(roleName).trim() : "";
+  const rawId = roleId ? String(roleId).trim() : "";
+
+  // 1. Check LocalStorage cache
+  const cacheKeysToTry = [
+    rawId ? `role_perms_cache_${rawId}` : null,
+    rawName ? `role_perms_cache_${rawName}` : null,
+    rawName ? `role_perms_cache_${rawName.toLowerCase()}` : null,
+    `role_perms_cache_${slug}`,
+    `role_perms_cache_role-${slug}`
+  ].filter(Boolean) as string[];
+
+  for (const k of cacheKeysToTry) {
+    const cached = localStorage.getItem(k);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+          return parsed;
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Query DB
+  try {
+    let targetRoleId = rawId;
+
+    if (!targetRoleId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetRoleId)) {
+      const { data: matchedRoles } = await supabase
+        .from("roles")
+        .select("id, name");
+
+      if (matchedRoles && matchedRoles.length > 0) {
+        const found = matchedRoles.find((r: any) => 
+          normalizeRoleSlug(r.name) === slug || 
+          normalizeRoleSlug(r.id) === slug ||
+          (rawName && r.name.toLowerCase() === rawName.toLowerCase()) ||
+          (rawId && r.id === rawId)
+        );
+        if (found) {
+          targetRoleId = found.id;
+        }
+      }
+    }
+
+    if (targetRoleId) {
+      const { data: dbPerms, error } = await supabase
+        .from("role_permissions")
+        .select("*")
+        .eq("role_id", targetRoleId);
+
+      if (!error && dbPerms && dbPerms.length > 0) {
+        const map: MenuPermissionsMap = {};
+        CORE_SIDEBAR_MENUS.forEach(m => {
+          map[m.key] = { can_view: false, can_input: false, can_edit: false, can_delete: false };
+        });
+
+        dbPerms.forEach((p: any) => {
+          const key = p.menu_name;
+          if (map[key] || CORE_SIDEBAR_MENUS.some(m => m.key === key)) {
+            map[key] = {
+              can_view: Boolean(p.can_view),
+              can_input: Boolean(p.can_input),
+              can_edit: Boolean(p.can_edit),
+              can_delete: Boolean(p.can_delete)
+            };
+          }
+        });
+
+        // Cache for fast synchronous retrieval
+        if (rawId) localStorage.setItem(`role_perms_cache_${rawId}`, JSON.stringify(map));
+        if (rawName) localStorage.setItem(`role_perms_cache_${rawName}`, JSON.stringify(map));
+        localStorage.setItem(`role_perms_cache_${slug}`, JSON.stringify(map));
+        localStorage.setItem(`role_perms_cache_role-${slug}`, JSON.stringify(map));
+
+        return map;
+      }
+    }
+  } catch (err) {
+    console.warn("fetchRolePermissionsAsync error:", err);
+  }
+
+  // 3. Fallback
+  return getDefaultPermissionsForRole(roleName || roleId || "guru_pondok");
+}
+
+/**
  * Get the effective permissions of the active user for all menus
  */
 export function getUserAllEffectivePermissions(user?: any): MenuPermissionsMap {
@@ -701,36 +871,29 @@ export function getUserAllEffectivePermissions(user?: any): MenuPermissionsMap {
     return fullMap;
   }
 
-  // 1. Fetch base role permissions from cache/storage
-  const roleId = user.role_id || user.peran_utama || user.role;
-  let baseRolePerms: MenuPermissionsMap = {};
-  
-  if (roleId) {
-    const cachedByRoleId = localStorage.getItem(`role_perms_cache_${roleId}`);
-    const cachedByRoleName = localStorage.getItem(`role_perms_cache_${roleName}`);
-    if (cachedByRoleId) {
-      try {
-        baseRolePerms = JSON.parse(cachedByRoleId);
-      } catch {}
-    } else if (cachedByRoleName) {
-      try {
-        baseRolePerms = JSON.parse(cachedByRoleName);
-      } catch {}
-    }
-  }
-
-  // If no base role permissions found in cache, generate defaults
-  if (Object.keys(baseRolePerms).length === 0) {
-    baseRolePerms = getDefaultPermissionsForRole(roleName);
-  }
+  // 1. Fetch base role permissions from cache or defaults
+  const baseRolePerms: MenuPermissionsMap = getRolePermissionsSync(user.role_id, user.peran_utama || user.role);
 
   // 2. Fetch User Custom Overrides (from user.permissions JSONB or localStorage)
   let userOverrides: any = user.permissions;
-  if (!userOverrides && user.username) {
+  if (typeof userOverrides === "string") {
+    try {
+      userOverrides = JSON.parse(userOverrides);
+    } catch {}
+  }
+
+  const isOverridesEmpty = !userOverrides || 
+    (Array.isArray(userOverrides) && userOverrides.length === 0) || 
+    (typeof userOverrides === "object" && Object.keys(userOverrides).length === 0);
+
+  if (isOverridesEmpty && user.username) {
     try {
       const localDetails = JSON.parse(localStorage.getItem("user_additional_details") || "{}");
       if (localDetails[user.username]?.permissions) {
         userOverrides = localDetails[user.username].permissions;
+        if (typeof userOverrides === "string") {
+          try { userOverrides = JSON.parse(userOverrides); } catch {}
+        }
       }
     } catch {}
   }

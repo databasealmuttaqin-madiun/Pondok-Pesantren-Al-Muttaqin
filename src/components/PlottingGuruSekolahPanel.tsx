@@ -402,8 +402,9 @@ export default function PlottingGuruSekolahPanel() {
               nama: targetGuruNama,
               nama_lengkap: targetGuruNama,
               username: targetUsername,
-              role: "guru smp",
-              peran_utama: "guru_sekolah",
+              role: "Guru Sekolah",
+              peran_utama: "Guru Sekolah",
+              role_id: "8210ec88-1832-49d0-bb3c-5181b875c6e5",
               bagian: "Sekolah",
               status_akun: "aktif"
             }])

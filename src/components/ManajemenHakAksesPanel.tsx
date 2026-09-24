@@ -23,7 +23,8 @@ import {
   PermissionAction,
   MenuPermissionsMap,
   normalizePermission,
-  getDefaultPermissionsForRole
+  getDefaultPermissionsForRole,
+  normalizeRoleSlug
 } from "../utils/permissionUtils";
 
 export interface AppRole {
@@ -34,16 +35,12 @@ export interface AppRole {
   created_at?: string;
 }
 
-// Default System Roles
+// Default System Roles matching Supabase Database
 const DEFAULT_SYSTEM_ROLES: AppRole[] = [
-  { id: "role-super-admin", name: "Super Admin", description: "Akses penuh tanpa batas ke seluruh menu dan aksi sistem.", is_system_default: true },
-  { id: "role-admin", name: "Admin Ponpes", description: "Pengelolaan administrasi santri, perizinan, dan plotting pondok.", is_system_default: true },
-  { id: "role-guru-pondok", name: "Guru Pondok", description: "Akses pengajian, capaian materi santri, dan absensi sholat.", is_system_default: true },
-  { id: "role-guru-sekolah", name: "Guru Sekolah (SMP/SMA)", description: "Akses presensi guru, jurnal mengajar, dan kelas formal.", is_system_default: true },
-  { id: "role-wali-kamar", name: "Wali Kamar / Asrama", description: "Monitoring santri di asrama, perizinan sakit & sambang.", is_system_default: true },
-  { id: "role-wali-kelas", name: "Wali Kelas Sekolah", description: "Monitoring absensi rombel kelas dan jurnal kelas sekolah.", is_system_default: true },
-  { id: "role-kantin", name: "Petugas Kantin", description: "Pencatatan kas dan transaksi pembukuan kantin pondok.", is_system_default: true },
-  { id: "role-pimpinan", name: "Pimpinan / Pengasuh", description: "Hak akses pemantauan (View Only) laporan dan grafik.", is_system_default: true }
+  { id: "22a21a1d-80e0-41b8-b396-7fef6bc76134", name: "Super Admin", description: "Akses penuh tanpa batas ke seluruh menu dan aksi sistem.", is_system_default: true },
+  { id: "10c7deeb-3f3c-423f-aa51-2f1269404619", name: "Admin Ponpes", description: "Administrator pengelola pesantren dan sistem data.", is_system_default: true },
+  { id: "5dc38b56-a7cd-459c-9eee-e3ad4d877d51", name: "Guru Pondok", description: "Tenaga pendidik kepesantrenan, tahfidz, dan keagamaan.", is_system_default: true },
+  { id: "8210ec88-1832-49d0-bb3c-5181b875c6e5", name: "Guru Sekolah", description: "Guru formal SMP/SMA/Madrasah dan pengajar kurikulum.", is_system_default: false }
 ];
 
 export default function ManajemenHakAksesPanel() {
@@ -102,6 +99,7 @@ export default function ManajemenHakAksesPanel() {
     setIsLoading(true);
     try {
       let loadedRoles: AppRole[] = [];
+      let successFromDb = false;
       // 1. Load from Supabase DB
       try {
         const { data: dbRoles, error } = await supabase
@@ -109,66 +107,61 @@ export default function ManajemenHakAksesPanel() {
           .select("*")
           .order("created_at", { ascending: true });
 
-        if (!error && dbRoles && dbRoles.length > 0) {
-          loadedRoles = dbRoles.map((r: any) => ({
-            id: String(r.id),
-            name: r.name,
-            description: r.description || "",
-            is_system_default: r.is_system_default || false,
-            created_at: r.created_at
-          }));
-        } else if (!error && (!dbRoles || dbRoles.length === 0)) {
-          // Table exists but empty, seed default system roles into DB
-          try {
-            const seedPayload = DEFAULT_SYSTEM_ROLES.map(sr => ({
-              name: sr.name,
-              description: sr.description,
-              is_system_default: true
+        if (!error && dbRoles) {
+          successFromDb = true;
+          if (dbRoles.length > 0) {
+            loadedRoles = dbRoles.map((r: any) => ({
+              id: String(r.id),
+              name: r.name,
+              description: r.description || "",
+              is_system_default: r.is_system_default || false,
+              created_at: r.created_at
             }));
-            const { data: seeded, error: seedError } = await supabase
-              .from("roles")
-              .insert(seedPayload)
-              .select();
-
-            if (!seedError && seeded && seeded.length > 0) {
-              loadedRoles = seeded.map((r: any) => ({
-                id: String(r.id),
-                name: r.name,
-                description: r.description || "",
-                is_system_default: r.is_system_default || false,
-                created_at: r.created_at
+          } else {
+            // Table exists but empty, seed default system roles into DB
+            try {
+              const seedPayload = DEFAULT_SYSTEM_ROLES.map(sr => ({
+                name: sr.name,
+                description: sr.description,
+                is_system_default: true
               }));
+              const { data: seeded, error: seedError } = await supabase
+                .from("roles")
+                .insert(seedPayload)
+                .select();
+
+              if (!seedError && seeded && seeded.length > 0) {
+                loadedRoles = seeded.map((r: any) => ({
+                  id: String(r.id),
+                  name: r.name,
+                  description: r.description || "",
+                  is_system_default: r.is_system_default || false,
+                  created_at: r.created_at
+                }));
+              }
+            } catch (seedErr) {
+              console.warn("Seeding default roles to DB skipped:", seedErr);
             }
-          } catch (seedErr) {
-            console.warn("Seeding default roles to DB skipped:", seedErr);
           }
         }
       } catch (err) {
         console.warn("Roles query fallback to cache:", err);
       }
 
-      const savedLocalRoles = localStorage.getItem("app_custom_roles_list");
-      let parsedLocalRoles: AppRole[] = [];
-      if (savedLocalRoles) {
-        try {
-          parsedLocalRoles = JSON.parse(savedLocalRoles);
-        } catch {}
-      }
+      if (!successFromDb || loadedRoles.length === 0) {
+        const savedLocalRoles = localStorage.getItem("app_custom_roles_list");
+        let parsedLocalRoles: AppRole[] = [];
+        if (savedLocalRoles) {
+          try {
+            parsedLocalRoles = JSON.parse(savedLocalRoles);
+          } catch {}
+        }
 
-      if (loadedRoles.length === 0) {
-        const combined = [...DEFAULT_SYSTEM_ROLES];
-        parsedLocalRoles.forEach(lr => {
-          if (!combined.some(c => c.id === lr.id || c.name.toLowerCase() === lr.name.toLowerCase())) {
-            combined.push(lr);
-          }
-        });
-        loadedRoles = combined;
-      } else {
-        DEFAULT_SYSTEM_ROLES.forEach(defRole => {
-          if (!loadedRoles.some(r => r.name.toLowerCase() === defRole.name.toLowerCase())) {
-            loadedRoles.push(defRole);
-          }
-        });
+        if (parsedLocalRoles.length > 0) {
+          loadedRoles = parsedLocalRoles;
+        } else {
+          loadedRoles = [...DEFAULT_SYSTEM_ROLES];
+        }
       }
 
       setRoles(loadedRoles);
@@ -509,6 +502,12 @@ export default function ManajemenHakAksesPanel() {
       localStorage.setItem(`role_perms_cache_${targetRoleId}`, JSON.stringify(permissionsMap));
       localStorage.setItem(`role_perms_cache_${roleName.trim()}`, JSON.stringify(permissionsMap));
       localStorage.setItem(`role_perms_cache_${roleName.trim().toLowerCase()}`, JSON.stringify(permissionsMap));
+      const roleSlug = normalizeRoleSlug(roleName);
+      localStorage.setItem(`role_perms_cache_${roleSlug}`, JSON.stringify(permissionsMap));
+      localStorage.setItem(`role_perms_cache_role-${roleSlug}`, JSON.stringify(permissionsMap));
+      window.dispatchEvent(new Event("role_permissions_updated"));
+      window.dispatchEvent(new Event("permissions_updated"));
+      window.dispatchEvent(new Event("storage"));
 
       const roleObj: AppRole = {
         id: targetRoleId,
