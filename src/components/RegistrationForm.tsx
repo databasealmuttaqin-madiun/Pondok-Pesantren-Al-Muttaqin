@@ -180,7 +180,7 @@ export default function RegistrationForm({
     setError("");
     setSuccessMsg("");
 
-    // Validations sesuai tanda bintang merah (*)
+    // Validations sesuai field wajib
     if (!formData.nama_lengkap.trim()) {
       setError("Nama lengkap wajib diisi.");
       nameInputRef.current?.focus();
@@ -192,22 +192,13 @@ export default function RegistrationForm({
       return;
     }
 
-    if (!formData.nisn?.trim()) {
-      setError("NISN wajib diisi.");
-      return;
-    }
-
-    if (!formData.tanggal_lahir?.trim()) {
-      setError("Tanggal lahir wajib diisi.");
-      return;
-    }
-
     const finalData: SantriData = {
       ...formData,
       nama_lengkap: toTitleCase(formData.nama_lengkap.trim()),
       nisn: formData.nisn?.trim() || "",
       nik: formData.nik?.trim() || "",
       tempat_lahir: formData.tempat_lahir ? toTitleCase(formData.tempat_lahir.trim()) : "",
+      tanggal_lahir: formData.tanggal_lahir?.trim() || "",
       nama_ayah: formData.nama_ayah ? toTitleCase(formData.nama_ayah.trim()) : "",
       nama_ibu: formData.nama_ibu ? toTitleCase(formData.nama_ibu.trim()) : "",
       alamat: formData.alamat?.trim() || "",
@@ -350,37 +341,7 @@ export default function RegistrationForm({
             </div>
           </div>
 
-          {/* Baris 2: NISN * | NIK */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                NISN <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Contoh: 0081234567"
-                value={formData.nisn || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, nisn: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                NIK
-              </label>
-              <input
-                type="text"
-                placeholder="16 digit Nomor Induk Kependudukan"
-                maxLength={16}
-                value={formData.nik || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, nik: e.target.value.replace(/\D/g, "") }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Baris 3: Tempat Lahir | Tanggal Lahir * */}
+          {/* Baris 2: Tempat Lahir | Tanggal Lahir */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
@@ -396,11 +357,10 @@ export default function RegistrationForm({
             </div>
             <div>
               <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Tanggal Lahir <span className="text-rose-500">*</span>
+                Tanggal Lahir
               </label>
               <input
                 type="date"
-                required
                 value={formData.tanggal_lahir || ""}
                 onChange={(e) => setFormData(prev => ({ ...prev, tanggal_lahir: e.target.value }))}
                 className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"

@@ -50,6 +50,17 @@ interface Props {
   onNavigateToUserManagement?: () => void;
 }
 
+// Helper normalisasi nama untuk deduplikasi pintar (membersihkan gelar akademik/keagamaan & tanda baca)
+function cleanPersonKey(rawName: string): string {
+  if (!rawName) return "";
+  return rawName
+    .toLowerCase()
+    .replace(/(s\.pd\.i|s\.pd|s\.s|m\.pd|s\.kom|s\.ag|m\.ag|s\.t|m\.t|lc|ustadz|ustadzah|ust\.|dr\.|drs\.|dra\.|h\.|hj\.)/gi, "")
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToUserManagement }: Props) {
   const [people, setPeople] = useState<WargaPerson[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,7 +90,10 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           if (sPlotting && sPlotting.length > 0) {
             sPlotting.forEach((item: any) => {
               if (item.guru_id) sekolahPlottingSet.add(String(item.guru_id));
-              if (item.guru_nama) sekolahPlottingSet.add(String(item.guru_nama).toLowerCase().trim());
+              if (item.guru_nama) {
+                sekolahPlottingSet.add(String(item.guru_nama).toLowerCase().trim());
+                sekolahPlottingSet.add(cleanPersonKey(item.guru_nama));
+              }
             });
           }
         } catch (errS) {
@@ -93,7 +107,10 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           if (pPlotting && pPlotting.length > 0) {
             pPlotting.forEach((item: any) => {
               if (item.guru_id) pondokPlottingSet.add(String(item.guru_id));
-              if (item.guru_nama) pondokPlottingSet.add(String(item.guru_nama).toLowerCase().trim());
+              if (item.guru_nama) {
+                pondokPlottingSet.add(String(item.guru_nama).toLowerCase().trim());
+                pondokPlottingSet.add(cleanPersonKey(item.guru_nama));
+              }
             });
           }
         } catch (errP) {
@@ -114,7 +131,6 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           if (!guruErr && guruData) {
             dbGuruList = guruData;
           } else {
-            // Fallback select * jika foreign key join relasi belum didefinisikan secara eksplisit di DDL
             const { data: simpleGuru } = await supabase
               .from("guru")
               .select("*")
@@ -137,22 +153,152 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           console.warn("Notice fetch pengguna table:", errPengguna);
         }
 
-        // 4. Transform dan petakan ke format WargaPerson dengan Dynamic Role Detection
-        const mapByUsername = new Map<string, WargaPerson>();
+        // 4. Transform dan petakan ke format WargaPerson dengan Intelligent Deduplication
+        const peopleMap = new Map<string, WargaPerson>();
 
+        const findExistingKey = (fullName: string, uname: string, guruId?: string): string | null => {
+          const normName = cleanPersonKey(fullName);
+          const normUname = uname ? uname.toLowerCase().trim() : "";
+
+          for (const [k, p] of peopleMap.entries()) {
+            if (normUname && p.username && p.username.toLowerCase().trim() === normUname) {
+              return k;
+            }
+            if (normName && cleanPersonKey(p.nama) === normName) {
+              return k;
+            }
+            if (guruId && p.id === String(guruId)) {
+              return k;
+            }
+          }
+          return null;
+        };
+
+        const upsertPerson = (candidate: {
+          id: string;
+          nama: string;
+          username: string;
+          gender: "L" | "P";
+          isSekolah: boolean;
+          isPondok: boolean;
+          no_hp?: string;
+          nik?: string;
+          tempat_lahir?: string;
+          tanggal_lahir?: string;
+          alamat_pribadi?: string;
+          foto_diri?: string;
+          jabatan?: string;
+          bagian?: string;
+          tugas_kamar?: string;
+          tugas_kelas_sekolah?: string;
+          tugas_kelas_pengajian?: string;
+          tugas_mapel?: string;
+        }) => {
+          const matchedKey = findExistingKey(candidate.nama, candidate.username, candidate.id);
+
+          if (matchedKey && peopleMap.has(matchedKey)) {
+            const existing = peopleMap.get(matchedKey)!;
+            const mergedIsSekolah = existing.isSekolah || candidate.isSekolah;
+            const mergedIsPondok = existing.isPondok || candidate.isPondok;
+
+            let roleLabel = "Belum Diplotting";
+            let roleStyle = "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700";
+
+            if (mergedIsSekolah && mergedIsPondok) {
+              roleLabel = "Guru Sekolah & Pondok";
+              roleStyle = "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800";
+            } else if (mergedIsSekolah) {
+              roleLabel = "Guru Sekolah";
+              roleStyle = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800";
+            } else if (mergedIsPondok) {
+              roleLabel = "Guru Pondok";
+              roleStyle = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
+            }
+
+            // Prefer name with title or longer name
+            const bestNama = candidate.nama && candidate.nama.length > existing.nama.length ? candidate.nama : existing.nama;
+            const bestUsername = existing.username || candidate.username || "";
+
+            peopleMap.set(matchedKey, {
+              ...existing,
+              nama: bestNama,
+              username: bestUsername,
+              gender: existing.gender || candidate.gender || "L",
+              isSekolah: mergedIsSekolah,
+              isPondok: mergedIsPondok,
+              roleLabel,
+              roleStyle,
+              no_hp: existing.no_hp || candidate.no_hp || "",
+              nik: existing.nik || candidate.nik || "",
+              tempat_lahir: existing.tempat_lahir || candidate.tempat_lahir || "",
+              tanggal_lahir: existing.tanggal_lahir || candidate.tanggal_lahir || "",
+              alamat_pribadi: existing.alamat_pribadi || candidate.alamat_pribadi || "",
+              foto_diri: existing.foto_diri || candidate.foto_diri || "",
+              jabatan: candidate.jabatan || existing.jabatan || roleLabel,
+              bagian: mergedIsSekolah && mergedIsPondok ? "Sekolah & Pondok" : mergedIsSekolah ? "Sekolah" : mergedIsPondok ? "Pondok" : existing.bagian || "-",
+              tugas_kamar: existing.tugas_kamar || candidate.tugas_kamar || "",
+              tugas_kelas_sekolah: existing.tugas_kelas_sekolah || candidate.tugas_kelas_sekolah || "",
+              tugas_kelas_pengajian: existing.tugas_kelas_pengajian || candidate.tugas_kelas_pengajian || "",
+              tugas_mapel: existing.tugas_mapel || candidate.tugas_mapel || ""
+            });
+          } else {
+            const isSekolah = candidate.isSekolah;
+            const isPondok = candidate.isPondok;
+
+            let roleLabel = "Belum Diplotting";
+            let roleStyle = "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700";
+
+            if (isSekolah && isPondok) {
+              roleLabel = "Guru Sekolah & Pondok";
+              roleStyle = "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800";
+            } else if (isSekolah) {
+              roleLabel = "Guru Sekolah";
+              roleStyle = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800";
+            } else if (isPondok) {
+              roleLabel = "Guru Pondok";
+              roleStyle = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
+            }
+
+            const newKey = cleanPersonKey(candidate.nama) || candidate.username.toLowerCase() || `id_${candidate.id}`;
+            peopleMap.set(newKey, {
+              id: candidate.id,
+              nama: candidate.nama,
+              username: candidate.username,
+              gender: candidate.gender,
+              roleLabel,
+              roleStyle,
+              isSekolah,
+              isPondok,
+              no_hp: candidate.no_hp || "",
+              nik: candidate.nik || "",
+              tempat_lahir: candidate.tempat_lahir || "",
+              tanggal_lahir: candidate.tanggal_lahir || "",
+              alamat_pribadi: candidate.alamat_pribadi || "",
+              foto_diri: candidate.foto_diri || "",
+              jabatan: candidate.jabatan || roleLabel,
+              bagian: isSekolah && isPondok ? "Sekolah & Pondok" : isSekolah ? "Sekolah" : isPondok ? "Pondok" : "-",
+              tugas_kamar: candidate.tugas_kamar || "",
+              tugas_kelas_sekolah: candidate.tugas_kelas_sekolah || "",
+              tugas_kelas_pengajian: candidate.tugas_kelas_pengajian || "",
+              tugas_mapel: candidate.tugas_mapel || ""
+            });
+          }
+        };
+
+        // Process Guru table entries
         dbGuruList.forEach((g: any) => {
           const linkedUser = g.pengguna_id ? dbPenggunaList.find(p => p.id === g.pengguna_id) : null;
           const uname = (g.username || linkedUser?.username || "").trim();
           const fullName = g.nama_lengkap || g.nama || linkedUser?.nama_lengkap || linkedUser?.nama || uname || "Guru";
           const guruIdStr = String(g.id || "");
           const cleanName = fullName.toLowerCase().trim();
+          const normKey = cleanPersonKey(fullName);
 
-          // DYNAMIC ROLE DETECTION:
-          // Cek dari hasil query nested join atau dari mapping relasi plotting_guru_sekolah & plotting_guru_pondok
           const isSekolah = Boolean(
             (g.plotting_guru_sekolah && Array.isArray(g.plotting_guru_sekolah) && g.plotting_guru_sekolah.length > 0) ||
             sekolahPlottingSet.has(guruIdStr) ||
             sekolahPlottingSet.has(cleanName) ||
+            sekolahPlottingSet.has(normKey) ||
             (uname && sekolahPlottingSet.has(uname.toLowerCase())) ||
             (g.bagian && g.bagian.toLowerCase().includes("sekolah"))
           );
@@ -161,34 +307,18 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
             (g.plotting_guru_pondok && Array.isArray(g.plotting_guru_pondok) && g.plotting_guru_pondok.length > 0) ||
             pondokPlottingSet.has(guruIdStr) ||
             pondokPlottingSet.has(cleanName) ||
+            pondokPlottingSet.has(normKey) ||
             (uname && pondokPlottingSet.has(uname.toLowerCase())) ||
             (g.bagian && g.bagian.toLowerCase().includes("pondok"))
           );
 
-          let roleLabel = "Belum Diplotting";
-          let roleStyle = "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700";
-
-          if (isSekolah && isPondok) {
-            roleLabel = "Guru Sekolah & Pondok";
-            roleStyle = "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800";
-          } else if (isSekolah) {
-            roleLabel = "Guru Sekolah";
-            roleStyle = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800";
-          } else if (isPondok) {
-            roleLabel = "Guru Pondok";
-            roleStyle = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
-          }
-
           const genderVal: "L" | "P" = (g.jenis_kelamin === "P" || g.gender === "P" || linkedUser?.gender === "P") ? "P" : "L";
-          const key = uname.toLowerCase() || (g.id ? `id_${g.id}` : `nama_${cleanName}`);
 
-          mapByUsername.set(key, {
+          upsertPerson({
             id: String(g.id || uname || Math.random()),
             nama: fullName,
             username: uname,
             gender: genderVal,
-            roleLabel,
-            roleStyle,
             isSekolah,
             isPondok,
             no_hp: g.nomor_hp || g.nomor_seluler || g.no_hp || linkedUser?.no_hp || "",
@@ -197,7 +327,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
             tanggal_lahir: g.tanggal_lahir || "",
             alamat_pribadi: g.alamat_pribadi || "",
             foto_diri: g.foto_diri || g.foto || "",
-            jabatan: g.jabatan || linkedUser?.jabatan || roleLabel,
+            jabatan: g.jabatan || linkedUser?.jabatan,
             bagian: isSekolah && isPondok ? "Sekolah & Pondok" : isSekolah ? "Sekolah" : isPondok ? "Pondok" : "-",
             tugas_kamar: g.tugas_kamar || linkedUser?.tugas_kamar || "",
             tugas_kelas_sekolah: g.tugas_kelas_sekolah || linkedUser?.tugas_kelas_sekolah || "",
@@ -206,7 +336,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           });
         });
 
-        // Sertakan juga akun 'pengguna' dengan peran guru yang belum ada di tabel guru
+        // Process Pengguna table entries (teachers)
         dbPenggunaList.forEach((u: any) => {
           const r = String(u.role || "").toLowerCase();
           const pu = String(u.peran_utama || "").toLowerCase();
@@ -214,75 +344,63 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           const uname = (u.username || "").trim();
           const fullName = u.nama_lengkap || u.nama || uname;
           const cleanName = fullName.toLowerCase().trim();
+          const normKey = cleanPersonKey(fullName);
 
           const isPlotted = Boolean(
             sekolahPlottingSet.has(uIdStr) ||
             pondokPlottingSet.has(uIdStr) ||
             sekolahPlottingSet.has(cleanName) ||
             pondokPlottingSet.has(cleanName) ||
+            sekolahPlottingSet.has(normKey) ||
+            pondokPlottingSet.has(normKey) ||
             (uname && (sekolahPlottingSet.has(uname.toLowerCase()) || pondokPlottingSet.has(uname.toLowerCase())))
           );
 
           const isTeacher = pu.includes("guru") || r.includes("guru") || (u.jabatan && u.jabatan.toLowerCase().includes("guru")) || isPlotted;
 
           if (isTeacher) {
-            const key = uname.toLowerCase() || `pengguna_${u.id}`;
+            const isSekolah = Boolean(
+              sekolahPlottingSet.has(uIdStr) ||
+              sekolahPlottingSet.has(cleanName) ||
+              sekolahPlottingSet.has(normKey) ||
+              (uname && sekolahPlottingSet.has(uname.toLowerCase())) ||
+              pu.includes("sekolah") ||
+              r.includes("smp") ||
+              r.includes("sekolah") ||
+              (u.bagian && u.bagian.toLowerCase().includes("sekolah"))
+            );
 
-            if (!mapByUsername.has(key)) {
-              const isSekolah = Boolean(
-                sekolahPlottingSet.has(uIdStr) ||
-                sekolahPlottingSet.has(cleanName) ||
-                (uname && sekolahPlottingSet.has(uname.toLowerCase())) ||
-                pu === "guru_sekolah" ||
-                r === "guru smp" ||
-                (u.bagian && u.bagian.toLowerCase().includes("sekolah"))
-              );
+            const isPondok = Boolean(
+              pondokPlottingSet.has(uIdStr) ||
+              pondokPlottingSet.has(cleanName) ||
+              pondokPlottingSet.has(normKey) ||
+              (uname && pondokPlottingSet.has(uname.toLowerCase())) ||
+              pu.includes("pondok") ||
+              r.includes("pondok") ||
+              (u.bagian && u.bagian.toLowerCase().includes("pondok"))
+            );
 
-              const isPondok = Boolean(
-                pondokPlottingSet.has(uIdStr) ||
-                pondokPlottingSet.has(cleanName) ||
-                (uname && pondokPlottingSet.has(uname.toLowerCase())) ||
-                pu === "guru_pondok" ||
-                r === "guru pondok" ||
-                (u.bagian && u.bagian.toLowerCase().includes("pondok"))
-              );
-
-              let roleLabel = "Belum Diplotting";
-              let roleStyle = "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700";
-
-              if (isSekolah && isPondok) {
-                roleLabel = "Guru Sekolah & Pondok";
-                roleStyle = "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800";
-              } else if (isSekolah) {
-                roleLabel = "Guru Sekolah";
-                roleStyle = "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800";
-              } else if (isPondok) {
-                roleLabel = "Guru Pondok";
-                roleStyle = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
-              }
-
-              mapByUsername.set(key, {
-                id: String(u.id || uname),
-                nama: fullName,
-                username: uname,
-                gender: (u.gender === "P" ? "P" : "L"),
-                roleLabel,
-                roleStyle,
-                isSekolah,
-                isPondok,
-                no_hp: u.no_hp || u.phone || "",
-                jabatan: u.jabatan || roleLabel,
-                bagian: isSekolah && isPondok ? "Sekolah & Pondok" : isSekolah ? "Sekolah" : isPondok ? "Pondok" : "-",
-                tugas_kamar: u.tugas_kamar || "",
-                tugas_kelas_sekolah: u.tugas_kelas_sekolah || "",
-                tugas_kelas_pengajian: u.tugas_kelas_pengajian || "",
-                tugas_mapel: u.tugas_mapel || ""
-              });
-            }
+            upsertPerson({
+              id: String(u.id || uname),
+              nama: fullName,
+              username: uname,
+              gender: (u.gender === "P" ? "P" : "L"),
+              isSekolah,
+              isPondok,
+              no_hp: u.no_hp || u.phone || "",
+              jabatan: u.jabatan,
+              bagian: isSekolah && isPondok ? "Sekolah & Pondok" : isSekolah ? "Sekolah" : isPondok ? "Pondok" : "-",
+              tugas_kamar: u.tugas_kamar || "",
+              tugas_kelas_sekolah: u.tugas_kelas_sekolah || "",
+              tugas_kelas_pengajian: u.tugas_kelas_pengajian || "",
+              tugas_mapel: u.tugas_mapel || ""
+            });
           }
         });
 
-        setPeople(Array.from(mapByUsername.values()));
+        // Sort alphabetically by name
+        const sortedPeople = Array.from(peopleMap.values()).sort((a, b) => a.nama.localeCompare(b.nama));
+        setPeople(sortedPeople);
       } else {
         // viewType === "pengurus"
         let allDbUsers: any[] = [];
@@ -295,27 +413,38 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
           console.warn("Notice fetching pengguna table:", errDb);
         }
 
-        const pengurusList: WargaPerson[] = allDbUsers
+        const pengurusMap = new Map<string, WargaPerson>();
+
+        allDbUsers
           .filter(u => {
             const r = String(u.role || "").toLowerCase();
             const pu = String(u.peran_utama || "").toLowerCase();
-            return pu === "pengurus" || pu === "admin" || pu === "super_admin" || r === "pengurus" || r === "admin" || r === "super admin";
+            return pu.includes("pengurus") || pu.includes("admin") || r.includes("pengurus") || r.includes("admin") || (u.jabatan && u.jabatan.toLowerCase().includes("pengurus"));
           })
-          .map(u => ({
-            id: String(u.id || u.username),
-            nama: u.nama_lengkap || u.nama || u.username,
-            username: u.username || "",
-            gender: (u.gender === "P" ? "P" : "L"),
-            roleLabel: u.role === "admin" || u.role === "super admin" ? "Administrator" : "Pengurus Pondok",
-            roleStyle: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
-            isSekolah: false,
-            isPondok: true,
-            no_hp: u.no_hp || "",
-            jabatan: u.jabatan || "Pengurus Pondok",
-            bagian: u.bagian || "Pondok"
-          }));
+          .forEach(u => {
+            const uname = (u.username || "").trim();
+            const fullName = u.nama_lengkap || u.nama || uname;
+            const normKey = cleanPersonKey(fullName) || uname.toLowerCase() || String(u.id);
 
-        setPeople(pengurusList);
+            if (!pengurusMap.has(normKey)) {
+              pengurusMap.set(normKey, {
+                id: String(u.id || u.username),
+                nama: fullName,
+                username: uname,
+                gender: (u.gender === "P" ? "P" : "L"),
+                roleLabel: u.role === "admin" || u.role === "super admin" || u.peran_utama?.toLowerCase().includes("admin") ? "Administrator" : "Pengurus Pondok",
+                roleStyle: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+                isSekolah: false,
+                isPondok: true,
+                no_hp: u.no_hp || "",
+                jabatan: u.jabatan || "Pengurus Pondok",
+                bagian: u.bagian || "Pondok"
+              });
+            }
+          });
+
+        const sortedPengurus = Array.from(pengurusMap.values()).sort((a, b) => a.nama.localeCompare(b.nama));
+        setPeople(sortedPengurus);
       }
     } catch (e) {
       console.warn("Error fetching data for Data Guru/Pegawai:", e);

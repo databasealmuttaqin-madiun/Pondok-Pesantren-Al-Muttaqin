@@ -42,37 +42,66 @@ export default function DaftarGuruSekolahPanel({ currentUser }: DaftarGuruSekola
         dbPengguna.forEach((u: any) => pMap.set(String(u.id), u));
       }
 
+      const cleanKey = (name: string) => {
+        return (name || "")
+          .toLowerCase()
+          .replace(/(s\.pd\.i|s\.pd|s\.s|m\.pd|s\.kom|s\.ag|m\.ag|s\.t|m\.t|lc|ustadz|ustadzah|ust\.|dr\.|drs\.|dra\.|h\.|hj\.)/gi, "")
+          .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      };
+
       const combinedMap = new Map<string, GuruSekolahProfile>();
 
       if (dbGuru && dbGuru.length > 0) {
         dbGuru.forEach((g: any) => {
           const linkedPengguna = g.pengguna_id ? pMap.get(String(g.pengguna_id)) : null;
           const uname = linkedPengguna?.username || "";
-          const key = g.id || `uid_${g.pengguna_id || g.nama_lengkap}`;
-          combinedMap.set(key, {
-            id: g.id,
-            created_at: g.created_at,
-            nama_lengkap: g.nama_lengkap || linkedPengguna?.nama_lengkap || "Guru",
-            jenis_kelamin: (g.jenis_kelamin === "P" || linkedPengguna?.gender === "P") ? "P" : "L",
-            nomor_hp: g.nomor_hp || linkedPengguna?.no_hp || "",
-            kategori_guru: g.kategori_guru || linkedPengguna?.peran_utama || "Guru SMP",
-            pengguna_id: g.pengguna_id,
-            username: uname
-          });
+          const fullName = g.nama_lengkap || linkedPengguna?.nama_lengkap || "Guru";
+          const key = cleanKey(fullName) || (uname ? uname.toLowerCase() : String(g.id));
+
+          if (combinedMap.has(key)) {
+            const existing = combinedMap.get(key)!;
+            combinedMap.set(key, {
+              ...existing,
+              nama_lengkap: fullName.length > existing.nama_lengkap.length ? fullName : existing.nama_lengkap,
+              nomor_hp: existing.nomor_hp || g.nomor_hp || linkedPengguna?.no_hp || "",
+              username: existing.username || uname
+            });
+          } else {
+            combinedMap.set(key, {
+              id: g.id,
+              created_at: g.created_at,
+              nama_lengkap: fullName,
+              jenis_kelamin: (g.jenis_kelamin === "P" || linkedPengguna?.gender === "P") ? "P" : "L",
+              nomor_hp: g.nomor_hp || linkedPengguna?.no_hp || "",
+              kategori_guru: g.kategori_guru || linkedPengguna?.peran_utama || "Guru SMP",
+              pengguna_id: g.pengguna_id,
+              username: uname
+            });
+          }
         });
       }
 
       if (dbPengguna) {
         dbPengguna.forEach((u: any) => {
-          const role = String(u.peran_utama || "").toLowerCase();
+          const role = String(u.peran_utama || u.role || "").toLowerCase();
           if (role.includes("guru") || role.includes("smp") || role.includes("sekolah")) {
-            const alreadyExists = Array.from(combinedMap.values()).some(
-              c => c.pengguna_id === u.id || (u.username && c.username?.toLowerCase() === u.username.toLowerCase())
-            );
-            if (!alreadyExists) {
-              combinedMap.set(`pengguna_${u.id}`, {
+            const fullName = u.nama_lengkap || u.username;
+            const key = cleanKey(fullName) || (u.username ? u.username.toLowerCase() : `pengguna_${u.id}`);
+            
+            if (combinedMap.has(key)) {
+              const existing = combinedMap.get(key)!;
+              combinedMap.set(key, {
+                ...existing,
+                username: existing.username || u.username,
+                nomor_hp: existing.nomor_hp || u.no_hp || "",
+                pengguna_id: existing.pengguna_id || u.id
+              });
+            } else {
+              combinedMap.set(key, {
                 id: undefined,
-                nama_lengkap: u.nama_lengkap || u.username,
+                nama_lengkap: fullName,
                 jenis_kelamin: u.gender === "P" ? "P" : "L",
                 nomor_hp: u.no_hp || "",
                 kategori_guru: u.peran_utama || "Guru SMP",

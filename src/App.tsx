@@ -38,6 +38,7 @@ import PlottingGuruMapelPanel from "./components/PlottingGuruMapelPanel";
 import RekapAbsensiGuruPanel from "./components/RekapAbsensiGuruPanel";
 import PlottingJamAbsensiPanel from "./components/PlottingJamAbsensiPanel";
 import ManajemenHakAksesPanel from "./components/ManajemenHakAksesPanel";
+import HakAksesUserPanel from "./components/HakAksesUserPanel";
 import { getUserAllEffectivePermissions, evaluateUserPermission, normalizeMenuKey } from "./utils/permissionUtils";
 import { LayoutDashboard, UserPlus, Database, TableProperties, Sliders, AlertCircle, CheckCircle, Info, RefreshCw, Star, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, Search, ClipboardList, Moon, Sun, Utensils, UserCheck, Clock, Fingerprint, Shield, Menu, X, LogOut, MapPin, GraduationCap, Home, BookMarked, Building2, User, Users, UserMinus, Award, ShieldAlert, Bell, FileText, Store, Receipt, Wallet, School, HeartPulse, Droplets, Footprints, BookOpen, ClipboardEdit, Target, Plus, Calendar, Megaphone, FileSpreadsheet, QrCode, TrendingUp, Lock } from "lucide-react";
 
@@ -96,6 +97,24 @@ export default function App() {
   });
 
   useEffect(() => {
+    const handleUserUpdate = () => {
+      const saved = localStorage.getItem("admin_user");
+      if (saved) {
+        try {
+          const u = JSON.parse(saved);
+          setCurrentUser(u);
+        } catch {}
+      }
+    };
+    window.addEventListener("storage", handleUserUpdate);
+    window.addEventListener("permissions_updated", handleUserUpdate);
+    return () => {
+      window.removeEventListener("storage", handleUserUpdate);
+      window.removeEventListener("permissions_updated", handleUserUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
       localStorage.setItem("admin_theme", "dark");
@@ -105,7 +124,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "hak_akses" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "hak_akses" | "hak_akses_detail" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi">(() => {
     if (typeof window !== "undefined") {
       const path = window.location.pathname.toLowerCase();
       const hash = window.location.hash.toLowerCase();
@@ -130,12 +149,21 @@ export default function App() {
     return "dashboard";
   });
 
-  // Sync /hak-akses route on window location change
+  // Sync /hak-akses and /manajemen-pengguna/:id/hak-akses routes on window location change
   useEffect(() => {
     if (typeof window !== "undefined") {
       const handleLocationChange = () => {
         const path = window.location.pathname.toLowerCase();
         const hash = window.location.hash.toLowerCase();
+        
+        const matchHakAksesDetail = path.match(/\/manajemen-pengguna\/([^\/]+)\/hak-akses/) || path.match(/\/hak-akses\/([^\/]+)/) || hash.match(/#hak-akses\/([^\/]+)/);
+        if (matchHakAksesDetail && matchHakAksesDetail[1]) {
+          console.log("Routing matched hak_akses_detail for user ID:", matchHakAksesDetail[1]);
+          setSelectedHakAksesUserId(matchHakAksesDetail[1]);
+          setActiveTab("hak_akses_detail");
+          return;
+        }
+
         if (path === "/hak-akses" || hash === "#hak-akses" || hash === "#/hak-akses") {
           setActiveTab("hak_akses");
           setIsManajemenPondokExpanded(true);
@@ -189,6 +217,21 @@ export default function App() {
   const [modalSuccessMsg, setModalSuccessMsg] = useState("");
   const [editingStudent, setEditingStudent] = useState<SantriData | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
+  const [selectedHakAksesUserId, setSelectedHakAksesUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOpenHakAksesEvent = (e: any) => {
+      const userId = e.detail;
+      if (userId) {
+        setSelectedHakAksesUserId(userId);
+        setActiveTab("hak_akses_detail");
+      }
+    };
+    window.addEventListener("open-hak-akses", handleOpenHakAksesEvent as EventListener);
+    return () => {
+      window.removeEventListener("open-hak-akses", handleOpenHakAksesEvent as EventListener);
+    };
+  }, []);
 
   // Management categories backing store
   const [rooms, setRooms] = useState<string[]>(() => {
@@ -833,13 +876,14 @@ export default function App() {
     try {
       const formattedData = formatSantriData(data);
       const targetStatus = formattedData.status || "Aktif";
+      const studentName = formattedData.nama_lengkap.trim();
+      const oldStudentName = editingStudent?.nama_lengkap ? editingStudent.nama_lengkap.trim() : "";
+
+      // Payload untuk tabel utama 'siswa' (hanya data identitas/bio siswa tanpa nisn, nik, kelas_sekolah, kelas_pengajian, kamar)
       const payload: any = {
         kategori: formattedData.kategori,
         nama_lengkap: formattedData.nama_lengkap,
         jenis_kelamin: formattedData.jenis_kelamin || "L",
-        kamar: formattedData.kamar || "",
-        kelas_pengajian: formattedData.kelas_pengajian || "",
-        kelas_sekolah: formattedData.kelas_sekolah || "",
         foto: formattedData.foto || "",
         nfc_id: formattedData.nfc_id || "",
         kelompok_sambung: formattedData.kelompok_sambung || "",
@@ -847,8 +891,6 @@ export default function App() {
         daerah: formattedData.daerah || "",
         no_hp_ortu: formattedData.no_hp_ortu || formattedData.no_hp_ayah || formattedData.no_hp_ibu || "",
         status: targetStatus,
-        nisn: formattedData.nisn || "",
-        nik: formattedData.nik || "",
         tempat_lahir: formattedData.tempat_lahir || "",
         tanggal_lahir: formattedData.tanggal_lahir || "",
         no_hp: formattedData.no_hp || "",
@@ -883,7 +925,12 @@ export default function App() {
 
             // Fallback for standard column mismatch
             if (resError.message?.includes("column") || resError.message?.includes("does not exist")) {
-              const optionalCols = ["nisn", "nik", "tempat_lahir", "tanggal_lahir", "no_hp", "nama_ayah", "no_hp_ayah", "nama_ibu", "no_hp_ibu", "alamat", "status_asrama", "no_hp_ortu", "nfc_id"];
+              const optionalCols = [
+                "kelas_pengajian", "kelas_sekolah", "kamar", "kelas",
+                "nisn", "nik", "tempat_lahir", "tanggal_lahir", "no_hp", 
+                "nama_ayah", "no_hp_ayah", "nama_ibu", "no_hp_ibu", 
+                "alamat", "status_asrama", "no_hp_ortu", "nfc_id"
+              ];
               for (const col of optionalCols) {
                 if (currentPayload[col] !== undefined) {
                   delete currentPayload[col];
@@ -907,10 +954,84 @@ export default function App() {
           triggerNotification(`Siswa baru ${formattedData.nama_lengkap} berhasil didaftarkan!`, "success");
         }
 
-        // Save NFC Mapping to 'nfc' table too if nfc_id is provided
+        // Handle rename cleanup in auxiliary tables if name changed
+        if (oldStudentName && oldStudentName.toLowerCase() !== studentName.toLowerCase()) {
+          try {
+            await Promise.allSettled([
+              supabase.from("kamar").delete().ilike("nama", oldStudentName),
+              supabase.from("kelas_pengajian").delete().ilike("nama", oldStudentName),
+              supabase.from("kelas_sekolah").delete().ilike("nama", oldStudentName),
+              supabase.from("kelas sekolah").delete().ilike("nama", oldStudentName),
+              supabase.from("nfc").delete().ilike("nama", oldStudentName),
+              supabase.from("status_siswa").delete().ilike("nama", oldStudentName),
+            ]);
+          } catch (cleanOldErr) {
+            console.warn("Notice cleaning old auxiliary entries:", cleanOldErr);
+          }
+        }
+
+        // 1. Sync Plotting Kelas Sekolah ke tabel 'kelas_sekolah'
+        if (formattedData.kelas_sekolah !== undefined) {
+          const targetSchoolClass = formattedData.kelas_sekolah || "";
+          const tables = ["kelas_sekolah", "kelas sekolah"];
+          for (const tbl of tables) {
+            try {
+              const { data: existingS } = await supabase.from(tbl).select("id").ilike("nama", studentName);
+              if (existingS && existingS.length > 0) {
+                if (targetSchoolClass === "") {
+                  await supabase.from(tbl).delete().eq("id", existingS[0].id);
+                } else {
+                  await supabase.from(tbl).update({ kelas: targetSchoolClass }).eq("id", existingS[0].id);
+                }
+              } else if (targetSchoolClass !== "") {
+                await supabase.from(tbl).insert([{ nama: studentName, kelas: targetSchoolClass }]);
+              }
+              break;
+            } catch (_) {}
+          }
+        }
+
+        // 2. Sync Plotting Kelas Pengajian ke tabel 'kelas_pengajian'
+        if (formattedData.kelas_pengajian !== undefined) {
+          const targetPengajian = formattedData.kelas_pengajian || "";
+          try {
+            const { data: existingP } = await supabase.from("kelas_pengajian").select("id").ilike("nama", studentName);
+            if (existingP && existingP.length > 0) {
+              if (targetPengajian === "") {
+                await supabase.from("kelas_pengajian").delete().eq("id", existingP[0].id);
+              } else {
+                await supabase.from("kelas_pengajian").update({ kelas: targetPengajian }).eq("id", existingP[0].id);
+              }
+            } else if (targetPengajian !== "") {
+              await supabase.from("kelas_pengajian").insert([{ nama: studentName, kelas: targetPengajian }]);
+            }
+          } catch (pengajianSyncErr) {
+            console.warn("Sync kelas_pengajian error:", pengajianSyncErr);
+          }
+        }
+
+        // 3. Sync Plotting Kamar ke tabel 'kamar'
+        if (formattedData.kamar !== undefined) {
+          const targetKamar = formattedData.kamar || "";
+          try {
+            const { data: existingK } = await supabase.from("kamar").select("id").ilike("nama", studentName);
+            if (existingK && existingK.length > 0) {
+              if (targetKamar === "") {
+                await supabase.from("kamar").delete().eq("id", existingK[0].id);
+              } else {
+                await supabase.from("kamar").update({ kamar: targetKamar }).eq("id", existingK[0].id);
+              }
+            } else if (targetKamar !== "") {
+              await supabase.from("kamar").insert([{ nama: studentName, kamar: targetKamar }]);
+            }
+          } catch (kamarSyncErr) {
+            console.warn("Sync kamar error:", kamarSyncErr);
+          }
+        }
+
+        // 4. Save NFC Mapping to 'nfc' table too if nfc_id is provided
         if (formattedData.nfc_id && formattedData.nfc_id.trim() !== "") {
           try {
-            const studentName = formattedData.nama_lengkap.trim();
             await supabase.from("nfc").delete().eq("nama", studentName);
             await supabase.from("nfc").delete().eq("serial_number", formattedData.nfc_id.trim());
             await supabase.from("nfc").insert([{
@@ -922,12 +1043,12 @@ export default function App() {
           }
         }
 
-        // Upsert / sync status back into "status_siswa" table
+        // 5. Upsert / sync status back into "status_siswa" table
         try {
           const { data: existingStatus } = await supabase
             .from("status_siswa")
             .select("id")
-            .ilike("nama", formattedData.nama_lengkap.trim());
+            .ilike("nama", studentName);
 
           if (existingStatus && existingStatus.length > 0) {
             await supabase
@@ -935,11 +1056,10 @@ export default function App() {
               .update({ status: targetStatus, created_at: new Date().toISOString() })
               .eq("id", existingStatus[0].id);
           } else {
-            // Also test if there is any other match before inserting a duplicate
             const { data: existingExact } = await supabase
               .from("status_siswa")
               .select("id")
-              .eq("nama", formattedData.nama_lengkap);
+              .eq("nama", studentName);
 
             if (existingExact && existingExact.length > 0) {
               await supabase
@@ -949,7 +1069,7 @@ export default function App() {
             } else {
               await supabase
                 .from("status_siswa")
-                .insert([{ nama: formattedData.nama_lengkap, status: targetStatus }]);
+                .insert([{ nama: studentName, status: targetStatus }]);
             }
           }
         } catch (statusErr: any) {
@@ -1303,16 +1423,29 @@ export default function App() {
     const un = String(currentUser?.username || "").toLowerCase().trim();
     const tt = (currentUser?.tugas_tambahan as string[]) || [];
     
-    // Map new peran_utama to existing role strings for backward compatibility with arrays
-    if (r === "guru_pondok" || r === "pondok") return "guru pondok";
-    if (r === "guru_sekolah" || r === "smp" || r === "sma" || r === "guru smp") return "guru SMP";
-    if (r === "super_admin" || r === "superadmin") return "super admin";
-    if (r === "pengurus") return "pengurus"; // Make sure to return 'pengurus'
-    
+    // 1. Super Admin
+    if (r === "super admin" || r === "super_admin" || r === "superadmin") return "super admin";
+
+    // 2. Pure Kantin
     const isPureKantin = r.includes("kantin") || un.includes("kantin") || (tt.length > 0 && tt.every((t: string) => String(t).toLowerCase().includes("kantin")));
-    if (isPureKantin && r !== "super admin" && r !== "admin") return "kantin";
+    if (isPureKantin && !r.includes("admin")) return "kantin";
+
+    // 3. Guru Sekolah / SMP / Formal
+    if (r === "guru sekolah" || r === "guru_sekolah" || r === "guru smp" || r === "guru_smp" || r === "smp" || r === "sma" || r.includes("sekolah") || r.includes("formal")) return "guru SMP";
+
+    // 4. Guru Pondok / Ustadz
+    if (r === "guru pondok" || r === "guru_pondok" || r === "pondok" || r.includes("pondok") || r.includes("ustadz")) return "guru pondok";
+
+    // 5. Pengurus / Asrama / Kamar
+    if (r.includes("pengurus") || r.includes("kamar") || r.includes("asrama")) return "pengurus";
+
+    // 6. Siswa / Santri
+    if (r === "siswa" || r === "santri" || r === "siswi") return "siswa";
+
+    // 7. Admin / Admin Ponpes / Pimpinan / Pengasuh
+    if (r === "admin" || r.includes("admin") || r.includes("pimpinan") || r.includes("pengasuh") || r.includes("kyai")) return "admin";
     
-    return currentUser?.peran_utama || currentUser?.role || "admin";
+    return "admin";
   })();
   const userGenderAccess = currentUser?.gender || "Semua";
 
@@ -1431,7 +1564,7 @@ export default function App() {
     String(currentUser?.username || "").toLowerCase().includes("kantin") ||
     userRole === "admin" || 
     userRole === "super admin" || 
-    userRole === "superadmin";
+    String(userRole) === "superadmin";
 
   const getTabPermissionId = (tabId: string): string | null => {
     if (tabId === "dashboard") return "dasbor";
@@ -1453,7 +1586,8 @@ export default function App() {
   };
 
   const accessibleTabs = useMemo(() => {
-    if (userRole === "super admin" || userRole === "superadmin") {
+    const roleLower = String(userRole || "").toLowerCase();
+    if (roleLower.includes("super admin") || roleLower.includes("super_admin") || roleLower.includes("superadmin")) {
       return allTabs;
     }
 
@@ -1461,15 +1595,18 @@ export default function App() {
 
     return allTabs.filter(t => {
       // 1. Check if user is restricted from admin settings
-      if ((t.id === "pengguna" || t.id === "hak_akses") && userRole !== "admin" && userRole !== "super admin") {
+      if ((t.id === "pengguna" || t.id === "hak_akses") && !roleLower.includes("admin")) {
         return false;
       }
 
       // 2. Normalize tab ID to catalog menu key and evaluate hybrid effective permission
       const menuKey = normalizeMenuKey(t.id);
-      if (effectivePerms[menuKey]) {
-        // Business Rule: If can_view is false in hybrid calculation, HIDE from Sidebar
-        return effectivePerms[menuKey].can_view;
+      const effectivePerm = effectivePerms[menuKey] || effectivePerms[t.id];
+
+      if (effectivePerm !== undefined) {
+        // Business Rule: Strict visibility check - hide completely if can_view is false
+        const isVisible = effectivePerm.can_view === true;
+        return isVisible;
       }
 
       // Fallback to role-based access
@@ -1481,12 +1618,13 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
+      if (activeTab === "hak_akses_detail" || activeTab === "hak_akses" || activeTab === "pengguna") return;
       if (userRole === "kantin" && (activeTab === "dashboard" || !accessibleTabs.find(t => t.id === activeTab))) {
         setActiveTab("kantin_input");
       } else if (!accessibleTabs.find(t => t.id === activeTab)) {
         if (userRole === "siswa") {
           setActiveTab("absensi");
-        } else if (hasKantinAccess && userRole !== "super admin" && userRole !== "admin" && userRole !== "superadmin") {
+        } else if (hasKantinAccess && userRole !== "super admin" && userRole !== "admin" && String(userRole) !== "superadmin") {
           // Default to kantin if they only have kantin access and are not admin
           setActiveTab("kantin_input");
         } else {
@@ -2964,7 +3102,7 @@ export default function App() {
           {/* Current Router Outlet */}
           <div className="flex-1 w-full flex flex-col">
             <ErrorBoundary key={activeTab}>
-            {activeTab === "dashboard" && userRole === "guru SMP" && (
+            {activeTab === "dashboard" && (userRole === "guru SMP" || String(userRole) === "guru sekolah") && (
               <DashboardGuru
                 currentUser={currentUser}
                 onNavigateToPresensi={() => setActiveTab("presensi_guru")}
@@ -2974,7 +3112,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === "dashboard" && (userRole === "guru pondok" || userRole === "pondok") && (
+            {activeTab === "dashboard" && (userRole === "guru pondok" || String(userRole) === "pondok") && (
               <DashboardGuruPondok
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -2998,7 +3136,19 @@ export default function App() {
               />
             )}
 
-            {activeTab === "dashboard" && (userRole === "admin" || userRole === "super admin" || userRole === "superadmin" || userRole === "pengurus") && (
+            {activeTab === "dashboard" && userRole === "kantin" && (
+              <div className="w-full p-4 md:p-6">
+                <KantinPanel
+                  viewMode="input"
+                  onSwitchMode={(mode) => setActiveTab(mode === "input" ? "kantin_input" : "kantin_rekap")}
+                  currentUser={currentUser}
+                  triggerNotification={triggerNotification}
+                  isDarkMode={isDarkMode}
+                />
+              </div>
+            )}
+
+            {activeTab === "dashboard" && userRole !== "guru SMP" && String(userRole) !== "guru sekolah" && userRole !== "guru pondok" && String(userRole) !== "pondok" && userRole !== "kantin" && (
               <Dashboard
                 students={displayedStudents}
                 onNavigateToForm={() => {
@@ -3019,18 +3169,6 @@ export default function App() {
                   triggerNotification("Berhasil keluar dari sesi admin", "warning");
                 }}
               />
-            )}
-
-            {activeTab === "dashboard" && userRole === "kantin" && (
-              <div className="w-full p-4 md:p-6">
-                <KantinPanel
-                  viewMode="input"
-                  onSwitchMode={(mode) => setActiveTab(mode === "input" ? "kantin_input" : "kantin_rekap")}
-                  currentUser={currentUser}
-                  triggerNotification={triggerNotification}
-                  isDarkMode={isDarkMode}
-                />
-              </div>
             )}
 
             {(activeTab === "list" || activeTab === "form") && (
@@ -3074,7 +3212,7 @@ export default function App() {
                 <DaftarWargaPanel
                   viewType="guru"
                   onSwitchType={(type) => setActiveTab(type === "guru" ? "warga_guru" : "warga_pengurus")}
-                  onNavigateToUserManagement={userRole === "admin" || userRole === "super admin" || userRole === "superadmin" ? () => setActiveTab("pengguna") : undefined}
+                  onNavigateToUserManagement={userRole === "admin" || userRole === "super admin" || String(userRole) === "superadmin" ? () => setActiveTab("pengguna") : undefined}
                 />
               </div>
             )}
@@ -3084,7 +3222,7 @@ export default function App() {
                 <DaftarWargaPanel
                   viewType="pengurus"
                   onSwitchType={(type) => setActiveTab(type === "guru" ? "warga_guru" : "warga_pengurus")}
-                  onNavigateToUserManagement={userRole === "admin" || userRole === "super admin" || userRole === "superadmin" ? () => setActiveTab("pengguna") : undefined}
+                  onNavigateToUserManagement={userRole === "admin" || userRole === "super admin" || String(userRole) === "superadmin" ? () => setActiveTab("pengguna") : undefined}
                 />
               </div>
             )}
@@ -3474,7 +3612,28 @@ export default function App() {
             )}
             {activeTab === "pengguna" && (
               <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
-                <ManajemenPenggunaPanel />
+                <ManajemenPenggunaPanel
+                  onOpenHakAkses={(userId) => {
+                    setSelectedHakAksesUserId(userId);
+                    setActiveTab("hak_akses_detail");
+                    if (typeof window !== "undefined") {
+                      window.history.pushState({}, "", `/manajemen-pengguna/${userId}/hak-akses`);
+                    }
+                  }}
+                />
+              </div>
+            )}
+            {activeTab === "hak_akses_detail" && selectedHakAksesUserId && (
+              <div className="w-full max-w-6xl mx-auto h-full overflow-y-auto pr-2 custom-scrollbar pb-24">
+                <HakAksesUserPanel
+                  userId={selectedHakAksesUserId}
+                  onBack={() => {
+                    if (typeof window !== "undefined") {
+                      window.history.pushState({}, "", "/pengguna");
+                    }
+                    setActiveTab("pengguna");
+                  }}
+                />
               </div>
             )}
             {activeTab === "hak_akses" && (

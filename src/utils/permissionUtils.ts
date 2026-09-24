@@ -508,8 +508,55 @@ export function normalizePermission(action: Partial<PermissionAction>): Permissi
 }
 
 /**
+ * Core Hybrid Permission Evaluator
+ * Uses Nullish Coalescing (??) so userOverrides (especially explicit false) takes absolute precedence over rolePermissions.
+ */
+export function getEffectivePermission(
+  menuName: string,
+  rolePermissions: Record<string, PermissionAction> = {}, // dari tabel role_permissions
+  userOverrides: Record<string, PermissionAction | Partial<PermissionAction>> = {} // dari pengguna.permissions (JSONB)
+): PermissionAction {
+  const normalizedKey = normalizeMenuKey(menuName);
+
+  // 1. Resolve user override by key, normalized key, or friendly name
+  let userOverride: Partial<PermissionAction> | undefined =
+    userOverrides?.[menuName] ?? userOverrides?.[normalizedKey];
+
+  if (!userOverride && typeof userOverrides === "object" && userOverrides !== null) {
+    const catalogItem = CORE_SIDEBAR_MENUS.find(
+      m => m.key === menuName || m.key === normalizedKey || m.name.toLowerCase() === menuName.toLowerCase()
+    );
+    if (catalogItem) {
+      userOverride = userOverrides[catalogItem.name] ?? userOverrides[catalogItem.key];
+    }
+  }
+
+  // 2. Resolve role permission by key, normalized key, or friendly name
+  let rolePerm: PermissionAction | undefined =
+    rolePermissions?.[menuName] ?? rolePermissions?.[normalizedKey];
+
+  if (!rolePerm && typeof rolePermissions === "object" && rolePermissions !== null) {
+    const catalogItem = CORE_SIDEBAR_MENUS.find(
+      m => m.key === menuName || m.key === normalizedKey || m.name.toLowerCase() === menuName.toLowerCase()
+    );
+    if (catalogItem) {
+      rolePerm = rolePermissions[catalogItem.name] ?? rolePermissions[catalogItem.key];
+    }
+  }
+
+  return {
+    // Nullish coalescing (??) memastikan bahwa jika userOverride.can_view = false, 
+    // maka nilai false TERSEBUT YANG DIPAKAI, bukan fallback ke rolePerm.
+    can_view: userOverride?.can_view ?? rolePerm?.can_view ?? false,
+    can_input: userOverride?.can_input ?? rolePerm?.can_input ?? false,
+    can_edit: userOverride?.can_edit ?? rolePerm?.can_edit ?? false,
+    can_delete: userOverride?.can_delete ?? rolePerm?.can_delete ?? false,
+  };
+}
+
+/**
  * Calculates Effective Permissions using the Hybrid Formula:
- * Effective_Permission = (Role_Permissions) OR (User_JSONB_Overrides)
+ * User explicit overrides take strict precedence via getEffectivePermission
  */
 export function calculateEffectivePermissions(
   rolePermissions: MenuPermissionsMap = {},
@@ -521,6 +568,8 @@ export function calculateEffectivePermissions(
   let overrideMap: Record<string, Partial<PermissionAction>> = {};
   if (Array.isArray(userOverrides)) {
     userOverrides.forEach(key => {
+      const norm = normalizeMenuKey(key);
+      overrideMap[norm] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
       overrideMap[key] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     });
   } else if (typeof userOverrides === "object" && userOverrides !== null) {
@@ -528,23 +577,8 @@ export function calculateEffectivePermissions(
   }
 
   CORE_SIDEBAR_MENUS.forEach(menu => {
-    const roleP = rolePermissions[menu.key] || {
-      can_view: false,
-      can_input: false,
-      can_edit: false,
-      can_delete: false
-    };
-
-    const userO = overrideMap[menu.key] || {};
-
-    const rawCombined: PermissionAction = {
-      can_view: Boolean(roleP.can_view || userO.can_view),
-      can_input: Boolean(roleP.can_input || userO.can_input),
-      can_edit: Boolean(roleP.can_edit || userO.can_edit),
-      can_delete: Boolean(roleP.can_delete || userO.can_delete)
-    };
-
-    effective[menu.key] = normalizePermission(rawCombined);
+    const calculated = getEffectivePermission(menu.key, rolePermissions, overrideMap as any);
+    effective[menu.key] = normalizePermission(calculated);
   });
 
   return effective;
@@ -781,7 +815,11 @@ export function useUserPermission(menuName: string) {
     };
 
     window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    window.addEventListener("permissions_updated", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("permissions_updated", handleStorageChange);
+    };
   }, [menuName]);
 
   return permission;

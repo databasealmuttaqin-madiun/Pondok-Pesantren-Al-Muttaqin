@@ -1,8 +1,9 @@
 import { SearchableSelect } from './ui/SearchableSelect';
 import { PageHeader } from './ui/PageHeader';
 import React, { useState } from "react";
-import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database, User, Plus, UserPlus } from "lucide-react";
+import { Search, Filter, Trash2, Edit3, Award, FileText, Download, Eye, X, Printer, MapPin, UserCheck, Calendar, RefreshCw, Home, Heart, Info, Users, GraduationCap, Database, User, Plus, UserPlus, Shield, Lock } from "lucide-react";
 import { SantriData } from "../supabaseClient";
+import { useUserPermission } from "../utils/permissionUtils";
 
 interface SantriListProps {
   students: SantriData[];
@@ -122,6 +123,14 @@ export default function SantriList({
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<SantriData | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewTab, setPreviewTab] = useState<"formulir" | "card">("formulir");
+
+  const permission = useUserPermission("list");
+  const roleLower = String(currentUserRole || "").toLowerCase();
+  const isSuperAdmin = roleLower.includes("super admin") || roleLower.includes("super_admin") || roleLower.includes("superadmin");
+  const effectiveCanView = isSuperAdmin || permission.canView;
+  const effectiveCanInput = isSuperAdmin || permission.canInput;
+  const effectiveCanEdit = isSuperAdmin || permission.canEdit;
+  const effectiveCanDelete = isSuperAdmin || permission.canDelete;
 
   // Keep filter state synchronized if parent props update
   React.useEffect(() => {
@@ -409,6 +418,24 @@ export default function SantriList({
     }
   };
 
+  if (!effectiveCanView) {
+    return (
+      <div className="w-full p-6 max-w-xl mx-auto my-12 animate-fade-in" id="santri_list_restricted">
+        <div className="bg-white dark:bg-[#111322] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center shadow-sm space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800/60">
+            <Lock className="w-7 h-7" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">Akses Dibatasi</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+              Akun Anda tidak memiliki izin untuk melihat data pada menu <strong>Data Siswa</strong>. Silakan hubungi Super Admin jika membutuhkan penyesuaian hak akses.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4" id="santri_list_section">
       {/* Search & Filter Header Card */}
@@ -550,7 +577,7 @@ export default function SantriList({
               <Download className="w-3.5 h-3.5 text-slate-500" />
               <span>Ekspor CSV</span>
             </button>
-            {onAddNewStudent && currentUserRole !== "guru SMP" && (
+            {onAddNewStudent && effectiveCanInput && (
               <button
                 type="button"
                 onClick={onAddNewStudent}
@@ -775,8 +802,8 @@ export default function SantriList({
                             <Printer className="w-4 h-4" />
                           </button>
 
-                          {/* 1. Edit Elegant light cyan circle with dark blue pen */}
-                          {currentUserRole !== "guru SMP" && (
+                          {/* 1. Edit */}
+                          {effectiveCanEdit && (
                             <button
                               onClick={() => onEdit(s)}
                               className="w-8 h-8 flex items-center justify-center bg-[#E6F4FA] hover:bg-[#d0edfa] text-[#00a5ec] rounded-full transition-all cursor-pointer shadow-sm shadow-sky-100"
@@ -787,7 +814,7 @@ export default function SantriList({
                           )}
 
                           {/* 2. Trash bin */}
-                          {currentUserRole !== "guru SMP" && (
+                          {effectiveCanDelete && (
                             <button
                               onClick={(e) => handleDeleteClick(s, e)}
                               className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50/55 rounded-full transition-all cursor-pointer"

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Trash2, Shield, User, Key, Check, AlertCircle, X, Lock, SlidersHorizontal } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { showSuccess, showError, showDeleteConfirm, showToast } from "../utils/sweetalert";
-import ModalEditAksesPengguna from "./ModalEditAksesPengguna";
 
 interface PenggunaData {
   id: string;
@@ -25,13 +24,14 @@ interface PenggunaData {
   tugas_kantin?: string;
 }
 
-export default function ManajemenPenggunaPanel() {
+interface ManajemenPenggunaPanelProps {
+  onOpenHakAkses?: (userId: string) => void;
+}
+
+export default function ManajemenPenggunaPanel({ onOpenHakAkses }: ManajemenPenggunaPanelProps) {
   const [users, setUsers] = useState<PenggunaData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Access Override Modal State
-  const [selectedUserForAkses, setSelectedUserForAkses] = useState<PenggunaData | null>(null);
 
   // Approval State
   const [approvalUser, setApprovalUser] = useState<PenggunaData | null>(null);
@@ -271,9 +271,25 @@ export default function ManajemenPenggunaPanel() {
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => setSelectedUserForAkses(user)}
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const targetId = user.id || user.username;
+                        console.log("Akses & Role clicked for user ID:", targetId);
+                        if (targetId) {
+                          if (typeof window !== "undefined") {
+                            window.history.pushState({}, "", `/manajemen-pengguna/${targetId}/hak-akses`);
+                          }
+                          if (onOpenHakAkses) {
+                            onOpenHakAkses(targetId);
+                          } else {
+                            window.dispatchEvent(new CustomEvent('open-hak-akses', { detail: targetId }));
+                          }
+                        }
+                      }}
                       className="p-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:hover:bg-indigo-600 dark:text-indigo-400 dark:hover:text-white rounded-lg transition-colors"
-                      title="Kelola Peran & Izin Khusus (Override)"
+                      title="Kelola Peran & Izin Khusus"
                     >
                       <Lock className="w-3.5 h-3.5" />
                     </button>
@@ -379,7 +395,23 @@ export default function ManajemenPenggunaPanel() {
                     )}
                   </div>
                   <button
-                    onClick={() => setSelectedUserForAkses(user)}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const targetId = user.id || user.username;
+                      console.log("Akses & Role text button clicked for user ID:", targetId);
+                      if (targetId) {
+                        if (typeof window !== "undefined") {
+                          window.history.pushState({}, "", `/manajemen-pengguna/${targetId}/hak-akses`);
+                        }
+                        if (onOpenHakAkses) {
+                          onOpenHakAkses(targetId);
+                        } else {
+                          window.dispatchEvent(new CustomEvent('open-hak-akses', { detail: targetId }));
+                        }
+                      }
+                    }}
                     className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer border border-indigo-200/50 dark:border-indigo-800/50"
                   >
                     <Lock className="w-3 h-3" />
@@ -391,20 +423,6 @@ export default function ManajemenPenggunaPanel() {
           </div>
         )}
       </div>
-
-      {/* Modal Edit Akses & Override */}
-      {selectedUserForAkses && (
-        <ModalEditAksesPengguna
-          user={selectedUserForAkses}
-          isOpen={Boolean(selectedUserForAkses)}
-          onClose={() => setSelectedUserForAkses(null)}
-          onSuccess={(updated) => {
-            setUsers(prev => prev.map(u => (u.id === updated.id || (u.username && u.username === updated.username)) ? { ...u, ...updated } : u));
-            setSelectedUserForAkses(null);
-            fetchUsers();
-          }}
-        />
-      )}
 
       {/* Approval Modal */}
       {approvalUser && (

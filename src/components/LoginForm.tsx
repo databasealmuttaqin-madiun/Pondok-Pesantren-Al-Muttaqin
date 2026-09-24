@@ -67,9 +67,11 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           const rLower = String(userRole).toLowerCase().trim();
           if (rLower === "super admin" || rLower === "super_admin" || rLower === "superadmin") {
             userRole = "super admin";
-          } else if (rLower === "admin") {
+          } else if (rLower === "admin" || rLower.includes("admin") || rLower.includes("pimpinan") || rLower.includes("pengasuh")) {
             userRole = "admin";
-          } else if (rLower === "guru pondok" || rLower === "pondok") {
+          } else if (rLower.includes("pengurus") || rLower.includes("kamar") || rLower.includes("asrama")) {
+            userRole = "pengurus";
+          } else if (rLower === "guru pondok" || rLower === "guru_pondok" || rLower === "pondok" || rLower.includes("pondok") || rLower.includes("ustadz")) {
             const hasOnlyKantin = (tugasTambahanList.length > 0 && tugasTambahanList.every((t: any) => String(t).toLowerCase().includes("kantin"))) ||
               cleanUsername.includes("kantin");
             if (hasOnlyKantin) {
@@ -77,7 +79,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
             } else {
               userRole = "guru pondok";
             }
-          } else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru SMP" || rLower === "smp" || rLower === "sma") {
+          } else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru_sekolah" || rLower === "guru SMP" || rLower === "smp" || rLower === "sma" || rLower.includes("sekolah") || rLower.includes("formal")) {
             userRole = "guru SMP";
           } else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") {
             userRole = "siswa";
@@ -149,11 +151,13 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
 
         let userRole = extra.peran_utama || extra.role || "guru pondok";
         const rLower = String(userRole).toLowerCase().trim();
-        if (rLower === "super admin" || rLower === "super_admin") {
+        if (rLower === "super admin" || rLower === "super_admin" || rLower === "superadmin") {
           userRole = "super admin";
-        } else if (rLower === "admin") {
+        } else if (rLower === "admin" || rLower.includes("admin") || rLower.includes("pimpinan") || rLower.includes("pengasuh")) {
           userRole = "admin";
-        } else if (rLower === "guru pondok" || rLower === "pondok") {
+        } else if (rLower.includes("pengurus") || rLower.includes("kamar") || rLower.includes("asrama")) {
+          userRole = "pengurus";
+        } else if (rLower === "guru pondok" || rLower === "guru_pondok" || rLower === "pondok" || rLower.includes("pondok") || rLower.includes("ustadz")) {
           const hasOnlyKantin = (tugasTambahanList.length > 0 && tugasTambahanList.every((t: any) => String(t).toLowerCase().includes("kantin"))) ||
             cleanUsername.includes("kantin");
           if (hasOnlyKantin) {
@@ -161,7 +165,7 @@ export default function LoginForm({ onSuccess, isDarkMode, setIsDarkMode }: Logi
           } else {
             userRole = "guru pondok";
           }
-        } else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru SMP" || rLower === "smp" || rLower === "sma") {
+        } else if (rLower === "guru smp" || rLower === "guru_smp" || rLower === "guru sekolah" || rLower === "guru_sekolah" || rLower === "guru SMP" || rLower === "smp" || rLower === "sma" || rLower.includes("sekolah") || rLower.includes("formal")) {
           userRole = "guru SMP";
         } else if (rLower === "siswa" || rLower === "santri" || rLower === "siswi") {
           userRole = "siswa";
