@@ -4,8 +4,12 @@ import {
   MapPin, CheckCircle2, AlertTriangle, User, ShieldCheck,
   ChevronLeft, ChevronRight, ArrowUpDown, FileSpreadsheet,
   TrendingUp, Users, ExternalLink, X, Eye, Sparkles, Building2,
-  CalendarDays, Check, Info, Trash2, ArrowUpRight, CheckCircle
+  CalendarDays, Check, Info, Trash2, ArrowUpRight, CheckCircle,
+  FileText, ArrowLeft, ArrowRight, UserCheck, AlertCircle
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { supabase } from "../supabaseClient";
@@ -24,60 +28,103 @@ export interface AbsensiGuruRecord {
   keterangan?: string | null;
 }
 
+export interface RekapHarianGuru {
+  id: string;
+  username: string;
+  nama_guru: string;
+  tanggal: string; // YYYY-MM-DD
+  hari: string; // "Senin", "Selasa", dll
+  tanggalFormatted: string; // "Senin, 28 Sep 2026"
+  jamMasuk: string | null;
+  jamMasukRaw: string | null;
+  jamPulang: string | null;
+  jamPulangRaw: string | null;
+  status: "Tepat Waktu" | "Telat" | "Belum Masuk";
+  terlambatMenit: number;
+  jadwalMasuk: string;
+  jadwalPulang: string;
+  lokasiMasuk?: string | null;
+  lokasiPulang?: string | null;
+  logs: AbsensiGuruRecord[];
+}
+
 interface RekapAbsensiGuruPanelProps {
   currentUser?: { username: string; role: string; name: string; id?: string } | null;
 }
 
-// Koordinat referensi sekolah (Al-Muttaqin)
-const SCHOOL_COORDINATES = {
-  latitude: -7.227800,
-  longitude: 111.534500,
-  name: "SMP IT Al-Muttaqin"
+// Jadwal Masuk Standar per Hari (diambil dari plotting atau default Al-Muttaqin)
+const DEFAULT_SCHEDULES: Record<string, { jam_masuk: string; toleransi: number; jam_pulang: string }> = {
+  "Senin": { jam_masuk: "06:45", toleransi: 15, jam_pulang: "14:00" },
+  "Selasa": { jam_masuk: "07:00", toleransi: 15, jam_pulang: "14:00" },
+  "Rabu": { jam_masuk: "07:00", toleransi: 15, jam_pulang: "14:00" },
+  "Kamis": { jam_masuk: "07:00", toleransi: 15, jam_pulang: "14:00" },
+  "Jumat": { jam_masuk: "07:00", toleransi: 15, jam_pulang: "11:30" },
+  "Sabtu": { jam_masuk: "07:00", toleransi: 15, jam_pulang: "13:00" },
+  "Ahad": { jam_masuk: "07:00", toleransi: 15, jam_pulang: "12:00" }
 };
 
-// Formula Haversine hitung jarak
-function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371e3;
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c);
-}
+const HARI_NAMES = ["Ahad", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const BULAN_NAMES = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+];
 
-// Format waktu jam:menit WIB
-function formatWaktuWIB(isoStr?: string | null) {
+// Helper: Format waktu jam:menit:detik WIB (Zona Waktu Indonesia Barat)
+function formatWaktuWIB(isoStr?: string | null): string {
   if (!isoStr) return "-";
   try {
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return String(isoStr);
     return d.toLocaleTimeString("id-ID", {
+      timeZone: "Asia/Jakarta",
       hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit"
-    }) + " WIB";
+      second: "2-digit",
+      hour12: false
+    }).replace(/\./g, ":") + " WIB";
   } catch {
     return "-";
   }
 }
 
-// Format tanggal lengkap
-function formatTanggalIndo(isoStr?: string | null) {
-  if (!isoStr) return "-";
+// Helper: Format tanggal lengkap Indonesia (WIB)
+function formatTanggalIndo(dateStrOrIso?: string | null): string {
+  if (!dateStrOrIso) return "-";
   try {
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return String(isoStr);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStrOrIso)) {
+      const [y, m, d] = dateStrOrIso.split("-").map(Number);
+      const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      return date.toLocaleDateString("id-ID", {
+        timeZone: "Asia/Jakarta",
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+      });
+    }
+    const d = new Date(dateStrOrIso);
+    if (isNaN(d.getTime())) return String(dateStrOrIso);
     return d.toLocaleDateString("id-ID", {
-      weekday: "short",
+      timeZone: "Asia/Jakarta",
+      weekday: "long",
       day: "numeric",
       month: "short",
       year: "numeric"
     });
   } catch {
     return "-";
+  }
+}
+
+// Helper: Dapatkan YYYY-MM-DD dalam Waktu Indonesia Barat (Asia/Jakarta)
+function getWIBDateString(dateObjOrIso: Date | string): string {
+  try {
+    const d = typeof dateObjOrIso === "string" ? new Date(dateObjOrIso) : dateObjOrIso;
+    if (isNaN(d.getTime())) return "";
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+  } catch {
+    const d = typeof dateObjOrIso === "string" ? new Date(dateObjOrIso) : dateObjOrIso;
+    return d.toISOString().split("T")[0];
   }
 }
 
@@ -89,34 +136,52 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
 
   // Data states
   const [records, setRecords] = useState<AbsensiGuruRecord[]>([]);
+  const [schedulesMap, setSchedulesMap] = useState<Record<string, { jam_masuk: string; toleransi: number; jam_pulang: string }>>(DEFAULT_SCHEDULES);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<AbsensiGuruRecord | null>(null);
+  const [selectedRekap, setSelectedRekap] = useState<RekapHarianGuru | null>(null);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
-  // Filter states
+  // Tab View Mode:
+  // "rekap_harian" = TABEL UTAMA REKAP PRESENSI GURU (Nama, Tanggal, Jam Masuk, Jam Pulang, Status)
+  // "rekap_guru"   = Akumulasi per Guru
+  // "log_detail"   = Log Scan GPS & QR Mentah
+  const [viewMode, setViewMode] = useState<"rekap_harian" | "rekap_guru" | "log_detail">("rekap_harian");
+
+  // Filter Presets & Modes:
+  // "hari" | "minggu" | "bulan" | "semua" | "kustom"
+  const [filterMode, setFilterMode] = useState<"hari" | "minggu" | "bulan" | "semua" | "kustom">("hari");
+
+  // Date selection states (Zona Waktu Indonesia Barat)
+  const today = useMemo(() => new Date(), []);
+  const todayStr = useMemo(() => getWIBDateString(new Date()), []);
+
+  const [selectedDay, setSelectedDay] = useState<string>(todayStr); // Untuk filter "hari"
+  const [selectedWeekDate, setSelectedWeekDate] = useState<string>(todayStr); // Untuk filter "minggu"
+  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth()); // 0-11
+  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
+  const [customStartDate, setCustomStartDate] = useState<string>(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`);
+  const [customEndDate, setCustomEndDate] = useState<string>(todayStr);
+
+  // Jadwal harian untuk hari yang dipilih
+  const selectedDayHari = useMemo(() => {
+    try {
+      const d = new Date(selectedDay + "T00:00:00+07:00");
+      return HARI_NAMES[d.getDay()] || "Senin";
+    } catch {
+      return "Senin";
+    }
+  }, [selectedDay]);
+
+  const currentHariSchedule = useMemo(() => {
+    return schedulesMap[selectedDayHari] || DEFAULT_SCHEDULES[selectedDayHari] || { jam_masuk: "07:00", toleransi: 15, jam_pulang: "14:00" };
+  }, [schedulesMap, selectedDayHari]);
+
+  // Other filters
   const [searchQuery, setSearchQuery] = useState("");
   const [filterGuru, setFilterGuru] = useState<string>("ALL");
-  const [filterLokasi, setFilterLokasi] = useState<string>("ALL");
-  const [filterKeterangan, setFilterKeterangan] = useState<string>("ALL");
-  
-  // Date range presets: "today" | "week" | "month" | "all" | "custom"
-  const [datePreset, setDatePreset] = useState<"today" | "week" | "month" | "all" | "custom">("month");
-  
-  const todayYMD = useMemo(() => {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
-  }, []);
-
-  const firstDayOfMonthYMD = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-  }, []);
-
-  const [startDate, setStartDate] = useState<string>(firstDayOfMonthYMD);
-  const [endDate, setEndDate] = useState<string>(todayYMD);
-
-  // Tab mode: "table" | "rekap_guru" | "timeline"
-  const [viewMode, setViewMode] = useState<"table" | "rekap_guru" | "timeline">("table");
+  const [filterStatus, setFilterStatus] = useState<string>("ALL"); // "ALL" | "TEPAT" | "TELAT"
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -125,21 +190,19 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
   // Database connection check state
   const [dbStatus, setDbStatus] = useState<"checking" | "connected" | "error">("checking");
   const [dbPingTime, setDbPingTime] = useState<number | null>(null);
-  const [isTestingInsert, setIsTestingInsert] = useState(false);
 
-  // Fetch data dari database Supabase (tabel absensi_guru)
+  // 1. Fetch data dari database Supabase (tabel absensi_guru & plotting_jam_absensi)
   const fetchAbsensiGuru = async (showToast = false) => {
     if (showToast) setIsRefreshing(true);
     else setIsLoading(true);
 
     const startTime = performance.now();
     try {
-      let query = supabase
+      // Ambil data absensi
+      const { data, error } = await supabase
         .from("absensi_guru")
         .select("*")
         .order("waktu_absen", { ascending: false });
-
-      const { data, error } = await query;
 
       if (error) {
         console.error("Gagal mengambil data absensi_guru:", error);
@@ -155,8 +218,30 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
         setRecords(data as AbsensiGuruRecord[]);
         localStorage.setItem("cache_rekap_absensi_guru", JSON.stringify(data));
       }
+
+      // Ambil jadwal plotting jam jika ada di database
+      try {
+        const { data: schedData } = await supabase
+          .from("plotting_jam_absensi")
+          .select("*");
+        if (schedData && schedData.length > 0) {
+          const map: Record<string, { jam_masuk: string; toleransi: number; jam_pulang: string }> = { ...DEFAULT_SCHEDULES };
+          schedData.forEach((s: any) => {
+            if (s.hari) {
+              map[s.hari] = {
+                jam_masuk: s.jam_masuk || "07:00",
+                toleransi: Number(s.toleransi_menit ?? 15),
+                jam_pulang: s.jam_pulang || "14:00"
+              };
+            }
+          });
+          setSchedulesMap(map);
+        }
+      } catch (errSched) {
+        console.warn("Notice loading plotting_jam_absensi:", errSched);
+      }
     } catch (err: any) {
-      console.warn("Menggunakan cache lokal:", err);
+      console.warn("Menggunakan cache lokal absensi_guru:", err);
       setDbStatus("error");
       const cached = localStorage.getItem("cache_rekap_absensi_guru");
       if (cached) {
@@ -176,73 +261,16 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
     }
   };
 
-  // Function to run a live connection test
-  const handleTestDatabaseConnection = async () => {
-    setIsTestingInsert(true);
-    const testUsername = currentUser?.username || "guru.test";
-    const testNama = currentUser?.name || "Ustadz Ahmad (Uji Coba)";
-    
-    try {
-      const testPayload = {
-        username: testUsername,
-        nama_guru: testNama,
-        waktu_absen: new Date().toISOString(),
-        latitude: -7.2278,
-        longitude: 111.5345,
-        status_lokasi: "Dalam Jangkauan",
-        keterangan: "Presensi Uji Coba Koneksi Database"
-      };
-
-      const { data, error } = await supabase
-        .from("absensi_guru")
-        .insert([testPayload])
-        .select();
-
-      if (error) {
-        throw error;
-      }
-
-      setDbStatus("connected");
-      await fetchAbsensiGuru();
-
-      MySwal.fire({
-        icon: "success",
-        title: "Koneksi Database Berhasil!",
-        html: `
-          <div class="text-left text-sm space-y-2 mt-2">
-            <p class="text-emerald-700 dark:text-emerald-300 font-semibold">Tabel <code>absensi_guru</code> di Supabase 100% aktif dan terhubung!</p>
-            <p class="text-xs text-slate-600 dark:text-slate-400">Data uji coba kehadiran atas nama <b>${testNama}</b> telah berhasil disimpan dan langsung masuk ke tabel rekapan.</p>
-          </div>
-        `,
-        confirmButtonColor: "#10b981",
-        confirmButtonText: "Tutup"
-      });
-    } catch (err: any) {
-      console.error("Test database failed:", err);
-      setDbStatus("error");
-      MySwal.fire({
-        icon: "error",
-        title: "Uji Koneksi Gagal",
-        text: err?.message || "Tabel absensi_guru belum dapat diakses di database Supabase.",
-        confirmButtonColor: "#2563eb"
-      });
-    } finally {
-      setIsTestingInsert(false);
-    }
-  };
-
   // Initial load and Realtime Supabase Subscription
   useEffect(() => {
     fetchAbsensiGuru();
 
-    // Setup realtime subscription
     const channel = supabase
-      .channel("realtime-absensi-guru")
+      .channel("realtime-absensi-guru-rekap")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "absensi_guru" },
-        (payload) => {
-          console.log("Realtime event on absensi_guru:", payload);
+        () => {
           fetchAbsensiGuru();
         }
       )
@@ -253,32 +281,65 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
     };
   }, []);
 
-  // Update date filter based on presets
-  const handleDatePresetChange = (preset: "today" | "week" | "month" | "all" | "custom") => {
-    setDatePreset(preset);
-    const now = new Date();
-
-    if (preset === "today") {
-      const todayStr = now.toISOString().split("T")[0];
-      setStartDate(todayStr);
-      setEndDate(todayStr);
-    } else if (preset === "week") {
-      const d = new Date(now);
-      const day = d.getDay();
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Senin
-      d.setDate(diff);
-      const startWeek = d.toISOString().split("T")[0];
-      setStartDate(startWeek);
-      setEndDate(now.toISOString().split("T")[0]);
-    } else if (preset === "month") {
-      const startMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      setStartDate(startMonth);
-      setEndDate(now.toISOString().split("T")[0]);
-    } else if (preset === "all") {
-      setStartDate("2026-01-01");
-      setEndDate(now.toISOString().split("T")[0]);
+  // Hitung rentang tanggal efektif berdasarkan filterMode
+  const { dateRangeStart, dateRangeEnd, periodeLabel } = useMemo(() => {
+    if (filterMode === "hari") {
+      const d = new Date(selectedDay + "T00:00:00");
+      const label = formatTanggalIndo(selectedDay);
+      return {
+        dateRangeStart: selectedDay,
+        dateRangeEnd: selectedDay,
+        periodeLabel: label
+      };
     }
-  };
+
+    if (filterMode === "minggu") {
+      const current = new Date(selectedWeekDate + "T00:00:00");
+      const day = current.getDay();
+      const diffToMonday = current.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(current.setDate(diffToMonday));
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+
+      const startStr = getWIBDateString(monday);
+      const endStr = getWIBDateString(sunday);
+      const label = `${monday.getDate()} ${BULAN_NAMES[monday.getMonth()].substring(0, 3)} - ${sunday.getDate()} ${BULAN_NAMES[sunday.getMonth()]} ${sunday.getFullYear()}`;
+
+      return {
+        dateRangeStart: startStr,
+        dateRangeEnd: endStr,
+        periodeLabel: `Minggu (${label})`
+      };
+    }
+
+    if (filterMode === "bulan") {
+      const startStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const endStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      const label = `${BULAN_NAMES[selectedMonth]} ${selectedYear}`;
+
+      return {
+        dateRangeStart: startStr,
+        dateRangeEnd: endStr,
+        periodeLabel: `Bulan ${label}`
+      };
+    }
+
+    if (filterMode === "kustom") {
+      return {
+        dateRangeStart: customStartDate,
+        dateRangeEnd: customEndDate,
+        periodeLabel: `${customStartDate} s/d ${customEndDate}`
+      };
+    }
+
+    // "semua"
+    return {
+      dateRangeStart: "2025-01-01",
+      dateRangeEnd: "2030-12-31",
+      periodeLabel: "Semua Waktu"
+    };
+  }, [filterMode, selectedDay, selectedWeekDate, selectedMonth, selectedYear, customStartDate, customEndDate]);
 
   // Daftar nama guru unik untuk dropdown filter
   const daftarGuruList = useMemo(() => {
@@ -288,245 +349,737 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
         map.set(r.username, r.nama_guru);
       }
     });
-    return Array.from(map.entries()).map(([username, nama_guru]) => ({ username, nama_guru }));
+    return Array.from(map.entries())
+      .map(([username, nama_guru]) => ({ username, nama_guru }))
+      .sort((a, b) => a.nama_guru.localeCompare(b.nama_guru));
   }, [records]);
 
-  // Filtered records
-  const filteredRecords = useMemo(() => {
-    return records.filter(record => {
-      // 1. Date filter
-      if (datePreset !== "all") {
-        if (!record.waktu_absen) return false;
-        const recDate = new Date(record.waktu_absen).toISOString().split("T")[0];
-        if (startDate && recDate < startDate) return false;
-        if (endDate && recDate > endDate) return false;
+  // =====================================================================
+  // AGREGASI: REKAP PRESENSI HARIAN PER GURU
+  // Menghasilkan daftar baris: [Nama Guru, Tanggal, Jam Masuk, Jam Pulang, Status]
+  // =====================================================================
+  const allRekapHarian = useMemo(() => {
+    // Kelompokkan data berdasarkan `${tanggalWIB}_${username}`
+    const grouped = new Map<string, {
+      username: string;
+      nama_guru: string;
+      tanggal: string;
+      logs: AbsensiGuruRecord[];
+    }>();
+
+    records.forEach(rec => {
+      if (!rec.waktu_absen) return;
+      const recDate = new Date(rec.waktu_absen);
+      if (isNaN(recDate.getTime())) return;
+
+      // Konversi waktu absensi ke tanggal resmi zona WIB (Asia/Jakarta)
+      const dateStr = getWIBDateString(rec.waktu_absen);
+      const u = rec.username || rec.nama_guru || "unknown";
+      const key = `${dateStr}_${u}`;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          username: u,
+          nama_guru: rec.nama_guru || u,
+          tanggal: dateStr,
+          logs: []
+        });
       }
 
-      // 2. Guru filter
-      if (filterGuru !== "ALL" && record.username !== filterGuru) {
+      grouped.get(key)!.logs.push(rec);
+    });
+
+    // Proses setiap grup menjadi baris RekapHarianGuru
+    const list: RekapHarianGuru[] = [];
+
+    grouped.forEach((group, key) => {
+      const { username, nama_guru, tanggal, logs } = group;
+      const d = new Date(tanggal + "T00:00:00+07:00");
+      const dayIdx = d.getDay();
+      const hari = HARI_NAMES[dayIdx] || "Senin";
+      const schedule = schedulesMap[hari] || DEFAULT_SCHEDULES[hari] || { jam_masuk: "07:00", toleransi: 15, jam_pulang: "14:00" };
+
+      // Cari log masuk dan pulang
+      let masukLog: AbsensiGuruRecord | null = null;
+      let pulangLog: AbsensiGuruRecord | null = null;
+
+      // Urutkan logs kronologis
+      logs.sort((a, b) => new Date(a.waktu_absen).getTime() - new Date(b.waktu_absen).getTime());
+
+      // 1. Prioritas Utama: Cocokkan langsung kolom 'keterangan' ('Masuk' vs 'Pulang')
+      const masukCandidates = logs.filter(l => {
+        const ket = (l.keterangan || "").trim().toLowerCase();
+        return ket === "masuk" || ket.includes("masuk");
+      });
+      const pulangCandidates = logs.filter(l => {
+        const ket = (l.keterangan || "").trim().toLowerCase();
+        return ket === "pulang" || ket.includes("pulang");
+      });
+
+      if (masukCandidates.length > 0) {
+        masukLog = masukCandidates[0]; // Scan masuk yang paling awal
+      }
+      if (pulangCandidates.length > 0) {
+        pulangLog = pulangCandidates[pulangCandidates.length - 1]; // Scan pulang yang paling akhir
+      }
+
+      // 2. Fallback jika ada log tanpa keterangan eksplisit
+      if (!masukLog && !pulangLog && logs.length > 0) {
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", hour: "numeric", hour12: false }).formatToParts(new Date(logs[0].waktu_absen));
+        const hourWIB = parseInt(parts.find(p => p.type === "hour")?.value || "0", 10);
+        if (hourWIB < 12) {
+          masukLog = logs[0];
+          if (logs.length > 1) {
+            pulangLog = logs[logs.length - 1];
+          }
+        } else {
+          pulangLog = logs[logs.length - 1];
+        }
+      } else if (!pulangLog && logs.length > 1 && masukLog) {
+        const lastLog = logs[logs.length - 1];
+        if (lastLog.id !== masukLog.id) {
+          const diffMs = new Date(lastLog.waktu_absen).getTime() - new Date(masukLog.waktu_absen).getTime();
+          if (diffMs > 30 * 60 * 1000) {
+            pulangLog = lastLog;
+          }
+        }
+      }
+
+      // Hitung keterlambatan dan status (Tepat Waktu vs Telat)
+      let status: "Tepat Waktu" | "Telat" | "Belum Masuk" = "Tepat Waktu";
+      let terlambatMenit = 0;
+
+      if (masukLog) {
+        const mDate = new Date(masukLog.waktu_absen);
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Jakarta",
+          hour: "numeric",
+          minute: "numeric",
+          hour12: false
+        }).formatToParts(mDate);
+        const actualH = parseInt(parts.find(p => p.type === "hour")?.value || "0", 10);
+        const actualM = parseInt(parts.find(p => p.type === "minute")?.value || "0", 10);
+        const actualMinutes = actualH * 60 + actualM;
+
+        const [schH, schM] = schedule.jam_masuk.split(":").map(Number);
+        const targetMinutes = schH * 60 + schM;
+
+        const diff = actualMinutes - targetMinutes;
+        if (diff > schedule.toleransi) {
+          status = "Telat";
+          terlambatMenit = diff;
+        } else if (diff > 0) {
+          status = diff > schedule.toleransi ? "Telat" : "Tepat Waktu";
+          terlambatMenit = diff;
+        } else {
+          status = "Tepat Waktu";
+          terlambatMenit = 0;
+        }
+      } else {
+        status = "Belum Masuk";
+      }
+
+      list.push({
+        id: key,
+        username,
+        nama_guru,
+        tanggal,
+        hari,
+        tanggalFormatted: formatTanggalIndo(tanggal),
+        jamMasuk: masukLog ? formatWaktuWIB(masukLog.waktu_absen) : null,
+        jamMasukRaw: masukLog ? masukLog.waktu_absen : null,
+        jamPulang: pulangLog ? formatWaktuWIB(pulangLog.waktu_absen) : null,
+        jamPulangRaw: pulangLog ? pulangLog.waktu_absen : null,
+        status,
+        terlambatMenit,
+        jadwalMasuk: schedule.jam_masuk,
+        jadwalPulang: schedule.jam_pulang,
+        lokasiMasuk: masukLog?.status_lokasi || null,
+        lokasiPulang: pulangLog?.status_lokasi || null,
+        logs
+      });
+    });
+
+    // Urutkan berdasarkan tanggal terbaru lalu nama guru
+    list.sort((a, b) => {
+      const cmpDate = b.tanggal.localeCompare(a.tanggal);
+      if (cmpDate !== 0) return cmpDate;
+      return a.nama_guru.localeCompare(b.nama_guru);
+    });
+
+    return list;
+  }, [records, schedulesMap]);
+
+  // =====================================================================
+  // FILTERING REKAP HARIAN (Berdasarkan Periode, Guru, Status, Pencarian)
+  // =====================================================================
+  const filteredRekapHarian = useMemo(() => {
+    return allRekapHarian.filter(item => {
+      // 1. Filter Tanggal
+      if (filterMode !== "semua") {
+        if (item.tanggal < dateRangeStart || item.tanggal > dateRangeEnd) {
+          return false;
+        }
+      }
+
+      // 2. Filter Guru
+      if (filterGuru !== "ALL" && item.username !== filterGuru) {
         return false;
       }
 
-      // 3. Status Lokasi filter
-      if (filterLokasi !== "ALL") {
-        const loc = (record.status_lokasi || "").toLowerCase();
-        if (filterLokasi === "DALAM" && !loc.includes("dalam")) return false;
-        if (filterLokasi === "LUAR" && !loc.includes("luar")) return false;
-        if (filterLokasi === "IZIN" && !loc.includes("izin")) return false;
-      }
+      // 3. Filter Status (Tepat Waktu / Telat)
+      if (filterStatus === "TEPAT" && item.status !== "Tepat Waktu") return false;
+      if (filterStatus === "TELAT" && item.status !== "Telat") return false;
 
-      // 4. Keterangan filter
-      if (filterKeterangan !== "ALL") {
-        const ket = (record.keterangan || "").toLowerCase();
-        if (filterKeterangan === "MASUK" && !ket.includes("masuk")) return false;
-        if (filterKeterangan === "PULANG" && !ket.includes("pulang")) return false;
-        if (filterKeterangan === "HADIR" && !ket.includes("hadir") && !ket.includes("masuk")) return false;
-      }
-
-      // 5. Search query
+      // 4. Pencarian Teks
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const nama = (record.nama_guru || "").toLowerCase();
-        const user = (record.username || "").toLowerCase();
-        const ket = (record.keterangan || "").toLowerCase();
-        const stat = (record.status_lokasi || "").toLowerCase();
-        return nama.includes(q) || user.includes(q) || ket.includes(q) || stat.includes(q);
+        const nama = item.nama_guru.toLowerCase();
+        const user = item.username.toLowerCase();
+        const tgl = item.tanggalFormatted.toLowerCase();
+        const stat = item.status.toLowerCase();
+        return nama.includes(q) || user.includes(q) || tgl.includes(q) || stat.includes(q);
       }
 
       return true;
     });
-  }, [records, datePreset, startDate, endDate, filterGuru, filterLokasi, filterKeterangan, searchQuery]);
+  }, [allRekapHarian, filterMode, dateRangeStart, dateRangeEnd, filterGuru, filterStatus, searchQuery]);
+
+  // Filtered raw records untuk tab log detail
+  const filteredRawRecords = useMemo(() => {
+    return records.filter(r => {
+      if (!r.waktu_absen) return false;
+      const recDate = getWIBDateString(r.waktu_absen);
+
+      if (filterMode !== "semua") {
+        if (recDate < dateRangeStart || recDate > dateRangeEnd) return false;
+      }
+      if (filterGuru !== "ALL" && r.username !== filterGuru) return false;
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const nama = (r.nama_guru || "").toLowerCase();
+        const user = (r.username || "").toLowerCase();
+        const ket = (r.keterangan || "").toLowerCase();
+        return nama.includes(q) || user.includes(q) || ket.includes(q);
+      }
+      return true;
+    });
+  }, [records, filterMode, dateRangeStart, dateRangeEnd, filterGuru, searchQuery]);
 
   // Statistik Ringkasan
   const stats = useMemo(() => {
-    const total = filteredRecords.length;
-    let dalamJangkauan = 0;
-    let luarJangkauan = 0;
-    let masukCount = 0;
-    let pulangCount = 0;
+    const total = filteredRekapHarian.length;
+    let tepatWaktu = 0;
+    let telat = 0;
+    let belumMasuk = 0;
+    let pulangTercatat = 0;
     const uniqueGurus = new Set<string>();
 
-    filteredRecords.forEach(r => {
-      if (r.username) uniqueGurus.add(r.username);
-      const loc = (r.status_lokasi || "").toLowerCase();
-      if (loc.includes("dalam")) dalamJangkauan++;
-      else if (loc.includes("luar")) luarJangkauan++;
+    filteredRekapHarian.forEach(item => {
+      uniqueGurus.add(item.username);
+      if (item.status === "Tepat Waktu") tepatWaktu++;
+      else if (item.status === "Telat") telat++;
+      else belumMasuk++;
 
-      const ket = (r.keterangan || "").toLowerCase();
-      if (ket.includes("masuk")) masukCount++;
-      if (ket.includes("pulang")) pulangCount++;
+      if (item.jamPulang) pulangTercatat++;
     });
 
     return {
-      total,
+      totalKehadiran: total,
       guruCount: uniqueGurus.size,
-      dalamJangkauan,
-      luarJangkauan,
-      masukCount,
-      pulangCount,
-      persenDalam: total > 0 ? Math.round((dalamJangkauan / total) * 100) : 0
+      tepatWaktu,
+      telat,
+      belumMasuk,
+      pulangTercatat,
+      persenTepat: total > 0 ? Math.round((tepatWaktu / total) * 100) : 0,
+      persenTelat: total > 0 ? Math.round((telat / total) * 100) : 0
     };
-  }, [filteredRecords]);
+  }, [filteredRekapHarian]);
 
-  // Rekapitulasi agregasi per Guru
+  // Rekapitulasi Akumulasi per Guru
   const rekapPerGuru = useMemo(() => {
-    const guruMap = new Map<string, {
+    const map = new Map<string, {
       username: string;
       nama_guru: string;
-      totalAbsen: number;
-      totalMasuk: number;
-      totalPulang: number;
-      dalamJangkauan: number;
-      luarJangkauan: number;
-      lastAbsen: string;
-      records: AbsensiGuruRecord[];
+      totalHari: number;
+      tepatWaktu: number;
+      telat: number;
+      pulangLengkap: number;
+      terakhirMasuk: string | null;
     }>();
 
-    filteredRecords.forEach(r => {
-      const u = r.username || "unknown";
-      if (!guruMap.has(u)) {
-        guruMap.set(u, {
-          username: u,
-          nama_guru: r.nama_guru || u,
-          totalAbsen: 0,
-          totalMasuk: 0,
-          totalPulang: 0,
-          dalamJangkauan: 0,
-          luarJangkauan: 0,
-          lastAbsen: r.waktu_absen,
-          records: []
+    filteredRekapHarian.forEach(item => {
+      if (!map.has(item.username)) {
+        map.set(item.username, {
+          username: item.username,
+          nama_guru: item.nama_guru,
+          totalHari: 0,
+          tepatWaktu: 0,
+          telat: 0,
+          pulangLengkap: 0,
+          terakhirMasuk: null
         });
       }
 
-      const item = guruMap.get(u)!;
-      item.totalAbsen += 1;
-      item.records.push(r);
-
-      const ket = (r.keterangan || "").toLowerCase();
-      if (ket.includes("masuk")) item.totalMasuk += 1;
-      if (ket.includes("pulang")) item.totalPulang += 1;
-
-      const loc = (r.status_lokasi || "").toLowerCase();
-      if (loc.includes("dalam")) item.dalamJangkauan += 1;
-      else if (loc.includes("luar")) item.luarJangkauan += 1;
-
-      if (new Date(r.waktu_absen) > new Date(item.lastAbsen)) {
-        item.lastAbsen = r.waktu_absen;
+      const g = map.get(item.username)!;
+      g.totalHari += 1;
+      if (item.status === "Tepat Waktu") g.tepatWaktu += 1;
+      if (item.status === "Telat") g.telat += 1;
+      if (item.jamPulang) g.pulangLengkap += 1;
+      if (!g.terakhirMasuk && item.jamMasuk) {
+        g.terakhirMasuk = `${item.tanggalFormatted} (${item.jamMasuk})`;
       }
     });
 
-    return Array.from(guruMap.values()).sort((a, b) => b.totalAbsen - a.totalAbsen);
-  }, [filteredRecords]);
+    return Array.from(map.values()).sort((a, b) => b.totalHari - a.totalHari);
+  }, [filteredRekapHarian]);
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage) || 1;
-  const paginatedRecords = useMemo(() => {
+  // Pagination untuk Rekap Harian
+  const totalPages = Math.ceil(filteredRekapHarian.length / itemsPerPage) || 1;
+  const paginatedRekap = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredRecords.slice(start, start + itemsPerPage);
-  }, [filteredRecords, currentPage, itemsPerPage]);
+    return filteredRekapHarian.slice(start, start + itemsPerPage);
+  }, [filteredRekapHarian, currentPage, itemsPerPage]);
 
-  // Export CSV
-  const handleExportCSV = () => {
-    if (filteredRecords.length === 0) {
+  // Navigasi tanggal cepat (Hari / Minggu / Bulan)
+  const handleNavigateDate = (direction: -1 | 1) => {
+    if (filterMode === "hari") {
+      const d = new Date(selectedDay + "T00:00:00");
+      d.setDate(d.getDate() + direction);
+      setSelectedDay(getWIBDateString(d));
+    } else if (filterMode === "minggu") {
+      const d = new Date(selectedWeekDate + "T00:00:00");
+      d.setDate(d.getDate() + (direction * 7));
+      setSelectedWeekDate(getWIBDateString(d));
+    } else if (filterMode === "bulan") {
+      let m = selectedMonth + direction;
+      let y = selectedYear;
+      if (m < 0) {
+        m = 11;
+        y -= 1;
+      } else if (m > 11) {
+        m = 0;
+        y += 1;
+      }
+      setSelectedMonth(m);
+      setSelectedYear(y);
+    }
+  };
+
+  // =====================================================================
+  // FITUR DOWNLOAD EXCEL (.XLSX)
+  // =====================================================================
+  const handleDownloadExcel = () => {
+    if (filteredRekapHarian.length === 0) {
       MySwal.fire({
         icon: "warning",
         title: "Tidak Ada Data",
-        text: "Tidak ada baris data yang cocok dengan filter untuk diekspor.",
+        text: "Tidak ada data presensi guru yang cocok untuk diekspor pada filter ini.",
         confirmButtonColor: "#2563eb"
       });
       return;
     }
 
-    const headers = [
-      "ID",
-      "Waktu Absen (WIB)",
-      "Tanggal",
-      "Nama Guru",
-      "Username",
-      "Status Lokasi",
-      "Latitude",
-      "Longitude",
-      "Keterangan"
-    ];
-
-    const rows = filteredRecords.map(r => [
-      `"${r.id || ""}"`,
-      `"${formatWaktuWIB(r.waktu_absen)}"`,
-      `"${formatTanggalIndo(r.waktu_absen)}"`,
-      `"${(r.nama_guru || "").replace(/"/g, '""')}"`,
-      `"${r.username || ""}"`,
-      `"${r.status_lokasi || ""}"`,
-      r.latitude ? `${r.latitude}` : '""',
-      r.longitude ? `${r.longitude}` : '""',
-      `"${(r.keterangan || "").replace(/"/g, '""')}"`
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + 
-      [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Rekap_Absensi_Guru_${startDate}_sd_${endDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    MySwal.fire({
-      icon: "success",
-      title: "File Berhasil Diunduh",
-      text: `Data ${filteredRecords.length} baris telah diekspor ke file CSV.`,
-      timer: 1800,
-      showConfirmButton: false
-    });
-  };
-
-  // Cetak / Print Laporan
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // Delete handler (Admin only)
-  const handleDeleteRecord = async (record: AbsensiGuruRecord) => {
-    if (!isAdmin) return;
-
-    const res = await MySwal.fire({
-      icon: "warning",
-      title: "Hapus Log Absensi?",
-      html: `Apakah Anda yakin ingin menghapus data absensi <b>${record.nama_guru}</b> pada <i>${formatTanggalIndo(record.waktu_absen)} ${formatWaktuWIB(record.waktu_absen)}</i>?`,
-      showCancelButton: true,
-      confirmButtonText: "Ya, Hapus",
-      cancelButtonText: "Batal",
-      confirmButtonColor: "#e11d48"
-    });
-
-    if (!res.isConfirmed) return;
-
+    setIsExportingExcel(true);
     try {
-      const { error } = await supabase
-        .from("absensi_guru")
-        .delete()
-        .eq("id", record.id);
+      const aoa: any[][] = [];
+      // Header Kop Resmi
+      aoa.push(["YAYASAN MUTTAQIN KOTA MADIUN"]);
+      aoa.push(["SMP AL MUTTAQIN"]);
+      aoa.push(["LAPORAN REKAPITULASI PRESENSI DEWAN GURU"]);
+      aoa.push(["Sistem Informasi Presensi & Manajemen Kehadiran"]);
+      aoa.push([]);
 
-      if (error) throw error;
+      if (filterMode === "hari") {
+        // Mode PER HARI: Header Per Hari Lengkap
+        aoa.push(["HARI / TANGGAL:", formatTanggalIndo(selectedDay).toUpperCase()]);
+        aoa.push(["Jadwal Kerja:", `Masuk: ${currentHariSchedule.jam_masuk} WIB (Toleransi: ${currentHariSchedule.toleransi} Menit) | Pulang: ${currentHariSchedule.jam_pulang} WIB`]);
+        aoa.push(["Ringkasan Kehadiran:", `Total: ${filteredRekapHarian.length} Guru | Tepat Waktu: ${stats.tepatWaktu} | Telat: ${stats.telat} | Sudah Absen Pulang: ${stats.pulangTercatat}`]);
+        aoa.push(["Dicetak pada:", `${formatTanggalIndo(todayStr)} ${formatWaktuWIB(new Date().toISOString())}`]);
+        aoa.push([]);
+        // Kolom Tabel Rekap Harian
+        aoa.push(["No", "Nama Guru", "Username", "Jam Masuk", "Jam Pulang", "Status Kehadiran", "Keterlambatan", "Jadwal Masuk", "Jadwal Pulang", "Keterangan"]);
 
-      setRecords(prev => prev.filter(r => r.id !== record.id));
-      if (selectedRecord?.id === record.id) setSelectedRecord(null);
+        filteredRekapHarian.forEach((item, idx) => {
+          const pulangText = item.jamPulang ? item.jamPulang : (item.tanggal === todayStr ? "Belum Pulang" : "Tidak Absen Pulang");
+          aoa.push([
+            idx + 1,
+            item.nama_guru,
+            item.username,
+            item.jamMasuk || "-",
+            pulangText,
+            item.status,
+            item.status === "Telat" ? `${item.terlambatMenit} Menit` : "Tepat Waktu",
+            `${item.jadwalMasuk} WIB`,
+            `${item.jadwalPulang} WIB`,
+            item.status === "Telat" ? `Terlambat ${item.terlambatMenit} menit` : "Hadir Tepat Waktu"
+          ]);
+        });
+      } else {
+        // Mode Multi-Hari (Minggu / Bulan / Semua): Dikelompokkan dengan Header Per Hari untuk setiap tanggal
+        aoa.push(["Periode:", periodeLabel]);
+        aoa.push(["Ringkasan Keseluruhan:", `Total: ${stats.totalKehadiran} data | Guru Tercatat: ${stats.guruCount} orang | Tepat Waktu: ${stats.tepatWaktu} | Telat: ${stats.telat}`]);
+        aoa.push(["Dicetak pada:", `${formatTanggalIndo(todayStr)} ${formatWaktuWIB(new Date().toISOString())}`]);
+        aoa.push([]);
+
+        // Kelompokkan data per tanggal
+        const dateGroups = new Map<string, RekapHarianGuru[]>();
+        filteredRekapHarian.forEach(item => {
+          if (!dateGroups.has(item.tanggal)) dateGroups.set(item.tanggal, []);
+          dateGroups.get(item.tanggal)!.push(item);
+        });
+
+        const sortedDates = Array.from(dateGroups.keys()).sort((a, b) => b.localeCompare(a));
+
+        sortedDates.forEach(dateKey => {
+          const groupItems = dateGroups.get(dateKey)!;
+          const first = groupItems[0];
+
+          // Subheader per Hari
+          aoa.push([`=== HARI / TANGGAL: ${first.hari.toUpperCase()}, ${first.tanggalFormatted.toUpperCase()} (Jadwal: ${first.jadwalMasuk} - ${first.jadwalPulang} WIB) — ${groupItems.length} GURU ===`]);
+          aoa.push(["No", "Nama Guru", "Username", "Jam Masuk", "Jam Pulang", "Status Kehadiran", "Keterlambatan", "Keterangan"]);
+
+          groupItems.forEach((teacher, idx) => {
+            const pulangText = teacher.jamPulang ? teacher.jamPulang : (teacher.tanggal === todayStr ? "Belum Pulang" : "Tidak Absen Pulang");
+            aoa.push([
+              idx + 1,
+              teacher.nama_guru,
+              teacher.username,
+              teacher.jamMasuk || "-",
+              pulangText,
+              teacher.status,
+              teacher.status === "Telat" ? `${teacher.terlambatMenit} Menit` : "Tepat Waktu",
+              teacher.status === "Telat" ? `Terlambat ${teacher.terlambatMenit} menit` : "Hadir Tepat Waktu"
+            ]);
+          });
+
+          aoa.push([]); // baris kosong pemisah antar hari
+        });
+      }
+
+      // Buat worksheet dari array of arrays
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+      // Atur lebar kolom agar rapi
+      ws["!cols"] = [
+        { wch: 6 },  // No
+        { wch: 32 }, // Nama Guru
+        { wch: 20 }, // Username
+        { wch: 18 }, // Jam Masuk
+        { wch: 18 }, // Jam Pulang
+        { wch: 18 }, // Status Kehadiran
+        { wch: 18 }, // Keterlambatan
+        { wch: 16 }, // Jadwal Masuk
+        { wch: 16 }, // Jadwal Pulang
+        { wch: 24 }  // Keterangan
+      ];
+
+      // Buat workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Rekap Presensi Guru");
+
+      // Nama file berdasarkan periode
+      const cleanLabel = periodeLabel.replace(/[/\\?%*:|"<>]/g, "_");
+      const filename = `Rekap_Presensi_Guru_${cleanLabel}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
 
       MySwal.fire({
         icon: "success",
-        title: "Data Dihapus",
-        text: "Catatan absensi telah berhasil dihapus dari database.",
-        timer: 1500,
+        title: "Excel Berhasil Diunduh!",
+        html: `File <b>${filename}</b> berisi rekapan presensi <b>SMP AL MUTTAQIN</b> siap dibuka.`,
+        timer: 2000,
         showConfirmButton: false
       });
     } catch (err: any) {
+      console.error("Gagal export excel:", err);
       MySwal.fire({
         icon: "error",
-        title: "Gagal Menghapus",
-        text: err?.message || "Terjadi kendala saat menghapus data.",
+        title: "Gagal Mengunduh Excel",
+        text: err?.message || "Terjadi kendala saat menyusun file Excel.",
         confirmButtonColor: "#2563eb"
       });
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  // =====================================================================
+  // FITUR DOWNLOAD PDF (.PDF)
+  // =====================================================================
+  const handleDownloadPDF = () => {
+    if (filteredRekapHarian.length === 0) {
+      MySwal.fire({
+        icon: "warning",
+        title: "Tidak Ada Data",
+        text: "Tidak ada data presensi guru yang cocok untuk dicetak ke PDF.",
+        confirmButtonColor: "#2563eb"
+      });
+      return;
+    }
+
+    setIsExportingPdf(true);
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      // 1. KOP SURAT RESMI
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text("SMP AL MUTTAQIN", 105, 15, { align: "center" });
+
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "normal");
+      doc.text("YAYASAN MUTTAQIN KOTA MADIUN", 105, 20.5, { align: "center" });
+      doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.text("Sistem Informasi Presensi & Manajemen Kehadiran Dewan Guru", 105, 25, { align: "center" });
+
+      // Garis ganda pembatas KOP
+      doc.setLineWidth(0.8);
+      doc.line(14, 27.5, 196, 27.5);
+      doc.setLineWidth(0.2);
+      doc.line(14, 28.5, 196, 28.5);
+
+      // 2. JUDUL LAPORAN
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text("LAPORAN REKAPITULASI PRESENSI GURU", 105, 36, { align: "center" });
+
+      let lastTableY = 54;
+
+      if (filterMode === "hari") {
+        // 3A. HEADER PER HARI UNTUK MODE HARIAN
+        doc.setFillColor(241, 245, 249); // slate-100
+        doc.roundedRect(14, 41, 182, 14, 2, 2, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(30, 58, 138); // blue-900
+        doc.text(`HARI / TANGGAL : ${formatTanggalIndo(selectedDay).toUpperCase()}`, 18, 46.5);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.2);
+        doc.setTextColor(51, 65, 85); // slate-700
+        doc.text(`Jadwal Kerja: Masuk ${currentHariSchedule.jam_masuk} WIB (Toleransi ${currentHariSchedule.toleransi} mnt) | Pulang ${currentHariSchedule.jam_pulang} WIB`, 18, 51.5);
+        doc.text(`Total Hadir: ${filteredRekapHarian.length} Guru | Tepat: ${stats.tepatWaktu} | Telat: ${stats.telat}`, 192, 51.5, { align: "right" });
+
+        const tableHead = [["No", "Nama Guru", "Jam Masuk", "Jam Pulang", "Status Kehadiran", "Keterangan"]];
+        const tableBody = filteredRekapHarian.map((item, idx) => {
+          const pulangText = item.jamPulang ? item.jamPulang : (item.tanggal === todayStr ? "Belum Pulang" : "Tidak Absen Pulang");
+          let statusText: string = item.status;
+          let ketText = "Hadir Tepat Waktu";
+          if (item.status === "Telat") {
+            statusText = `Telat (${item.terlambatMenit} mnt)`;
+            ketText = `Terlambat ${item.terlambatMenit} mnt`;
+          }
+          return [
+            idx + 1,
+            item.nama_guru,
+            item.jamMasuk || "-",
+            pulangText,
+            statusText,
+            ketText
+          ];
+        });
+
+        autoTable(doc, {
+          startY: 58,
+          head: tableHead,
+          body: tableBody,
+          theme: "striped",
+          headStyles: {
+            fillColor: [30, 58, 138], // Navy blue #1e3a8a
+            textColor: [255, 255, 255],
+            fontSize: 8.5,
+            fontStyle: "bold",
+            halign: "center"
+          },
+          styles: {
+            fontSize: 8,
+            cellPadding: 2.2,
+            valign: "middle"
+          },
+          columnStyles: {
+            0: { halign: "center", cellWidth: 10 },
+            1: { cellWidth: 58 },
+            2: { halign: "center", cellWidth: 28 },
+            3: { halign: "center", cellWidth: 28 },
+            4: { halign: "center", cellWidth: 28 },
+            5: { cellWidth: 30 }
+          },
+          didParseCell: (data) => {
+            if (data.section === "body" && data.column.index === 4) {
+              const rawText = String(data.cell.raw);
+              if (rawText.includes("Tepat Waktu")) {
+                data.cell.styles.textColor = [16, 149, 106];
+                data.cell.styles.fontStyle = "bold";
+              } else if (rawText.includes("Telat")) {
+                data.cell.styles.textColor = [225, 29, 72];
+                data.cell.styles.fontStyle = "bold";
+              }
+            }
+          },
+          margin: { left: 14, right: 14 }
+        });
+
+        lastTableY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY : 180;
+      } else {
+        // 3B. MODE MULTI-HARI: GROUPING DENGAN HEADER PER HARI
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(51, 65, 85);
+        doc.text(`Periode Laporan: ${periodeLabel}`, 14, 43);
+        doc.text(`Total Kehadiran: ${stats.totalKehadiran} data | Guru Tercatat: ${stats.guruCount} orang | Tepat: ${stats.tepatWaktu} | Telat: ${stats.telat}`, 14, 47.5);
+        doc.text(`Dicetak: ${formatTanggalIndo(todayStr)} ${formatWaktuWIB(new Date().toISOString())}`, 196, 47.5, { align: "right" });
+
+        // Kelompokkan data per tanggal
+        const dateGroups = new Map<string, RekapHarianGuru[]>();
+        filteredRekapHarian.forEach(item => {
+          if (!dateGroups.has(item.tanggal)) dateGroups.set(item.tanggal, []);
+          dateGroups.get(item.tanggal)!.push(item);
+        });
+        const sortedDates = Array.from(dateGroups.keys()).sort((a, b) => b.localeCompare(a));
+
+        let currentY = 52;
+
+        sortedDates.forEach((dateKey) => {
+          const groupItems = dateGroups.get(dateKey)!;
+          const first = groupItems[0];
+
+          // Cek sisa tinggi halaman, jika mepet buat halaman baru
+          if (currentY + 35 > doc.internal.pageSize.height) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          // Header Per Hari bar untuk tiap tanggal
+          doc.setFillColor(241, 245, 249);
+          doc.roundedRect(14, currentY, 182, 7.5, 1.5, 1.5, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8.5);
+          doc.setTextColor(30, 58, 138);
+          doc.text(`HARI / TANGGAL : ${first.hari.toUpperCase()}, ${first.tanggalFormatted.toUpperCase()} (Jadwal: ${first.jadwalMasuk} - ${first.jadwalPulang} WIB)`, 18, currentY + 5.2);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(71, 85, 105);
+          doc.text(`${groupItems.length} Guru`, 192, currentY + 5.2, { align: "right" });
+
+          const tableHead = [["No", "Nama Guru", "Jam Masuk", "Jam Pulang", "Status Kehadiran", "Keterangan"]];
+          const tableBody = groupItems.map((item, idx) => {
+            const pulangText = item.jamPulang ? item.jamPulang : (item.tanggal === todayStr ? "Belum Pulang" : "Tidak Absen Pulang");
+            let statusText: string = item.status;
+            let ketText = "Hadir Tepat Waktu";
+            if (item.status === "Telat") {
+              statusText = `Telat (${item.terlambatMenit} mnt)`;
+              ketText = `Terlambat ${item.terlambatMenit} mnt`;
+            }
+            return [
+              idx + 1,
+              item.nama_guru,
+              item.jamMasuk || "-",
+              pulangText,
+              statusText,
+              ketText
+            ];
+          });
+
+          autoTable(doc, {
+            startY: currentY + 9,
+            head: tableHead,
+            body: tableBody,
+            theme: "striped",
+            headStyles: {
+              fillColor: [51, 65, 85], // slate-700
+              textColor: [255, 255, 255],
+              fontSize: 8,
+              fontStyle: "bold",
+              halign: "center"
+            },
+            styles: {
+              fontSize: 7.5,
+              cellPadding: 2,
+              valign: "middle"
+            },
+            columnStyles: {
+              0: { halign: "center", cellWidth: 10 },
+              1: { cellWidth: 58 },
+              2: { halign: "center", cellWidth: 28 },
+              3: { halign: "center", cellWidth: 28 },
+              4: { halign: "center", cellWidth: 28 },
+              5: { cellWidth: 30 }
+            },
+            didParseCell: (data) => {
+              if (data.section === "body" && data.column.index === 4) {
+                const rawText = String(data.cell.raw);
+                if (rawText.includes("Tepat Waktu")) {
+                  data.cell.styles.textColor = [16, 149, 106];
+                  data.cell.styles.fontStyle = "bold";
+                } else if (rawText.includes("Telat")) {
+                  data.cell.styles.textColor = [225, 29, 72];
+                  data.cell.styles.fontStyle = "bold";
+                }
+              }
+            },
+            margin: { left: 14, right: 14 }
+          });
+
+          currentY = (doc as any).lastAutoTable.finalY + 7;
+        });
+
+        lastTableY = currentY;
+      }
+
+      // 4. BAGIAN TANDA TANGAN DI AKHIR HALAMAN
+      const finalY = lastTableY + 12;
+      const pageHeight = doc.internal.pageSize.height;
+
+      // Jika ruang tidak cukup untuk tanda tangan, tambahkan halaman baru
+      if (finalY + 35 > pageHeight) {
+        doc.addPage();
+      }
+
+      const signY = finalY + 35 > pageHeight ? 25 : finalY;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 41, 59);
+
+      // Kiri: Petugas Presensi
+      doc.text("Petugas Presensi / Admin,", 25, signY);
+      doc.text("( .................................................... )", 25, signY + 22);
+
+      // Kanan: Mengetahui Kepala Sekolah
+      doc.text("Mengetahui,", 145, signY);
+      doc.text("Kepala SMP Al Muttaqin", 145, signY + 4.5);
+      doc.text("( .................................................... )", 145, signY + 22);
+
+      const cleanLabel = periodeLabel.replace(/[/\\?%*:|"<>]/g, "_");
+      const filename = `Rekap_Presensi_Guru_${cleanLabel}.pdf`;
+      doc.save(filename);
+
+      MySwal.fire({
+        icon: "success",
+        title: "PDF Berhasil Diunduh!",
+        html: `File dokumen <b>${filename}</b> resmi SMP AL MUTTAQIN siap dicetak.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      console.error("Gagal export PDF:", err);
+      MySwal.fire({
+        icon: "error",
+        title: "Gagal Mengunduh PDF",
+        text: err?.message || "Terjadi kendala saat menyusun file PDF.",
+        confirmButtonColor: "#2563eb"
+      });
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -535,15 +1088,15 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
       {/* 1. PAGE HEADER */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <PageHeader
-          category="SEKOLAH & PRESENSI"
-          title="Rekapan Absensi Guru"
-          description="Laporan rekapitulasi kehadiran dan log absensi seluruh dewan guru berbasis database real-time."
+          category="SMP AL MUTTAQIN • YAYASAN MUTTAQIN KOTA MADIUN"
+          title="Rekapitulasi Presensi Guru"
+          description="Rekap data kehadiran guru harian mencakup jam masuk, jam pulang, serta status tepat waktu / telat secara otomatis."
         />
 
-        {/* Action Buttons */}
+        {/* Action Buttons: Sinkronisasi, Download Excel & PDF */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Database Live Status Indicator */}
-          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium ${
+          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
             dbStatus === "connected"
               ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
               : dbStatus === "checking"
@@ -555,440 +1108,675 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
             }`} />
             <span>
               {dbStatus === "connected"
-                ? `Supabase DB: Terhubung ${dbPingTime ? `(${dbPingTime}ms)` : ""}`
+                ? `Database Aktif ${dbPingTime ? `(${dbPingTime}ms)` : ""}`
                 : dbStatus === "checking"
-                ? "Memeriksa Koneksi..."
-                : "Gagal Terhubung"}
+                ? "Memeriksa..."
+                : "Offline"}
             </span>
           </div>
-
-          <button
-            type="button"
-            onClick={handleTestDatabaseConnection}
-            disabled={isTestingInsert}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-60"
-            title="Kirim 1 catatan uji coba untuk memverifikasi tabel absensi_guru"
-          >
-            <CheckCircle2 className={`w-3.5 h-3.5 ${isTestingInsert ? "animate-spin" : ""}`} />
-            <span>{isTestingInsert ? "Menguji..." : "Tes Koneksi DB"}</span>
-          </button>
 
           <button
             type="button"
             onClick={() => fetchAbsensiGuru(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer shadow-2xs"
             title="Muat ulang data dari database"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-blue-600" : ""}`} />
-            <span>{isRefreshing ? "Sinkronisasi..." : "Perbarui Data"}</span>
+            <span>{isRefreshing ? "Menyegarkan..." : "Refresh"}</span>
           </button>
 
+          {/* TOMBOL UNDUH EXCEL */}
           <button
             type="button"
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
-            title="Download rekapan format CSV / Excel"
+            onClick={handleDownloadExcel}
+            disabled={isExportingExcel || isLoading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Download rekapan presensi format Excel (.xlsx)"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Ekspor Excel / CSV</span>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>{isExportingExcel ? "Menyiapkan Excel..." : "Unduh Excel"}</span>
           </button>
 
+          {/* TOMBOL UNDUH PDF */}
           <button
             type="button"
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
-            title="Cetak laporan resmi"
+            onClick={handleDownloadPDF}
+            disabled={isExportingPdf || isLoading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Download dokumen laporan resmi format PDF"
           >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Cetak Dokumen</span>
+            <Download className="w-4 h-4" />
+            <span>{isExportingPdf ? "Menyiapkan PDF..." : "Unduh PDF"}</span>
           </button>
         </div>
       </div>
 
-      {/* 2. STATISTIC CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Card 1: Total Presensi */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-              Total Log Absen
-            </span>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-                {stats.total}
-              </span>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                kali
-              </span>
+      {/* 2. STATISTIC SUMMARY CARDS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Kehadiran */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Kehadiran</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <Calendar className="w-4 h-4" />
             </div>
           </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-slate-900 dark:text-white">
+              {stats.totalKehadiran}
+            </span>
+            <span className="text-xs font-semibold text-slate-400">rekaman</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1 truncate">
+            Periode: {periodeLabel}
+          </p>
         </div>
 
-        {/* Card 2: Jumlah Guru Aktif */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-            <Users className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-              Guru Terekam
-            </span>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-                {stats.guruCount}
-              </span>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                orang
-              </span>
+        {/* Guru Terekam */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Guru Terekam</span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <Users className="w-4 h-4" />
             </div>
           </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-slate-900 dark:text-white">
+              {stats.guruCount}
+            </span>
+            <span className="text-xs font-semibold text-slate-400">orang guru</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1 truncate">
+            Presensi pulang tercatat: {stats.pulangTercatat}
+          </p>
         </div>
 
-        {/* Card 3: Dalam Jangkauan (Radius Valid) */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-100 dark:border-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-              Dalam Jangkauan
-            </span>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                {stats.dalamJangkauan}
-              </span>
-              <span className="text-[11px] font-bold text-emerald-600/90 dark:text-emerald-400/90">
-                ({stats.persenDalam}%)
-              </span>
+        {/* Tepat Waktu */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tepat Waktu</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              {stats.tepatWaktu}
+            </span>
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md">
+              {stats.persenTepat}%
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Masuk sebelum jam batas
+          </p>
         </div>
 
-        {/* Card 4: Luar Jangkauan */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-100 dark:border-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-            <AlertTriangle className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-              Luar Jangkauan
-            </span>
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-extrabold text-amber-600 dark:text-amber-400">
-                {stats.luarJangkauan}
-              </span>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                log
-              </span>
+        {/* Telat */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4.5 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Telat / Terlambat</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
             </div>
           </div>
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
+              {stats.telat}
+            </span>
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-md">
+              {stats.persenTelat}%
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Masuk setelah toleransi
+          </p>
         </div>
       </div>
 
-      {/* 3. FILTER & VIEW MODE BAR */}
+      {/* 3. FILTER BAR: PER HARI, PER MINGGU, PER BULAN */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-4">
-        {/* Top: View Mode Tabs & Date Presets */}
+        {/* Baris Atas: Tabs Mode Tampilan + Segmented Filter Periode */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Mode Switcher */}
-          <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/60 self-start">
+          {/* TAB TAMPILAN */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
               type="button"
-              onClick={() => { setViewMode("table"); setCurrentPage(1); }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === "table"
+              onClick={() => { setViewMode("rekap_harian"); setCurrentPage(1); }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                viewMode === "rekap_harian"
                   ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              Tabel Log Absensi ({filteredRecords.length})
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Rekap Presensi Guru ({filteredRekapHarian.length})</span>
             </button>
             <button
               type="button"
               onClick={() => { setViewMode("rekap_guru"); }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 viewMode === "rekap_guru"
                   ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
-              Rekapitulasi per Guru ({rekapPerGuru.length})
+              <Users className="w-3.5 h-3.5" />
+              <span>Akumulasi per Guru ({rekapPerGuru.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setViewMode("log_detail"); setCurrentPage(1); }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                viewMode === "log_detail"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Log Scan Detail ({filteredRawRecords.length})</span>
             </button>
           </div>
 
-          {/* Quick Date Presets */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/* FILTER PERIODE (PER HARI / PER MINGGU / PER BULAN) */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
               <CalendarDays className="w-3.5 h-3.5" />
-              <span>Periode:</span>
+              <span>Pilih Periode:</span>
             </span>
 
-            {(["today", "week", "month", "all", "custom"] as const).map(preset => {
-              const labels = {
-                today: "Hari Ini",
-                week: "Minggu Ini",
-                month: "Bulan Ini",
-                all: "Semua",
-                custom: "Kustom"
-              };
-              const isActive = datePreset === preset;
+            {[
+              { id: "hari", label: "Per Hari" },
+              { id: "minggu", label: "Per Minggu" },
+              { id: "bulan", label: "Per Bulan" },
+              { id: "semua", label: "Semua" },
+              { id: "kustom", label: "Kustom" }
+            ].map((p) => {
+              const isActive = filterMode === p.id;
               return (
                 <button
-                  key={preset}
+                  key={p.id}
                   type="button"
-                  onClick={() => handleDatePresetChange(preset)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  onClick={() => {
+                    setFilterMode(p.id as any);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     isActive
                       ? "bg-blue-600 text-white shadow-xs"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-750"
                   }`}
                 >
-                  {labels[preset]}
+                  {p.label}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Date Inputs (if custom / active) */}
-        {datePreset === "custom" && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Dari:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-hidden"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Sampai:</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-hidden"
-              />
-            </div>
-          </div>
-        )}
+        {/* Baris Tengah: Controller Khusus Sesuai Mode Periode */}
+        <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          {/* 1. Mode PER HARI */}
+          {filterMode === "hari" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleNavigateDate(-1)}
+                className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Hari Sebelumnya"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Kemarin</span>
+              </button>
 
-        {/* Search & Filter Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-          {/* 1. Search Box */}
+              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-900 dark:text-white">
+                <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                <input
+                  type="date"
+                  value={selectedDay}
+                  onChange={(e) => setSelectedDay(e.target.value)}
+                  className="bg-transparent outline-none cursor-pointer font-semibold"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleNavigateDate(1)}
+                className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Hari Berikutnya"
+              >
+                <span className="hidden sm:inline">Besok</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDay(todayStr)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+                  selectedDay === todayStr
+                    ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300"
+                    : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                Hari Ini
+              </button>
+            </div>
+          )}
+
+          {/* 2. Mode PER MINGGU */}
+          {filterMode === "minggu" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleNavigateDate(-1)}
+                className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Minggu Lalu"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Minggu Lalu</span>
+              </button>
+
+              <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
+                <span>{periodeLabel}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleNavigateDate(1)}
+                className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Minggu Depan"
+              >
+                <span>Minggu Depan</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedWeekDate(todayStr)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
+              >
+                Minggu Ini
+              </button>
+            </div>
+          )}
+
+          {/* 3. Mode PER BULAN */}
+          {filterMode === "bulan" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleNavigateDate(-1)}
+                className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Bulan Lalu"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Bulan Lalu</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
+                >
+                  {BULAN_NAMES.map((m, idx) => (
+                    <option key={m} value={idx}>{m}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer"
+                >
+                  {[2024, 2025, 2026, 2027].map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleNavigateDate(1)}
+                className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                title="Bulan Depan"
+              >
+                <span>Bulan Depan</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMonth(today.getMonth());
+                  setSelectedYear(today.getFullYear());
+                }}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+                  selectedMonth === today.getMonth() && selectedYear === today.getFullYear()
+                    ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300"
+                    : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                Bulan Ini
+              </button>
+            </div>
+          )}
+
+          {/* 4. Mode KUSTOM */}
+          {filterMode === "kustom" && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold text-slate-600 dark:text-slate-400">Dari:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-white outline-none"
+              />
+              <span className="font-semibold text-slate-600 dark:text-slate-400">Sampai:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-white outline-none"
+              />
+            </div>
+          )}
+
+          {/* Informasi Periode Aktif */}
+          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <span>Menampilkan data:</span>
+            <span className="text-blue-600 dark:text-blue-400 font-bold">{periodeLabel}</span>
+          </div>
+        </div>
+
+        {/* Baris Bawah: Pencarian, Filter Guru, Filter Status */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+          {/* Pencarian Nama Guru */}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Cari guru, username, atau catatan..."
+              placeholder="Cari nama guru atau username..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 outline-hidden"
+              className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
 
-          {/* 2. Filter Guru */}
+          {/* Dropdown Filter Guru */}
           <div>
             <select
               value={filterGuru}
               onChange={(e) => { setFilterGuru(e.target.value); setCurrentPage(1); }}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-hidden"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
             >
               <option value="ALL">Semua Guru ({daftarGuruList.length})</option>
               {daftarGuruList.map(g => (
                 <option key={g.username} value={g.username}>
-                  {g.nama_guru} ({g.username})
+                  {g.nama_guru} (@{g.username})
                 </option>
               ))}
             </select>
           </div>
 
-          {/* 3. Filter Status Lokasi */}
+          {/* Dropdown Filter Status (Tepat Waktu / Telat) */}
           <div>
             <select
-              value={filterLokasi}
-              onChange={(e) => { setFilterLokasi(e.target.value); setCurrentPage(1); }}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-hidden"
+              value={filterStatus}
+              onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
             >
-              <option value="ALL">Semua Status Lokasi</option>
-              <option value="DALAM">Dalam Jangkauan</option>
-              <option value="LUAR">Luar Jangkauan</option>
-              <option value="IZIN">Pengajuan Izin</option>
+              <option value="ALL">Semua Status Presensi</option>
+              <option value="TEPAT">✓ Hanya Tepat Waktu</option>
+              <option value="TELAT">⏰ Hanya Telat / Terlambat</option>
             </select>
           </div>
 
-          {/* 4. Filter Keterangan */}
-          <div>
-            <select
-              value={filterKeterangan}
-              onChange={(e) => { setFilterKeterangan(e.target.value); setCurrentPage(1); }}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-hidden"
+          {/* Tombol Reset Filter */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFilterMode("bulan");
+                setSelectedMonth(today.getMonth());
+                setSelectedYear(today.getFullYear());
+                setSearchQuery("");
+                setFilterGuru("ALL");
+                setFilterStatus("ALL");
+                setCurrentPage(1);
+              }}
+              className="w-full py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer text-center"
             >
-              <option value="ALL">Semua Keterangan / Jenis</option>
-              <option value="MASUK">Presensi Masuk</option>
-              <option value="PULANG">Presensi Pulang</option>
-              <option value="HADIR">Hadir / Lainnya</option>
-            </select>
+              Reset Filter
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 4. CONTENT DISPLAY BASED ON VIEW MODE */}
-      {viewMode === "table" ? (
-        /* TABEL LOG ABSENSI GURU */
+      {/* 4. MAIN CONTENT DISPLAY: SESUAI VIEW MODE */}
+      {viewMode === "rekap_harian" ? (
+        /* =================================================================== */
+        /* TABEL REKAP PRESENSI GURU (NAMA, TANGGAL, JAM MASUK, JAM PULANG, STATUS) */
+        /* =================================================================== */
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
           {isLoading ? (
             <div className="p-12 text-center text-slate-500 dark:text-slate-400">
               <RefreshCw className="w-8 h-8 animate-spin mx-auto text-blue-500 mb-3" />
-              <p className="text-sm font-semibold">Memuat Data Absensi Guru dari Database...</p>
-              <p className="text-xs text-slate-400 mt-1">Mengambil rekaman tabel absensi_guru Supabase</p>
+              <p className="text-sm font-semibold">Memuat Data Rekap Presensi Guru...</p>
+              <p className="text-xs text-slate-400 mt-1">Mengagregasikan data masuk, pulang, dan status keterlambatan</p>
             </div>
-          ) : filteredRecords.length === 0 ? (
+          ) : filteredRekapHarian.length === 0 ? (
             <div className="p-12 text-center text-slate-500 dark:text-slate-400 space-y-2">
               <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
                 <Clock className="w-6 h-6" />
               </div>
               <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                Tidak Ada Data Absensi
+                Tidak Ada Data Presensi
               </h4>
               <p className="text-xs max-w-sm mx-auto text-slate-400">
-                Tidak ditemukan rekaman absensi yang cocok dengan kriteria filter tanggal atau pencarian yang dipilih.
+                Tidak ditemukan rekaman presensi guru untuk periode <b>{periodeLabel}</b> dengan filter yang dipilih.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-3 px-4 w-12 text-center">No</th>
-                    <th className="py-3 px-4">Waktu Absen</th>
-                    <th className="py-3 px-4">Nama Guru</th>
-                    <th className="py-3 px-4">Username</th>
-                    <th className="py-3 px-4">Status Lokasi</th>
-                    <th className="py-3 px-4">Koordinat GPS</th>
-                    <th className="py-3 px-4">Keterangan</th>
-                    <th className="py-3 px-4 text-center w-24">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {paginatedRecords.map((rec, index) => {
-                    const rowNumber = (currentPage - 1) * itemsPerPage + index + 1;
-                    const isWithin = (rec.status_lokasi || "").toLowerCase().includes("dalam");
-                    const isOutside = (rec.status_lokasi || "").toLowerCase().includes("luar");
-                    const isIzin = (rec.status_lokasi || "").toLowerCase().includes("izin");
+            <div>
+              {/* HEADER PER HARI BANNER KHUSUS MODE HARIAN */}
+              {filterMode === "hari" && (
+                <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-slate-50 dark:from-slate-800 dark:via-slate-800/80 dark:to-slate-900 px-5 py-3.5 border-b border-blue-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                      <CalendarDays className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-600 text-white">
+                          Header Presensi Harian
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          SMP Al Muttaqin • Yayasan Muttaqin Kota Madiun
+                        </span>
+                      </div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white capitalize mt-0.5">
+                        {formatTanggalIndo(selectedDay)}
+                      </h3>
+                    </div>
+                  </div>
 
-                    return (
-                      <tr 
-                        key={rec.id || index}
-                        className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
-                      >
-                        <td className="py-3 px-4 text-center font-medium text-slate-400">
-                          {rowNumber}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <div className="font-bold text-slate-900 dark:text-slate-100">
-                            {formatWaktuWIB(rec.waktu_absen)}
-                          </div>
-                          <div className="text-[11px] text-slate-400">
-                            {formatTanggalIndo(rec.waktu_absen)}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-                            <span>{rec.nama_guru || "Guru"}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                          @{rec.username}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          {isWithin ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Dalam Jangkauan</span>
-                            </span>
-                          ) : isOutside ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>Luar Jangkauan</span>
-                            </span>
-                          ) : isIzin ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                              <Info className="w-3 h-3" />
-                              <span>Pengajuan Izin</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                              {rec.status_lokasi || "-"}
-                            </span>
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-semibold text-slate-700 dark:text-slate-200 shadow-2xs">
+                      Jadwal: <strong>{currentHariSchedule.jam_masuk} - {currentHariSchedule.jam_pulang} WIB</strong>
+                    </span>
+                    <span className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold shadow-2xs">
+                      {stats.tepatWaktu} Tepat Waktu
+                    </span>
+                    {stats.telat > 0 && (
+                      <span className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 font-bold shadow-2xs">
+                        {stats.telat} Telat
+                      </span>
+                    )}
+                    <span className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 font-bold shadow-2xs">
+                      {filteredRekapHarian.length} Total Guru
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="py-3.5 px-4 w-12 text-center">No</th>
+                      <th className="py-3.5 px-4">Nama Guru</th>
+                      <th className="py-3.5 px-4">Tanggal</th>
+                      <th className="py-3.5 px-4 text-center">Jam Masuk</th>
+                      <th className="py-3.5 px-4 text-center">Jam Pulang</th>
+                      <th className="py-3.5 px-4 text-center">Status Kehadiran</th>
+                      <th className="py-3.5 px-4 text-center w-20">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {paginatedRekap.map((item, index) => {
+                      const rowNumber = (currentPage - 1) * itemsPerPage + index + 1;
+                      const isTepat = item.status === "Tepat Waktu";
+                      const isTelat = item.status === "Telat";
+                      const showDaySeparator = filterMode !== "hari" && (index === 0 || item.tanggal !== paginatedRekap[index - 1].tanggal);
+
+                      return (
+                        <React.Fragment key={item.id}>
+                          {showDaySeparator && (
+                            <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-y border-slate-200 dark:border-slate-700">
+                              <td colSpan={7} className="py-2.5 px-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100 text-xs">
+                                    <CalendarDays className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                    <span>{item.tanggalFormatted}</span>
+                                    <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                                      (Jadwal: {item.jadwalMasuk} - {item.jadwalPulang} WIB)
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 px-2.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-2xs">
+                                    Hari {item.hari}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                          {rec.latitude && rec.longitude ? (
-                            <a
-                              href={`https://www.google.com/maps?q=${rec.latitude},${rec.longitude}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
-                              title="Buka titik koordinat di Google Maps"
-                            >
-                              <MapPin className="w-3 h-3" />
-                              <span>{rec.latitude.toFixed(5)}, {rec.longitude.toFixed(5)}</span>
-                              <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                            </a>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 max-w-[200px] truncate" title={rec.keterangan || ""}>
-                            {rec.keterangan || "Hadir"}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedRecord(rec)}
-                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-400 transition-colors cursor-pointer"
-                              title="Lihat Detail Absensi"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            {isAdmin && (
+                          <tr 
+                            className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                          >
+                            {/* 1. NO */}
+                            <td className="py-3.5 px-4 text-center font-medium text-slate-400">
+                              {rowNumber}
+                            </td>
+
+                            {/* 2. NAMA GURU */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center text-xs shrink-0">
+                                  {item.nama_guru.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900 dark:text-white text-xs">
+                                    {item.nama_guru}
+                                  </div>
+                                  <div className="text-[11px] font-mono text-slate-400">
+                                    @{item.username}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* 3. TANGGAL */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                {item.tanggalFormatted}
+                              </div>
+                              <div className="text-[10.5px] text-slate-400">
+                                Jadwal: {item.jadwalMasuk} - {item.jadwalPulang} WIB
+                              </div>
+                            </td>
+
+                            {/* 4. JAM MASUK */}
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              {item.jamMasuk ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                                  <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                                  <span>{item.jamMasuk}</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">-</span>
+                              )}
+                            </td>
+
+                            {/* 5. JAM PULANG */}
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              {item.jamPulang ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                  <Clock className="w-3.5 h-3.5 text-blue-500" />
+                                  <span>{item.jamPulang}</span>
+                                </span>
+                              ) : item.tanggal === todayStr ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800" title="KBM sedang berlangsung, menunggu jadwal presensi pulang (Target 14:00 WIB)">
+                                  <Clock className="w-3 h-3 text-amber-500 animate-pulse" />
+                                  <span>Belum Pulang</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700" title="Tidak ada scan presensi pulang di database pada tanggal ini">
+                                  Tidak Absen Pulang
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 6. STATUS (TEPAT WAKTU / TELAT) */}
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              {isTepat ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  <span>Tepat Waktu</span>
+                                </span>
+                              ) : isTelat ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" title={`Terlambat ${item.terlambatMenit} menit`}>
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                  <span>Telat {item.terlambatMenit > 0 ? `(${item.terlambatMenit}m)` : ""}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                                  Belum Masuk
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 7. AKSI DETAIL */}
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => handleDeleteRecord(rec)}
-                                className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/50 dark:text-rose-400 transition-colors cursor-pointer"
-                                title="Hapus Catatan (Admin)"
+                                onClick={() => setSelectedRekap(item)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Lihat rincian log GPS dan jam"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Eye className="w-4 h-4" />
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {/* Pagination Footer */}
-          {!isLoading && filteredRecords.length > 0 && (
+          {!isLoading && filteredRekapHarian.length > 0 && (
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-2">
                 <span>Menampilkan</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                  className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200"
+                  className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
                 >
                   <option value={10}>10</option>
                   <option value={15}>15</option>
@@ -996,7 +1784,7 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
                   <option value={50}>50</option>
                   <option value={100}>100</option>
                 </select>
-                <span>dari <strong>{filteredRecords.length}</strong> total baris</span>
+                <span>dari <strong>{filteredRekapHarian.length}</strong> total baris rekapitulasi</span>
               </div>
 
               <div className="flex items-center gap-1.5">
@@ -1005,6 +1793,7 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
                   className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Halaman Sebelumnya"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -1016,6 +1805,7 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
                   className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Halaman Berikutnya"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
@@ -1023,15 +1813,14 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
             </div>
           )}
         </div>
-      ) : (
-        /* REKAPITULASI PER GURU (SUMMARY MATRIX) */
+      ) : viewMode === "rekap_guru" ? (
+        /* =================================================================== */
+        /* TAB 2: AKUMULASI KEHADIRAN PER GURU (CARD SUMMARY)                 */
+        /* =================================================================== */
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {rekapPerGuru.map((item, idx) => {
-              const persenValid = item.totalAbsen > 0 
-                ? Math.round((item.dalamJangkauan / item.totalAbsen) * 100) 
-                : 0;
-
+              const persenTepat = item.totalHari > 0 ? Math.round((item.tepatWaktu / item.totalHari) * 100) : 0;
               return (
                 <div 
                   key={item.username || idx}
@@ -1039,67 +1828,70 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                          {item.nama_guru}
-                        </h4>
-                        <p className="text-xs font-mono text-slate-400 mt-0.5">
-                          @{item.username}
-                        </p>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center text-sm shrink-0">
+                          {item.nama_guru.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                            {item.nama_guru}
+                          </h4>
+                          <p className="text-xs font-mono text-slate-400 mt-0.5">
+                            @{item.username}
+                          </p>
+                        </div>
                       </div>
                       <span className="px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800">
-                        {item.totalAbsen} Absen
+                        {item.totalHari} Kehadiran
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                        <span className="text-[10.5px] text-slate-500 dark:text-slate-400 block font-medium">
-                          Presensi Masuk
+                      <div className="p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
+                        <span className="text-[10.5px] text-emerald-800 dark:text-emerald-300 block font-semibold">
+                          Tepat Waktu
                         </span>
-                        <span className="text-sm font-bold text-slate-900 dark:text-white">
-                          {item.totalMasuk} kali
+                        <span className="text-base font-black text-emerald-700 dark:text-emerald-400">
+                          {item.tepatWaktu} <span className="text-xs font-normal text-slate-500">kali</span>
                         </span>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                        <span className="text-[10.5px] text-slate-500 dark:text-slate-400 block font-medium">
-                          Presensi Pulang
+                      <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
+                        <span className="text-[10.5px] text-amber-800 dark:text-amber-300 block font-semibold">
+                          Telat / Terlambat
                         </span>
-                        <span className="text-sm font-bold text-slate-900 dark:text-white">
-                          {item.totalPulang} kali
+                        <span className="text-base font-black text-amber-700 dark:text-amber-400">
+                          {item.telat} <span className="text-xs font-normal text-slate-500">kali</span>
                         </span>
                       </div>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 pt-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">Validitas Jangkauan</span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                          {item.dalamJangkauan} / {item.totalAbsen} ({persenValid}%)
-                        </span>
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">Ketepatan Waktu</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{persenTepat}%</span>
                       </div>
                       <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-emerald-500 rounded-full transition-all"
-                          style={{ width: `${persenValid}%` }}
+                          style={{ width: `${persenTepat}%` }}
                         />
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Terakhir: {formatTanggalIndo(item.lastAbsen)}</span>
+                    <span className="truncate">Terakhir: {item.terakhirMasuk || "-"}</span>
                     <button
                       type="button"
                       onClick={() => {
                         setFilterGuru(item.username);
-                        setViewMode("table");
+                        setViewMode("rekap_harian");
                         setCurrentPage(1);
                       }}
-                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer"
+                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer shrink-0 ml-2"
                     >
-                      <span>Lihat Log</span>
-                      <ArrowUpRight className="w-3 h-3" />
+                      <span>Lihat Rekap</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -1107,120 +1899,160 @@ export default function RekapAbsensiGuruPanel({ currentUser }: RekapAbsensiGuruP
             })}
           </div>
         </div>
+      ) : (
+        /* =================================================================== */
+        /* TAB 3: LOG SCAN DETAIL (AUDIT RAW GPS & WAKTU SCAN)               */
+        /* =================================================================== */
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider">
+                  <th className="py-3 px-4 w-12 text-center">No</th>
+                  <th className="py-3 px-4">Waktu Scan</th>
+                  <th className="py-3 px-4">Nama Guru</th>
+                  <th className="py-3 px-4">Username</th>
+                  <th className="py-3 px-4">Status Lokasi</th>
+                  <th className="py-3 px-4">Koordinat GPS</th>
+                  <th className="py-3 px-4">Keterangan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                {filteredRawRecords.slice(0, 50).map((rec, index) => {
+                  const isWithin = (rec.status_lokasi || "").toLowerCase().includes("dalam");
+                  return (
+                    <tr key={rec.id || index} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4 text-center text-slate-400">{index + 1}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">{formatWaktuWIB(rec.waktu_absen)}</div>
+                        <div className="text-[11px] text-slate-400">{formatTanggalIndo(rec.waktu_absen)}</div>
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-900 dark:text-white">{rec.nama_guru}</td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-400">@{rec.username}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${isWithin ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                          {rec.status_lokasi || "-"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
+                        {rec.latitude && rec.longitude ? `${rec.latitude.toFixed(5)}, ${rec.longitude.toFixed(5)}` : "-"}
+                      </td>
+                      <td className="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">
+                        {rec.keterangan || "Masuk"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
-      {/* 5. MODAL DETAIL ABSENSI INTERAKTIF */}
-      {selectedRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg overflow-hidden animate-zoom-in">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
+      {/* MODAL DETAIL REKAP HARIAN GURU */}
+      {selectedRekap && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                  <Clock className="w-5 h-5" />
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                  <User className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Detail Presensi Guru
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    Detail Presensi: {selectedRekap.nama_guru}
                   </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    ID Log: <span className="font-mono">{selectedRecord.id}</span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {selectedRekap.tanggalFormatted}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedRecord(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                onClick={() => setSelectedRekap(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-4 text-xs">
-              {/* Profile Guru */}
-              <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0">
-                  {selectedRecord.nama_guru?.charAt(0)?.toUpperCase() || "G"}
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                    {selectedRecord.nama_guru}
-                  </h4>
-                  <p className="text-xs font-mono text-blue-600 dark:text-blue-400">
-                    @{selectedRecord.username}
-                  </p>
-                </div>
-              </div>
-
-              {/* Grid Information */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
-                  <span className="text-[11px] text-slate-400 block font-medium">Waktu Absen</span>
-                  <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                    {formatWaktuWIB(selectedRecord.waktu_absen)}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {formatTanggalIndo(selectedRecord.waktu_absen)}
-                  </p>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
-                  <span className="text-[11px] text-slate-400 block font-medium">Status Lokasi</span>
-                  <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                    {selectedRecord.status_lokasi || "-"}
-                  </p>
-                  <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                    (selectedRecord.status_lokasi || "").toLowerCase().includes("dalam")
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                      : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+            <div className="p-6 space-y-4 overflow-y-auto text-xs">
+              {/* Ringkasan Status */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Status Kehadiran</span>
+                  <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs ${
+                    selectedRekap.status === "Tepat Waktu"
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
                   }`}>
-                    {(selectedRecord.status_lokasi || "").toLowerCase().includes("dalam") ? "Radius &le; 50m" : "Luar Radius"}
+                    {selectedRekap.status}
                   </span>
                 </div>
-              </div>
-
-              {/* Koordinat & Google Maps Link */}
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-2">
-                <span className="text-[11px] text-slate-400 block font-medium">Titik Koordinat GPS</span>
-                {selectedRecord.latitude && selectedRecord.longitude ? (
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="font-mono text-xs text-slate-700 dark:text-slate-300">
-                      Lat: {selectedRecord.latitude} <br />
-                      Lng: {selectedRecord.longitude}
-                    </div>
-                    <a
-                      href={`https://www.google.com/maps?q=${selectedRecord.latitude},${selectedRecord.longitude}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors shrink-0 cursor-pointer shadow-xs"
-                    >
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>Buka Google Maps</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Jadwal Masuk / Pulang</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedRekap.jadwalMasuk} - {selectedRekap.jadwalPulang} WIB
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Jam Masuk Tercatat</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {selectedRekap.jamMasuk || "Belum Absen Masuk"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Jam Pulang Tercatat</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">
+                    {selectedRekap.jamPulang || "Belum Absen Pulang"}
+                  </span>
+                </div>
+                {selectedRekap.status === "Telat" && (
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400">
+                    <span className="font-medium">Keterlambatan</span>
+                    <span className="font-bold">+{selectedRekap.terlambatMenit} Menit</span>
                   </div>
-                ) : (
-                  <p className="text-slate-400 italic">Koordinat lokasi tidak tersimpan (Izin / Manual).</p>
                 )}
               </div>
 
-              {/* Keterangan */}
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
-                <span className="text-[11px] text-slate-400 block font-medium">Keterangan / Catatan</span>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  {selectedRecord.keterangan || "Presensi Kehadiran Guru"}
-                </p>
+              {/* Rincian Log Scan Mentah */}
+              <div>
+                <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-2">
+                  Riwayat Log Scan pada Hari Ini ({selectedRekap.logs.length})
+                </h4>
+                <div className="space-y-2">
+                  {selectedRekap.logs.map((log, idx) => (
+                    <div key={log.id || idx} className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white">
+                          {formatWaktuWIB(log.waktu_absen)}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {log.keterangan || "Presensi"} • {log.status_lokasi || "Lokasi Valid"}
+                        </div>
+                      </div>
+                      {log.latitude && log.longitude && (
+                        <a
+                          href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-semibold text-[11px] flex items-center gap-1 hover:underline"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          <span>Peta</span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <div className="px-6 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-end">
               <button
                 type="button"
-                onClick={() => setSelectedRecord(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold transition-colors cursor-pointer"
+                onClick={() => setSelectedRekap(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl"
               >
                 Tutup
               </button>

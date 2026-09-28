@@ -37,7 +37,7 @@ import {
 const MySwal = withReactContent(Swal);
 
 // ==============================================================================
-// KONFIGURASI PUSAT KOORDINAT & RADIUS SEKOLAH (SMP IT / PONDOK AL-MUTTAQIN)
+// KONFIGURASI PUSAT KOORDINAT & RADIUS SEKOLAH (SMP AL MUTTAQIN / YAYASAN MUTTAQIN KOTA MADIUN)
 // ==============================================================================
 const DEFAULT_SCHOOL_LOCATION = {
   latitude: -7.629810,
@@ -97,8 +97,8 @@ export function getActiveSchoolConfig() {
         return {
           ...DEFAULT_SCHOOL_LOCATION,
           qrToken: cachedQrToken,
-          namaSekolah: "SMP IT Al-Muttaqin",
-          alamatPos: "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
+          namaSekolah: "SMP Al Muttaqin",
+          alamatPos: "Kantor Utama Yayasan Muttaqin Kota Madiun",
           jamMasuk: mappedJadwal[0]?.jam_masuk || "07:00",
           toleransiTerlambat: mappedJadwal[0]?.toleransi_terlambat || 15,
           jamPulang: mappedJadwal[0]?.jam_pulang || "14:00",
@@ -119,8 +119,8 @@ export function getActiveSchoolConfig() {
         longitude: typeof parsed.longitude === "number" ? parsed.longitude : (parseFloat(parsed.longitude) || DEFAULT_SCHOOL_LOCATION.longitude),
         radiusMeters: typeof parsed.radius_gps === "number" ? parsed.radius_gps : (parseInt(parsed.radius_gps) || DEFAULT_SCHOOL_LOCATION.radiusMeters),
         qrToken: cachedQrToken !== "ALMUTTAQIN_PRESENSI_STATION_PRIMARY" ? cachedQrToken : (parsed.qr_token || "ALMUTTAQIN_PRESENSI_STATION_PRIMARY"),
-        namaSekolah: parsed.nama_sekolah || "SMP IT Al-Muttaqin",
-        alamatPos: parsed.alamat_pos || "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
+        namaSekolah: parsed.nama_sekolah || "SMP Al Muttaqin",
+        alamatPos: parsed.alamat_pos || "Kantor Utama Yayasan Muttaqin Kota Madiun",
         jamMasuk: parsed.jam_masuk || "07:00",
         toleransiTerlambat: Number(parsed.toleransi_terlambat) || 15,
         jamPulang: parsed.jam_pulang || "14:00",
@@ -140,8 +140,8 @@ export function getActiveSchoolConfig() {
   return {
     ...DEFAULT_SCHOOL_LOCATION,
     qrToken: fallbackQrToken,
-    namaSekolah: "SMP IT Al-Muttaqin",
-    alamatPos: "Stasiun Piket & Kantor Utama Yayasan Al-Muttaqin",
+    namaSekolah: "SMP Al Muttaqin",
+    alamatPos: "Kantor Utama Yayasan Muttaqin Kota Madiun",
     jamMasuk: "07:00",
     toleransiTerlambat: 15,
     jamPulang: "14:00",

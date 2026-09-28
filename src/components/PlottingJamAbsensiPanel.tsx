@@ -631,7 +631,7 @@ export default function PlottingJamAbsensiPanel() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Cetak Papan QR Presensi Guru - SMP IT Al-Muttaqin</title>
+          <title>Cetak Papan QR Presensi Guru - SMP Al Muttaqin</title>
           <style>
             @page {
               size: A4 portrait;
@@ -713,7 +713,7 @@ export default function PlottingJamAbsensiPanel() {
         <body>
           <div class="poster-box">
             <h1 class="header-title">STASIUN PRESENSI GURU</h1>
-            <p class="sub-title">SMP IT & PONDOK PESANTREN AL-MUTTAQIN</p>
+            <p class="sub-title">SMP AL MUTTAQIN - YAYASAN MUTTAQIN KOTA MADIUN</p>
             
             <div class="qr-image-wrapper">
               <img src="${qrDataUrl}" alt="QR Code Presensi" class="qr-image" />
@@ -953,7 +953,7 @@ export default function PlottingJamAbsensiPanel() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">Kode QR Presensi Sekolah</h3>
-                  <p className="text-[11px] text-slate-400">SMP IT & Pondok Pesantren Al-Muttaqin</p>
+                  <p className="text-[11px] text-slate-400">SMP Al Muttaqin - Yayasan Muttaqin Kota Madiun</p>
                 </div>
               </div>
               <button

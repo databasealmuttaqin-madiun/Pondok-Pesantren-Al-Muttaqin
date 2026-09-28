@@ -67,7 +67,7 @@ export default function StationQRPrintModal({
             {/* Header Sekolah */}
             <div className="mb-4">
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-                Pondok Pesantren Al-Muttaqin
+                SMP Al Muttaqin - Yayasan Muttaqin Kota Madiun
               </span>
               <h4 className="text-base font-extrabold text-slate-900 mt-2">
                 STASIUN PRESENSI GURU

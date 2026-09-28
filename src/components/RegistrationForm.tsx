@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Loader2, CheckCircle2, Upload, Camera, Trash2, Building2, User, Phone, Calendar, FileText, Image as ImageIcon } from "lucide-react";
+import { X, Loader2, CheckCircle2, Camera, Trash2, User, Phone, Image as ImageIcon, Sparkles } from "lucide-react";
 import { SantriData, toTitleCase, supabase } from "../supabaseClient";
 
 interface RegistrationFormProps {
@@ -18,61 +18,27 @@ export default function RegistrationForm({
   isSubmitting, 
   initialData, 
   onCancel,
-  rooms = [],
-  recitationClasses = [],
-  schoolClasses = [],
-  students = []
 }: RegistrationFormProps) {
-  // Default values for options
-  const defaultSchoolClasses = schoolClasses.length > 0 
-    ? schoolClasses 
-    : ["Kelas 7A", "Kelas 7B", "Kelas 8A", "Kelas 8B", "Kelas 9A", "Kelas 9B", "Kelas 10", "Kelas 11", "Kelas 12"];
-
-  const defaultRooms = rooms.length > 0
-    ? rooms
-    : ["Abu Bakar", "Umar", "Utsman", "Ali", "Khadijah", "Aisyah", "Fathimah"];
+  // Master opsi kategori yang ada di tabel siswa
+  const standardCategories: Array<"SMP" | "SMA" | "Reguler"> = ["SMP", "SMA", "Reguler"];
 
   const [formData, setFormData] = useState<SantriData>(() => {
     if (initialData) {
       return {
         ...initialData,
+        kategori: initialData.kategori || "SMP",
         nama_lengkap: initialData.nama_lengkap || "",
         jenis_kelamin: initialData.jenis_kelamin || "L",
-        nisn: initialData.nisn || "",
-        nik: initialData.nik || "",
-        tempat_lahir: initialData.tempat_lahir || "",
-        tanggal_lahir: initialData.tanggal_lahir || "",
-        no_hp: initialData.no_hp || "",
-        nama_ayah: initialData.nama_ayah || "",
-        no_hp_ayah: initialData.no_hp_ayah || "",
-        nama_ibu: initialData.nama_ibu || "",
-        no_hp_ibu: initialData.no_hp_ibu || "",
-        kategori: initialData.kategori || "SMP",
-        kelas_sekolah: initialData.kelas_sekolah || defaultSchoolClasses[0],
-        status_asrama: initialData.status_asrama || (initialData.kamar ? "Asrama" : "Non-Asrama"),
-        kamar: initialData.kamar || "",
-        alamat: initialData.alamat || "",
+        no_hp_ortu: initialData.no_hp_ortu || "",
         foto: initialData.foto || "",
         status: initialData.status || "Aktif",
       };
     }
     return {
+      kategori: "SMP",
       nama_lengkap: "",
       jenis_kelamin: "L",
-      nisn: "",
-      nik: "",
-      tempat_lahir: "",
-      tanggal_lahir: "",
-      no_hp: "",
-      nama_ayah: "",
-      no_hp_ayah: "",
-      nama_ibu: "",
-      no_hp_ibu: "",
-      kategori: "SMP",
-      kelas_sekolah: defaultSchoolClasses[0],
-      status_asrama: "Asrama",
-      kamar: defaultRooms[0] || "",
-      alamat: "",
+      no_hp_ortu: "",
       foto: "",
       status: "Aktif",
     };
@@ -90,22 +56,10 @@ export default function RegistrationForm({
     if (initialData) {
       setFormData({
         ...initialData,
+        kategori: initialData.kategori || "SMP",
         nama_lengkap: initialData.nama_lengkap || "",
         jenis_kelamin: initialData.jenis_kelamin || "L",
-        nisn: initialData.nisn || "",
-        nik: initialData.nik || "",
-        tempat_lahir: initialData.tempat_lahir || "",
-        tanggal_lahir: initialData.tanggal_lahir || "",
-        no_hp: initialData.no_hp || "",
-        nama_ayah: initialData.nama_ayah || "",
-        no_hp_ayah: initialData.no_hp_ayah || "",
-        nama_ibu: initialData.nama_ibu || "",
-        no_hp_ibu: initialData.no_hp_ibu || "",
-        kategori: initialData.kategori || "SMP",
-        kelas_sekolah: initialData.kelas_sekolah || defaultSchoolClasses[0],
-        status_asrama: initialData.status_asrama || (initialData.kamar ? "Asrama" : "Non-Asrama"),
-        kamar: initialData.kamar || "",
-        alamat: initialData.alamat || "",
+        no_hp_ortu: initialData.no_hp_ortu || "",
         foto: initialData.foto || "",
         status: initialData.status || "Aktif",
       });
@@ -118,7 +72,7 @@ export default function RegistrationForm({
     }, 100);
   }, []);
 
-  // Handle Photo Upload
+  // Handle Photo Upload ke Supabase Storage (bucket: foto_siswa) dengan fallback DataURL
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -137,7 +91,7 @@ export default function RegistrationForm({
     setUploadError("");
 
     try {
-      // 1. Try uploading to Supabase Storage if available
+      // 1. Coba upload ke Supabase Storage jika bucket tersedia
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -150,14 +104,14 @@ export default function RegistrationForm({
           .getPublicUrl(fileName);
         setFormData(prev => ({ ...prev, foto: publicUrl }));
       } else {
-        // 2. Fallback to base64 Data URL
+        // 2. Fallback jika bucket belum ada / RLS: simpan sebagai base64 Data URL
         const reader = new FileReader();
         reader.onloadend = () => {
           setFormData(prev => ({ ...prev, foto: reader.result as string }));
         };
         reader.readAsDataURL(file);
       }
-    } catch (err: any) {
+    } catch {
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, foto: reader.result as string }));
@@ -180,7 +134,7 @@ export default function RegistrationForm({
     setError("");
     setSuccessMsg("");
 
-    // Validations sesuai field wajib
+    // Validasi field wajib
     if (!formData.nama_lengkap.trim()) {
       setError("Nama lengkap wajib diisi.");
       nameInputRef.current?.focus();
@@ -192,18 +146,19 @@ export default function RegistrationForm({
       return;
     }
 
+    if (!formData.kategori) {
+      setError("Kategori siswa wajib dipilih.");
+      return;
+    }
+
     const finalData: SantriData = {
-      ...formData,
+      ...(initialData || {}),
       nama_lengkap: toTitleCase(formData.nama_lengkap.trim()),
-      nisn: formData.nisn?.trim() || "",
-      nik: formData.nik?.trim() || "",
-      tempat_lahir: formData.tempat_lahir ? toTitleCase(formData.tempat_lahir.trim()) : "",
-      tanggal_lahir: formData.tanggal_lahir?.trim() || "",
-      nama_ayah: formData.nama_ayah ? toTitleCase(formData.nama_ayah.trim()) : "",
-      nama_ibu: formData.nama_ibu ? toTitleCase(formData.nama_ibu.trim()) : "",
-      alamat: formData.alamat?.trim() || "",
-      kamar: formData.status_asrama === "Non-Asrama" ? "" : (formData.kamar || defaultRooms[0] || ""),
-      no_hp_ortu: formData.no_hp_ayah || formData.no_hp_ibu || formData.no_hp || "",
+      kategori: formData.kategori,
+      jenis_kelamin: formData.jenis_kelamin,
+      no_hp_ortu: formData.no_hp_ortu?.trim() || "",
+      foto: formData.foto || "",
+      status: formData.status || "Aktif",
     };
 
     const result = await onSubmit(finalData, keepOpen);
@@ -211,24 +166,12 @@ export default function RegistrationForm({
       setError(result.error || "Terjadi kesalahan saat menyimpan data.");
     } else {
       if (keepOpen) {
-        setSuccessMsg(`Siswa "${finalData.nama_lengkap}" berhasil didaftarkan! Silakan masukkan siswa berikutnya.`);
+        setSuccessMsg(`Siswa "${finalData.nama_lengkap}" berhasil didaftarkan! Silakan masukkan data siswa berikutnya.`);
         setFormData({
+          kategori: formData.kategori,
           nama_lengkap: "",
           jenis_kelamin: "L",
-          nisn: "",
-          nik: "",
-          tempat_lahir: "",
-          tanggal_lahir: "",
-          no_hp: "",
-          nama_ayah: "",
-          no_hp_ayah: "",
-          nama_ibu: "",
-          no_hp_ibu: "",
-          kategori: formData.kategori,
-          kelas_sekolah: formData.kelas_sekolah,
-          status_asrama: formData.status_asrama,
-          kamar: formData.kamar,
-          alamat: "",
+          no_hp_ortu: "",
           foto: "",
           status: "Aktif",
         });
@@ -249,14 +192,22 @@ export default function RegistrationForm({
       }}
     >
       <div 
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]"
         id="modal-pendaftaran-siswa"
       >
-        {/* 1. HEADER MODAL: Latar putih bersih, Judul kiri atas font bold slate, Tombol 'X' kanan atas */}
+        {/* HEADER MODAL */}
         <div className="px-6 py-4.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
-          <h3 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg tracking-tight">
-            {initialData ? "Edit Data Siswa" : "Pendaftaran Siswa Baru"}
-          </h3>
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg tracking-tight flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                <User className="w-4 h-4" />
+              </span>
+              <span>{initialData ? "Edit Data Siswa" : "Pendaftaran Siswa Baru"}</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Struktur tabel database siswa (Kategori, Nama, Jenis Kelamin, No WA Ortu, Foto)
+            </p>
+          </div>
           {onCancel && (
             <button
               type="button"
@@ -273,28 +224,85 @@ export default function RegistrationForm({
         {/* Notifikasi / Feedback Banner */}
         <div className="px-6 pt-4 empty:hidden space-y-3 shrink-0">
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/80 rounded-xl text-xs font-semibold text-red-700 dark:text-red-300 flex items-center gap-2 animate-in slide-in-from-top duration-150">
-              <span className="text-sm">⚠️</span>
-              <p>{error}</p>
+            <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/80 rounded-xl text-xs font-semibold text-red-700 dark:text-red-300 flex items-start gap-2.5 animate-in slide-in-from-top duration-150">
+              <span className="text-sm shrink-0 mt-0.5">⚠️</span>
+              <p className="leading-relaxed">{error}</p>
             </div>
           )}
           {successMsg && (
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/80 rounded-xl text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-in slide-in-from-top duration-150">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <p>{successMsg}</p>
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/80 rounded-xl text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-start gap-2 animate-in slide-in-from-top duration-150">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">{successMsg}</p>
             </div>
           )}
         </div>
 
-        {/* 2 & 3. LAYOUT GRID & INPUT FIELD STYLE: 2 Kolom rapi sesuai format form izin sambang */}
-        <div className="p-6 space-y-4.5 overflow-y-auto flex-1">
-          {/* Baris 1: Nama Lengkap * | Jenis Kelamin * (Segmented Button) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Nama Lengkap */}
+        {/* BODY FORM: SESUAI 5 KOLOM DATABASE SISWA */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Baris 1: Kategori * & Jenis Kelamin * */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 1. Kategori */}
             <div>
               <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Nama Lengkap <span className="text-rose-500">*</span>
+                Kategori <span className="text-rose-500">*</span>
               </label>
+              <select
+                value={formData.kategori}
+                onChange={(e) => setFormData(prev => ({ ...prev, kategori: e.target.value as "SMP" | "SMA" | "Reguler" }))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+              >
+                {standardCategories.map((kat) => (
+                  <option key={kat} value={kat}>
+                    {kat}
+                  </option>
+                ))}
+                {/* Fallback jika kategori sebelumnya di luar opsi standar */}
+                {!standardCategories.includes(formData.kategori) && formData.kategori && (
+                  <option value={formData.kategori}>
+                    {formData.kategori}
+                  </option>
+                )}
+              </select>
+            </div>
+
+            {/* 3. Jenis Kelamin (Segmented Button L / P) */}
+            <div>
+              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+                Jenis Kelamin <span className="text-rose-500">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, jenis_kelamin: "L" }))}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-sm font-semibold transition-all cursor-pointer ${
+                    formData.jenis_kelamin === "L"
+                      ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                      : "bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>Laki-laki (L)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, jenis_kelamin: "P" }))}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-sm font-semibold transition-all cursor-pointer ${
+                    formData.jenis_kelamin === "P"
+                      ? "bg-pink-600 border-pink-600 text-white shadow-xs"
+                      : "bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>Perempuan (P)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Baris 2: Nama Lengkap * */}
+          <div>
+            <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
+              Nama Lengkap <span className="text-rose-500">*</span>
+            </label>
+            <div className="relative">
               <input
                 ref={nameInputRef}
                 type="text"
@@ -305,234 +313,36 @@ export default function RegistrationForm({
                   setFormData(prev => ({ ...prev, nama_lengkap: e.target.value }));
                   if (error) setError("");
                 }}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-
-            {/* Jenis Kelamin: Segmented Button / Radio Toggle Card */}
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Jenis Kelamin <span className="text-rose-500">*</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, jenis_kelamin: "L" }))}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer ${
-                    formData.jenis_kelamin === "L"
-                      ? "bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-950/50 dark:border-blue-500 dark:text-blue-300 ring-1 ring-blue-500 shadow-2xs"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750"
-                  }`}
-                >
-                  <span>Laki-laki</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, jenis_kelamin: "P" }))}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer ${
-                    formData.jenis_kelamin === "P"
-                      ? "bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-950/50 dark:border-blue-500 dark:text-blue-300 ring-1 ring-blue-500 shadow-2xs"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750"
-                  }`}
-                >
-                  <span>Perempuan</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Baris 2: Tempat Lahir | Tanggal Lahir */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Tempat Lahir
-              </label>
-              <input
-                type="text"
-                placeholder="Contoh: Kediri / Surabaya"
-                value={formData.tempat_lahir || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, tempat_lahir: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Tanggal Lahir
-              </label>
-              <input
-                type="date"
-                value={formData.tanggal_lahir || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, tanggal_lahir: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
               />
             </div>
           </div>
 
-          {/* Baris 4: No. WhatsApp / HP Siswa | Nama Ayah */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                No. WhatsApp / HP Siswa
-              </label>
-              <input
-                type="tel"
-                placeholder="Contoh: 081234567890"
-                value={formData.no_hp || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, no_hp: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Nama Ayah
-              </label>
-              <input
-                type="text"
-                placeholder="Nama lengkap ayah / wali"
-                value={formData.nama_ayah || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, nama_ayah: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Baris 5: No. WhatsApp Ayah | Nama Ibu */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                No. WhatsApp Ayah
-              </label>
-              <input
-                type="tel"
-                placeholder="Contoh: 081234567890"
-                value={formData.no_hp_ayah || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, no_hp_ayah: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Nama Ibu
-              </label>
-              <input
-                type="text"
-                placeholder="Nama lengkap ibu kandung"
-                value={formData.nama_ibu || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, nama_ibu: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Baris 6: No. WhatsApp Ibu | Jenjang Sekolah */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                No. WhatsApp Ibu
-              </label>
-              <input
-                type="tel"
-                placeholder="Contoh: 081234567890"
-                value={formData.no_hp_ibu || ""}
-                onChange={(e) => setFormData(prev => ({ ...prev, no_hp_ibu: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Jenjang Sekolah <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={formData.kategori}
-                onChange={(e) => setFormData(prev => ({ ...prev, kategori: e.target.value as "SMP" | "SMA" | "Reguler" }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-              >
-                <option value="SMP">SMP</option>
-                <option value="SMA">SMA</option>
-                <option value="SMK">SMK</option>
-                <option value="MTs">MTs</option>
-                <option value="MA">MA</option>
-                <option value="Reguler">Reguler / Pondok</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Baris 7: Kelas Sekolah | Status Asrama */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Kelas Sekolah
-              </label>
-              <select
-                value={formData.kelas_sekolah || defaultSchoolClasses[0]}
-                onChange={(e) => setFormData(prev => ({ ...prev, kelas_sekolah: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-              >
-                {defaultSchoolClasses.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                Status Asrama
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={formData.status_asrama || "Asrama"}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      status_asrama: val,
-                      kamar: val === "Non-Asrama" ? "" : (prev.kamar || defaultRooms[0] || "")
-                    }));
-                  }}
-                  className="w-1/2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-                >
-                  <option value="Asrama">Asrama</option>
-                  <option value="Non-Asrama">Non-Asrama</option>
-                </select>
-
-                {formData.status_asrama !== "Non-Asrama" && (
-                  <select
-                    value={formData.kamar || defaultRooms[0]}
-                    onChange={(e) => setFormData(prev => ({ ...prev, kamar: e.target.value }))}
-                    className="w-1/2 px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-                    title="Pilih Kamar Asrama"
-                  >
-                    {defaultRooms.map((rm) => (
-                      <option key={rm} value={rm}>
-                        Kamar {rm}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Alamat Lengkap (Textarea span-2 kolom penuh) */}
+          {/* Baris 3: No. WA Orang Tua */}
           <div>
-            <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-              Alamat Lengkap
+            <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center justify-between">
+              <span>No. WhatsApp / HP Orang Tua</span>
+              <span className="text-[11px] font-normal text-slate-400">Tersimpan ke no_hp_ortu</span>
             </label>
-            <textarea
-              rows={3}
-              placeholder="Contoh: Jl. Merpati No. 15, RT 03/RW 02, Ds. Sukomoro, Kec. Gurah, Kab. Kediri"
-              value={formData.alamat || ""}
-              onChange={(e) => setFormData(prev => ({ ...prev, alamat: e.target.value }))}
-              className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-y"
-            />
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <Phone className="w-4 h-4" />
+              </div>
+              <input
+                type="tel"
+                placeholder="Contoh: 081234567890"
+                value={formData.no_hp_ortu || ""}
+                onChange={(e) => setFormData(prev => ({ ...prev, no_hp_ortu: e.target.value }))}
+                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-mono"
+              />
+            </div>
           </div>
 
-          {/* Pas Foto Siswa / Bukti Dokumen (Unggah foto / file pendukung) */}
+          {/* Baris 4: Foto Siswa */}
           <div>
-            <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-              Pas Foto Siswa / Dokumen Pendukung
+            <label className="block text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center justify-between">
+              <span>Foto Siswa</span>
+              <span className="text-[11px] font-normal text-slate-400">Tersimpan ke foto</span>
             </label>
             
             <input 
@@ -545,7 +355,7 @@ export default function RegistrationForm({
 
             {formData.foto ? (
               <div className="flex items-center gap-4 p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl">
-                <div className="w-16 h-20 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shrink-0 relative group">
+                <div className="w-16 h-20 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shrink-0 relative shadow-2xs">
                   <img 
                     src={formData.foto} 
                     alt="Foto Siswa" 
@@ -556,8 +366,8 @@ export default function RegistrationForm({
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
                     Pas Foto Siswa Terlampir
                   </p>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-                    ✓ Siap disimpan ke data siswa
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-0.5 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Siap disimpan ke database
                   </p>
                   <div className="flex items-center gap-2 mt-2">
                     <button
@@ -582,7 +392,7 @@ export default function RegistrationForm({
             ) : (
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all bg-slate-50/50 hover:bg-blue-50/20 dark:bg-slate-800/30 dark:hover:bg-slate-800/70"
+                className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl p-4 sm:p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all bg-slate-50/60 hover:bg-blue-50/20 dark:bg-slate-800/30 dark:hover:bg-slate-800/70"
               >
                 {isUploadingPhoto ? (
                   <div className="flex flex-col items-center py-2">
@@ -613,7 +423,7 @@ export default function RegistrationForm({
           </div>
         </div>
 
-        {/* 4. FOOTER: Tombol "Batal" (putih/abu-abu) dan Tombol "Simpan / Daftarkan Siswa" (biru primer) */}
+        {/* FOOTER MODAL */}
         <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div>
             {onCancel && (
@@ -621,7 +431,7 @@ export default function RegistrationForm({
                 type="button"
                 onClick={onCancel}
                 disabled={isSubmitting}
-                className="px-4.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                className="px-4.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>
@@ -634,9 +444,9 @@ export default function RegistrationForm({
                 type="button"
                 onClick={() => handleSave(true)}
                 disabled={isSubmitting}
-                className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
               >
-                Simpan & Buat Lainnya
+                Simpan &amp; Buat Lainnya
               </button>
             )}
 

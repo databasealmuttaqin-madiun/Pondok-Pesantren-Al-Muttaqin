@@ -76,8 +76,8 @@ const DEFAULT_PENGATURAN: PengaturanAbsensiData = {
   latitude: -7.629810,
   longitude: 111.523910,
   qr_token: "ALMUTTAQIN_PRESENSI_STATION_PRIMARY",
-  nama_sekolah: "SMP IT Al-Muttaqin",
-  alamat_pos: "Stasiun Piket & Kantor Utama Yayasan Pondok Pesantren Al-Muttaqin",
+  nama_sekolah: "SMP Al Muttaqin",
+  alamat_pos: "Kantor & Gedung SMP Al Muttaqin - Yayasan Muttaqin Kota Madiun",
   jadwal_harian: DEFAULT_JADWAL_HARIAN
 };
 
@@ -243,7 +243,7 @@ export default function PengaturanAbsensiPanel() {
   const handleResetToDefaultSchedule = () => {
     MySwal.fire({
       title: "Reset Jadwal Harian?",
-      text: "Jadwal absensi Senin-Ahad akan dikembalikan ke jam standar resmi SMP IT Al-Muttaqin.",
+      text: "Jadwal absensi Senin-Ahad akan dikembalikan ke jam standar resmi SMP Al Muttaqin.",
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: "#2563eb",
@@ -468,7 +468,7 @@ export default function PengaturanAbsensiPanel() {
 
     ctx.fillStyle = "#64748b";
     ctx.font = "14px sans-serif";
-    ctx.fillText(formData.nama_sekolah || "Yayasan Pondok Pesantren Al-Muttaqin", highResCanvas.width / 2, 75);
+    ctx.fillText(formData.nama_sekolah || "Yayasan Muttaqin Kota Madiun", highResCanvas.width / 2, 75);
 
     // Draw QR image
     ctx.drawImage(canvas, padding, 100, qrSize, qrSize);
@@ -876,7 +876,7 @@ export default function PengaturanAbsensiPanel() {
                     type="text"
                     value={formData.nama_sekolah || ""}
                     onChange={(e) => setFormData(prev => ({ ...prev, nama_sekolah: e.target.value }))}
-                    placeholder="Contoh: SMP IT Al-Muttaqin"
+                    placeholder="Contoh: SMP Al Muttaqin"
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                 </div>
@@ -956,7 +956,7 @@ export default function PengaturanAbsensiPanel() {
               {/* School label badge under QR */}
               <div className="mt-3 flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[11px] font-bold text-slate-700">
                 <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                <span>{formData.nama_sekolah || "SMP IT Al-Muttaqin"}</span>
+                <span>{formData.nama_sekolah || "SMP Al Muttaqin"}</span>
               </div>
             </div>
 
@@ -1127,13 +1127,13 @@ export default function PengaturanAbsensiPanel() {
               {/* Header Lembaga */}
               <div className="border-b-2 border-slate-900 pb-4 mb-4 w-full">
                 <h1 className="text-xl font-extrabold uppercase tracking-wider">
-                  {formData.nama_sekolah || "SMP IT AL-MUTTAQIN"}
+                  {formData.nama_sekolah || "SMP AL MUTTAQIN"}
                 </h1>
                 <p className="text-xs text-slate-600 font-semibold tracking-wide mt-0.5">
                   STASIUN PRESENSI KEHADIRAN GURU & ASATIDZ
                 </p>
                 <p className="text-[10px] text-slate-500 mt-1">
-                  {formData.alamat_pos || "Lokasi: Meja Piket & Kantor Utama Yayasan Al-Muttaqin"}
+                  {formData.alamat_pos || "Lokasi: Meja Piket & Kantor Utama Yayasan Muttaqin Kota Madiun"}
                 </p>
               </div>
 

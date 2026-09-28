@@ -771,7 +771,8 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
       setIsExporting(false);
       
       let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "REKAP ABSENSI MATRIKS SISWA - SMP IT AL MUTTAQIN\n";
+      csvContent += "REKAP ABSENSI MATRIKS SISWA - SMP AL MUTTAQIN\n";
+      csvContent += "YAYASAN MUTTAQIN KOTA MADIUN\n";
       csvContent += `Kelas: ${selectedClass}\n`;
       csvContent += `Periode: ${monthNames[filterMonth]} ${filterYear}\n\n`;
       csvContent += "No,Nama Siswa,NISN,Hadir (H),Alpa (A),Persentase Kehadiran\n";

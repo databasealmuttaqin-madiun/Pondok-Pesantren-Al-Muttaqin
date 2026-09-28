@@ -924,31 +924,18 @@ export default function App() {
       const studentName = formattedData.nama_lengkap.trim();
       const oldStudentName = editingStudent?.nama_lengkap ? editingStudent.nama_lengkap.trim() : "";
 
-      // Payload untuk tabel utama 'siswa' (hanya data identitas/bio siswa tanpa nisn, nik, kelas_sekolah, kelas_pengajian, kamar)
+      // Payload untuk tabel utama 'siswa' sesuai struktur kolom database siswa
       const payload: any = {
-        kategori: formattedData.kategori,
+        kategori: formattedData.kategori || "SMP",
         nama_lengkap: formattedData.nama_lengkap,
         jenis_kelamin: formattedData.jenis_kelamin || "L",
+        no_hp_ortu: formattedData.no_hp_ortu || "",
         foto: formattedData.foto || "",
-        nfc_id: formattedData.nfc_id || "",
-        kelompok_sambung: formattedData.kelompok_sambung || "",
-        desa_sambung: formattedData.desa_sambung || "",
-        daerah: formattedData.daerah || "",
-        no_hp_ortu: formattedData.no_hp_ortu || formattedData.no_hp_ayah || formattedData.no_hp_ibu || "",
-        status: targetStatus,
-        tempat_lahir: formattedData.tempat_lahir || "",
-        tanggal_lahir: formattedData.tanggal_lahir || "",
-        no_hp: formattedData.no_hp || "",
-        nama_ayah: formattedData.nama_ayah || "",
-        no_hp_ayah: formattedData.no_hp_ayah || "",
-        nama_ibu: formattedData.nama_ibu || "",
-        no_hp_ibu: formattedData.no_hp_ibu || "",
-        alamat: formattedData.alamat || "",
-        status_asrama: formattedData.status_asrama || "",
+        status: targetStatus || "Aktif",
       };
 
       if (dbStatus === "connected") {
-        // Dynamic resilient query helper in case some optional columns don't exist in the database table yet
+        // Dynamic resilient query helper for database table siswa
         const executeWithColumnRetry = async (isUpdate: boolean, studentId?: number) => {
           let currentPayload = { ...payload };
           for (let attempt = 0; attempt < 5; attempt++) {
@@ -956,8 +943,10 @@ export default function App() {
               ? supabase.from(TABLE_NAME).update(currentPayload).eq("id", studentId)
               : supabase.from(TABLE_NAME).insert([currentPayload]);
             
-            const { data: resData, error: resError } = await query;
+            const { error: resError } = await query;
             if (!resError) return { success: true };
+
+            console.error("Supabase insert/update error:", resError);
 
             // Check if error is due to missing column
             const missingColMatch = resError.message?.match(/column ["']?([a-zA-Z0-9_]+)["']? of relation/i) ||
@@ -968,23 +957,7 @@ export default function App() {
               continue;
             }
 
-            // Fallback for standard column mismatch
-            if (resError.message?.includes("column") || resError.message?.includes("does not exist")) {
-              const optionalCols = [
-                "kelas_pengajian", "kelas_sekolah", "kamar", "kelas",
-                "nisn", "nik", "tempat_lahir", "tanggal_lahir", "no_hp", 
-                "nama_ayah", "no_hp_ayah", "nama_ibu", "no_hp_ibu", 
-                "alamat", "status_asrama", "no_hp_ortu", "nfc_id"
-              ];
-              for (const col of optionalCols) {
-                if (currentPayload[col] !== undefined) {
-                  delete currentPayload[col];
-                }
-              }
-              continue;
-            }
-
-            return { success: false, error: resError };
+            return { success: false, error: new Error(resError.message || "Gagal menyimpan data ke database") };
           }
           return { success: false, error: new Error("Gagal menyimpan setelah beberapa percobaan") };
         };
@@ -1908,9 +1881,12 @@ export default function App() {
                     />
                   </div>
                   <div className="min-w-0">
-                    <h1 className="text-base font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-none truncate">
-                      Al Muttaqin
+                    <h1 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-tight truncate">
+                      SMP Al Muttaqin
                     </h1>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                      Yayasan Muttaqin Kota Madiun
+                    </p>
                   </div>
                 </div>
 
@@ -3720,7 +3696,10 @@ export default function App() {
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-slate-100">Al Muttaqin</span>
+                <div className="flex flex-col">
+                  <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-slate-100">SMP Al Muttaqin</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Yayasan Muttaqin Kota Madiun</span>
+                </div>
               </div>
               <button 
                 onClick={() => setMobileMenuOpen(false)}
