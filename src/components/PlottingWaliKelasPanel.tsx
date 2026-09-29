@@ -428,7 +428,7 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
     <div className="space-y-6" id="plotting_wali_kelas_module">
       <PageHeader
         category="Plotting Sekolah"
-        title="Plotting Wali Kelas"
+        title="Wali Kelas"
         actionButton={
           <button
             onClick={openAddModal}

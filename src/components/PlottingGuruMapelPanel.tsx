@@ -497,7 +497,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
     <div className="space-y-6" id="plotting_guru_mapel_module">
       <PageHeader
         category="Plotting Sekolah"
-        title="Plotting Guru Mata Pelajaran"
+        title="Guru Mata Pelajaran"
         actionButton={
           <button
             onClick={openAddModal}

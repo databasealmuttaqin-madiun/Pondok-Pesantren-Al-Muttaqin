@@ -634,12 +634,12 @@ export default function ManajemenSekolahPanel({
 
   const getSubTitle = () => {
     switch (activeSubTab) {
-      case "plotting": return "Plotting Kelas";
+      case "plotting": return "Kelas Sekolah";
       case "buat_kelas": return "Buat Kelas Sekolah";
       case "jam_pelajaran": return "Jam Pelajaran";
       case "jadwal_pelajaran": return "Jadwal Pelajaran";
-      case "pengumuman": return "Pengumuman Sekolah";
-      default: return "Plotting Kelas";
+      case "pengumuman": return "Pengumuman";
+      default: return "Kelas Sekolah";
     }
   };
 
@@ -898,7 +898,7 @@ export default function ManajemenSekolahPanel({
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-200">
-                Jam Pelajaran Sekolah
+                Jam Pelajaran
               </h3>
               <p className="text-xs text-slate-500 font-medium">
                 Atur rentang waktu jam pelajaran sekolah formal

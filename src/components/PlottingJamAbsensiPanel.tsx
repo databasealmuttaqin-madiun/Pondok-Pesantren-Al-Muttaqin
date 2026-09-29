@@ -761,7 +761,7 @@ export default function PlottingJamAbsensiPanel() {
       {/* 1. HEADER & TOMBOL AKSI ATAS */}
       <PageHeader
         category="Plotting Sekolah"
-        title="Plotting Jam Absensi Guru"
+        title="Manajemen Presensi Guru"
         description="Kelola jam masuk, toleransi keterlambatan, dan jam kepulangan guru per hari kerja."
         actionButton={
           <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">

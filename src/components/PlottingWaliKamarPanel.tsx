@@ -356,7 +356,7 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
     <div className="space-y-6" id="plotting_wali_kamar_module">
       <PageHeader
         category="Plotting Pondok"
-        title="Plotting Wali Kamar"
+        title="Wali Kamar"
         actionButton={
           <button
             onClick={openAddModal}

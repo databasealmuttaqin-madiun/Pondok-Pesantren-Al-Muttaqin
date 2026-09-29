@@ -32,10 +32,10 @@ export default function ManajemenPondokPanel({
   initialSubTab = "sesi"
 }: ManajemenPondokPanelProps) {
   const getSubTitle = () => {
-    if (initialSubTab === "sesi") return "Manajemen Sesi Mengaji";
-    if (initialSubTab === "kamar") return "Plotting Kamar Asrama";
-    if (initialSubTab === "pengajian") return "Plotting Kelas Pengajian";
-    if (initialSubTab === "kantin") return "Master Kantin";
+    if (initialSubTab === "sesi") return "Sesi Mengaji";
+    if (initialSubTab === "kamar") return "Kamar";
+    if (initialSubTab === "pengajian") return "Kelas Pengajian";
+    if (initialSubTab === "kantin") return "Kantin";
     return "Plotting Pondok";
   };
 

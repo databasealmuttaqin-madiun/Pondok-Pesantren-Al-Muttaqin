@@ -537,7 +537,7 @@ END $$;`;
               <span className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
                 <BookMarked className="w-6 h-6" />
               </span>
-              Master Materi Pengajian
+              Materi Pengajian
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Kelola kategori Al-Qur'an (Cepatan &amp; Lambatan berkesinambungan) serta Daftar Kitab Himpunan Hadits

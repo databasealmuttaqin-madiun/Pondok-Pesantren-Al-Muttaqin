@@ -515,7 +515,7 @@ export default function PlottingGuruPondokPanel() {
     <div className="space-y-6" id="plotting_guru_pondok_module">
       <PageHeader
         category="Plotting Pondok"
-        title="Plotting Guru Pondok"
+        title="Guru Pondok"
         actionButton={
           <button
             onClick={openAddModal}

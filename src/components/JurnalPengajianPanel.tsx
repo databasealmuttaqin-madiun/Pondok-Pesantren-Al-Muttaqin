@@ -55,21 +55,21 @@ export default function JurnalPengajianPanel({
   // STATE KHUSUS FORM AL-QUR'AN
   // =========================================================
   const [quranSuratAwal, setQuranSuratAwal] = useState<number>(1);
-  const [quranAyatAwal, setQuranAyatAwal] = useState<number>(1);
+  const [quranAyatAwal, setQuranAyatAwal] = useState<number | "">(1);
   const [isQuranBersambung, setIsQuranBersambung] = useState<boolean>(false);
   const [quranSuratAkhir, setQuranSuratAkhir] = useState<number>(1);
-  const [quranAyatAkhir, setQuranAyatAkhir] = useState<number>(7);
+  const [quranAyatAkhir, setQuranAyatAkhir] = useState<number | "">(7);
 
   // =========================================================
   // STATE KHUSUS FORM AL-HADIST (HIMPUNAN)
   // =========================================================
   const [haditsKitabAwal, setHaditsKitabAwal] = useState<number | "">("");
-  const [haditsHalAwal, setHaditsHalAwal] = useState<number>(1);
-  const [haditsBarisAwal, setHaditsBarisAwal] = useState<number>(1);
+  const [haditsHalAwal, setHaditsHalAwal] = useState<number | "">(1);
+  const [haditsBarisAwal, setHaditsBarisAwal] = useState<number | "">(1);
   const [isHaditsBersambung, setIsHaditsBersambung] = useState<boolean>(false);
   const [haditsKitabAkhir, setHaditsKitabAkhir] = useState<number | "">("");
-  const [haditsHalAkhir, setHaditsHalAkhir] = useState<number>(1);
-  const [haditsBarisAkhir, setHaditsBarisAkhir] = useState<number>(18);
+  const [haditsHalAkhir, setHaditsHalAkhir] = useState<number | "">(1);
+  const [haditsBarisAkhir, setHaditsBarisAkhir] = useState<number | "">(18);
 
   // Database Connection State & SQL Modal
   const [hasLiveDb, setHasLiveDb] = useState(false);
@@ -259,9 +259,9 @@ export default function JurnalPengajianPanel({
   const quranCalculated = useMemo(() => {
     return calculateQuranPageRange(
       quranSuratAwal,
-      quranAyatAwal,
+      Number(quranAyatAwal) || 1,
       quranSuratAkhir,
-      quranAyatAkhir
+      Number(quranAyatAkhir) || 1
     );
   }, [quranSuratAwal, quranAyatAwal, quranSuratAkhir, quranAyatAkhir]);
 
@@ -272,16 +272,21 @@ export default function JurnalPengajianPanel({
     const namaAwal = kAwal?.nama_kitab || "Kitab";
     const namaAkhir = kAkhir?.nama_kitab || namaAwal;
 
+    const halAwalNum = Number(haditsHalAwal) || 1;
+    const barisAwalText = haditsBarisAwal === "" ? "" : haditsBarisAwal;
+    const halAkhirNum = Number(haditsHalAkhir) || 1;
+    const barisAkhirText = haditsBarisAkhir === "" ? "" : haditsBarisAkhir;
+
     let ringkasan = "";
     if (haditsKitabAwal === haditsKitabAkhir || !isHaditsBersambung) {
-      ringkasan = `${namaAwal} Hal. ${haditsHalAwal} Baris ${haditsBarisAwal} s/d Hal. ${haditsHalAkhir} Baris ${haditsBarisAkhir}`;
+      ringkasan = `${namaAwal} Hal. ${haditsHalAwal || 1} Baris ${barisAwalText || 1} s/d Hal. ${haditsHalAkhir || 1} Baris ${barisAkhirText || 1}`;
     } else {
-      ringkasan = `${namaAwal} Hal. ${haditsHalAwal} Baris ${haditsBarisAwal} s/d ${namaAkhir} Hal. ${haditsHalAkhir} Baris ${haditsBarisAkhir}`;
+      ringkasan = `${namaAwal} Hal. ${haditsHalAwal || 1} Baris ${barisAwalText || 1} s/d ${namaAkhir} Hal. ${haditsHalAkhir || 1} Baris ${barisAkhirText || 1}`;
     }
 
     const totalHal = haditsKitabAwal === haditsKitabAkhir 
-      ? Math.max(1, haditsHalAkhir - haditsHalAwal + 1)
-      : Math.max(1, (kAwal?.total_hal || 40) - haditsHalAwal + haditsHalAkhir);
+      ? Math.max(1, halAkhirNum - halAwalNum + 1)
+      : Math.max(1, (kAwal?.total_hal || 40) - halAwalNum + halAkhirNum);
 
     return {
       namaAwal,
@@ -686,15 +691,17 @@ export default function JurnalPengajianPanel({
         onTriggerNotification("Pilihan surat tidak valid", "warning");
         return;
       }
-      if (quranAyatAwal <= 0 || quranAyatAwal > sAwal.jumlah_ayat) {
+      const ayatAwalNum = Number(quranAyatAwal) || 1;
+      const ayatAkhirNum = Number(quranAyatAkhir) || 1;
+      if (ayatAwalNum <= 0 || ayatAwalNum > sAwal.jumlah_ayat) {
         onTriggerNotification(`Ayat awal harus antara 1 s/d ${sAwal.jumlah_ayat} untuk ${sAwal.nama}`, "warning");
         return;
       }
-      if (quranAyatAkhir <= 0 || quranAyatAkhir > sAkhir.jumlah_ayat) {
+      if (ayatAkhirNum <= 0 || ayatAkhirNum > sAkhir.jumlah_ayat) {
         onTriggerNotification(`Ayat akhir harus antara 1 s/d ${sAkhir.jumlah_ayat} untuk ${sAkhir.nama}`, "warning");
         return;
       }
-      if (quranSuratAwal === quranSuratAkhir && quranAyatAwal > quranAyatAkhir) {
+      if (quranSuratAwal === quranSuratAkhir && ayatAwalNum > ayatAkhirNum) {
         onTriggerNotification("Ayat akhir tidak boleh lebih kecil dari ayat awal", "warning");
         return;
       }
@@ -719,17 +726,20 @@ export default function JurnalPengajianPanel({
       const kAwal = haditsKitabList.find(k => k.id === haditsKitabAwal);
       const kAkhir = haditsKitabList.find(k => k.id === (haditsKitabAkhir || haditsKitabAwal)) || kAwal;
 
-      if (haditsHalAwal <= 0 || (kAwal && haditsHalAwal > kAwal.total_hal)) {
+      const halAwalNum = Number(haditsHalAwal) || 1;
+      const halAkhirNum = Number(haditsHalAkhir) || 1;
+
+      if (halAwalNum <= 0 || (kAwal && halAwalNum > kAwal.total_hal)) {
         onTriggerNotification(`Halaman awal tidak boleh melebihi total halaman kitab (${kAwal?.total_hal || 40} Hal)`, "warning");
         return;
       }
-      if (haditsHalAkhir <= 0 || (kAkhir && haditsHalAkhir > kAkhir.total_hal)) {
+      if (halAkhirNum <= 0 || (kAkhir && halAkhirNum > kAkhir.total_hal)) {
         onTriggerNotification(`Halaman akhir tidak boleh melebihi total halaman kitab (${kAkhir?.total_hal || 40} Hal)`, "warning");
         return;
       }
 
-      realisasiMulaiHal = haditsHalAwal;
-      realisasiSelesaiHal = haditsHalAkhir;
+      realisasiMulaiHal = halAwalNum;
+      realisasiSelesaiHal = halAkhirNum;
       materiIdToSave = Number(haditsKitabAwal);
       ringkasanInfo = haditsCalculated.ringkasanTeks;
     }
@@ -784,11 +794,11 @@ export default function JurnalPengajianPanel({
           tanggal: selectedDate,
           surat_awal_no: quranSuratAwal,
           surat_awal_nama: sAwal?.nama || "Al-Fatihah",
-          ayat_awal: quranAyatAwal,
+          ayat_awal: Number(quranAyatAwal) || 1,
           is_bersambung: isQuranBersambung,
           surat_akhir_no: quranSuratAkhir,
           surat_akhir_nama: sAkhir?.nama || sAwal?.nama || "Al-Fatihah",
-          ayat_akhir: quranAyatAkhir,
+          ayat_akhir: Number(quranAyatAkhir) || 1,
           halaman_mulai: realisasiMulaiHal,
           halaman_selesai: realisasiSelesaiHal,
           kategori_quran: quranCalculated.kategoriLabel,
@@ -819,13 +829,13 @@ export default function JurnalPengajianPanel({
           tanggal: selectedDate,
           kitab_awal_id: haditsKitabAwal,
           kitab_awal_nama: kAwal?.nama_kitab || "Kitab",
-          hal_awal: haditsHalAwal,
-          baris_awal: haditsBarisAwal,
+          hal_awal: Number(haditsHalAwal) || 1,
+          baris_awal: Number(haditsBarisAwal) || 1,
           is_bersambung: isHaditsBersambung,
           kitab_akhir_id: haditsKitabAkhir || haditsKitabAwal,
           kitab_akhir_nama: kAkhir?.nama_kitab || kAwal?.nama_kitab || "Kitab",
-          hal_akhir: haditsHalAkhir,
-          baris_akhir: haditsBarisAkhir,
+          hal_akhir: Number(haditsHalAkhir) || 1,
+          baris_akhir: Number(haditsBarisAkhir) || 1,
           ringkasan_teks: ringkasanInfo,
           catatan: catatan || null
         };
@@ -948,7 +958,7 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
             <span className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
               <ClipboardEdit className="w-6 h-6" />
             </span>
-            Jurnal &amp; Absensi Pengajian
+            Jurnal Pengajian
           </h2>
           <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">
             Form dinamis pencatatan realisasi mengajar Al-Qur'an (Surat &amp; Ayat) dan Al-Hadist (Kitab &amp; Baris)
@@ -1291,10 +1301,25 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                         </label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           min="1"
                           max={currentSurahAwalObj?.jumlah_ayat || 286}
                           value={quranAyatAwal}
-                          onChange={(e) => setQuranAyatAwal(Math.max(1, Number(e.target.value)))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setQuranAyatAwal("");
+                            } else {
+                              const num = parseInt(raw, 10);
+                              setQuranAyatAwal(isNaN(num) ? "" : num);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (quranAyatAwal === "" || Number(quranAyatAwal) < 1) {
+                              setQuranAyatAwal(1);
+                            }
+                          }}
                           className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-emerald-500"
                         />
                       </div>
@@ -1352,10 +1377,25 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                         </label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           min="1"
                           max={currentSurahAkhirObj?.jumlah_ayat || 286}
                           value={quranAyatAkhir}
-                          onChange={(e) => setQuranAyatAkhir(Math.max(1, Number(e.target.value)))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setQuranAyatAkhir("");
+                            } else {
+                              const num = parseInt(raw, 10);
+                              setQuranAyatAkhir(isNaN(num) ? "" : num);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (quranAyatAkhir === "" || Number(quranAyatAkhir) < 1) {
+                              setQuranAyatAkhir(1);
+                            }
+                          }}
                           className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-emerald-500"
                         />
                       </div>
@@ -1435,9 +1475,24 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                         </label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           min="1"
                           value={haditsHalAwal}
-                          onChange={(e) => setHaditsHalAwal(Math.max(1, Number(e.target.value)))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setHaditsHalAwal("");
+                            } else {
+                              const num = parseInt(raw, 10);
+                              setHaditsHalAwal(isNaN(num) ? "" : num);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (haditsHalAwal === "" || Number(haditsHalAwal) < 1) {
+                              setHaditsHalAwal(1);
+                            }
+                          }}
                           className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                         />
                       </div>
@@ -1447,10 +1502,25 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                         </label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           min="1"
                           max="40"
                           value={haditsBarisAwal}
-                          onChange={(e) => setHaditsBarisAwal(Math.max(1, Number(e.target.value)))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setHaditsBarisAwal("");
+                            } else {
+                              const num = parseInt(raw, 10);
+                              setHaditsBarisAwal(isNaN(num) ? "" : num);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (haditsBarisAwal === "" || Number(haditsBarisAwal) < 1) {
+                              setHaditsBarisAwal(1);
+                            }
+                          }}
                           className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                         />
                       </div>
@@ -1510,9 +1580,24 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                         </label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           min="1"
                           value={haditsHalAkhir}
-                          onChange={(e) => setHaditsHalAkhir(Math.max(1, Number(e.target.value)))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setHaditsHalAkhir("");
+                            } else {
+                              const num = parseInt(raw, 10);
+                              setHaditsHalAkhir(isNaN(num) ? "" : num);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (haditsHalAkhir === "" || Number(haditsHalAkhir) < 1) {
+                              setHaditsHalAkhir(1);
+                            }
+                          }}
                           className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                         />
                       </div>
@@ -1522,10 +1607,25 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                         </label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           min="1"
                           max="40"
                           value={haditsBarisAkhir}
-                          onChange={(e) => setHaditsBarisAkhir(Math.max(1, Number(e.target.value)))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setHaditsBarisAkhir("");
+                            } else {
+                              const num = parseInt(raw, 10);
+                              setHaditsBarisAkhir(isNaN(num) ? "" : num);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (haditsBarisAkhir === "" || Number(haditsBarisAkhir) < 1) {
+                              setHaditsBarisAkhir(1);
+                            }
+                          }}
                           className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                         />
                       </div>

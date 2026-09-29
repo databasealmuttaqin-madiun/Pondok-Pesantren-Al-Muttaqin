@@ -237,7 +237,7 @@ export default function MasterMataPelajaranPanel() {
     <div className="space-y-6" id="master_mata_pelajaran_module">
       <PageHeader
         category="Plotting Sekolah"
-        title="Master Mata Pelajaran"
+        title="Mata Pelajaran"
         actionButton={
           <button
             onClick={openAddModal}

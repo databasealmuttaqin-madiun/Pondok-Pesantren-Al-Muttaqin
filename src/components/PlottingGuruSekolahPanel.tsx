@@ -563,7 +563,7 @@ export default function PlottingGuruSekolahPanel() {
     <div className="space-y-6" id="plotting_guru_sekolah_module">
       <PageHeader
         category="Plotting Sekolah"
-        title="Plotting Guru Sekolah"
+        title="Guru Sekolah"
         actionButton={
           <button
             onClick={openAddModal}

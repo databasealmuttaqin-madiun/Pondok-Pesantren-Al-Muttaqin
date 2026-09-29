@@ -1505,11 +1505,10 @@ export default function App() {
     { id: "form", group: "UTAMA", label: editingStudent ? "Edit Siswa" : "Pendaftaran", shortLabel: editingStudent ? "Edit" : "Daftar", icon: UserPlus, roles: ["super admin", "admin", "guru pondok"] },
     { id: "absensi", group: "UTAMA", label: "Absensi Siswa", shortLabel: "Absensi", icon: ClipboardList, roles: ["super admin", "admin", "guru pondok", "siswa"] },
 
-    // SEKOLAH GROUP WITH SUBMENUS (Dashboard Guru, Presensi Guru, Jurnal Mengajar, Rekap Guru)
-    { id: "dashboard_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Dashboard Guru", label: "Dashboard Guru", shortLabel: "Dashboard Guru", icon: LayoutDashboard, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pondok"] },
-    { id: "presensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Presensi Guru", label: "Presensi Guru", shortLabel: "Presensi Guru", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "jurnal_mengajar", group: "SEKOLAH", isSubmenu: true, subLabel: "Jurnal Mengajar", label: "Jurnal Mengajar", shortLabel: "Jurnal Mengajar", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "rekap_absensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Rekap Absensi Guru", label: "Rekap Absensi Guru", shortLabel: "Rekap Guru", icon: FileSpreadsheet, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pimpinan", "pengurus"] },
+    // SEKOLAH GROUP WITH SUBMENUS (Dashboard, Presensi, Jurnal)
+    { id: "dashboard_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Dashboard", label: "Dashboard", shortLabel: "Dashboard", icon: LayoutDashboard, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pondok"] },
+    { id: "presensi_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Presensi", label: "Presensi", shortLabel: "Presensi", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "jurnal_mengajar", group: "SEKOLAH", isSubmenu: true, subLabel: "Jurnal", label: "Jurnal", shortLabel: "Jurnal", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
 
     // PERIZINAN GROUP WITH SUBMENUS (Sakit, Sambang, Haid)
     { id: "perizinan_sakit", group: "PERIZINAN", isSubmenu: true, subLabel: "Sakit", label: "Izin Sakit", shortLabel: "Sakit", icon: HeartPulse, roles: ["super admin", "admin", "guru pondok"] },
@@ -1518,9 +1517,10 @@ export default function App() {
     { id: "perizinan_riwayat", group: "PERIZINAN", isSubmenu: true, subLabel: "Riwayat", label: "Riwayat Perizinan", shortLabel: "Riwayat", icon: Clock, roles: ["super admin", "admin", "guru pondok"] },
 
     // REKAP PRESENSI GROUP WITH SUBMENUS
-    { id: "rekap_guru", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Presensi Guru", label: "Rekap Presensi Guru", shortLabel: "Rekap Guru", icon: UserCheck, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pimpinan", "pengurus"] },
-    { id: "rekap_sholat", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Sholat", label: "Rekap Sholat", shortLabel: "Sholat", icon: Moon, roles: ["super admin", "admin", "guru pondok"] },
-    { id: "rekap_sekolah", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Siswa Sekolah", label: "Rekap Absensi Siswa", shortLabel: "Siswa Sekolah", icon: School, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
+    { id: "rekap_guru", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Guru", label: "Guru", shortLabel: "Guru", icon: UserCheck, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pimpinan", "pengurus"] },
+    { id: "rekap_sholat", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Sholat", label: "Sholat", shortLabel: "Sholat", icon: Moon, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "rekap_absensi", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Pengajian", label: "Pengajian", shortLabel: "Pengajian", icon: ClipboardList, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok"] },
+    { id: "rekap_sekolah", group: "REKAP PRESENSI", isSubmenu: true, subLabel: "Sekolah", label: "Sekolah", shortLabel: "Sekolah", icon: School, roles: ["super admin", "admin", "guru pondok", "guru SMP"] },
     
     // REGISTRASI NFC GROUP WITH SUBMENUS
     { id: "nfc_daftar", group: "REGISTRASI NFC", isSubmenu: true, subLabel: "Daftar Kartu", label: "Daftar Kartu", shortLabel: "Daftar Kartu", icon: Fingerprint, roles: ["super admin", "admin", "guru pondok"] },
@@ -1542,37 +1542,36 @@ export default function App() {
     { id: "kantin_rekap", group: "KANTIN", isSubmenu: true, subLabel: "Rekap Pembukuan", label: "Rekap Pembukuan", shortLabel: "Rekap Kas", icon: Store, roles: ["super admin", "admin", "kantin", "guru pondok", "pondok"] },
 
     // MANAJEMEN PONDOK GROUP WITH SUBMENUS
-    { id: "pondok_sesi", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Sesi Mengaji", label: "Manajemen Sesi Mengaji", shortLabel: "Sesi", icon: Clock, roles: ["super admin", "admin"] },
-    { id: "pondok_kamar", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Plotting Kamar", label: "Plotting Kamar Asrama", shortLabel: "Kamar", icon: Home, roles: ["super admin", "admin"] },
-    { id: "pondok_pengajian_plotting", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Kelas Pengajian", label: "Plotting Kelas Pengajian", shortLabel: "Pengajian", icon: BookOpen, roles: ["super admin", "admin"] },
-    { id: "pondok_wali_kamar", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Wali Kamar", label: "Plotting Wali Kamar", shortLabel: "Wali Kamar", icon: UserCheck, roles: ["super admin", "admin"] },
-    { id: "pondok_guru", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Guru Pondok", label: "Plotting Guru Pondok", shortLabel: "Guru Pondok", icon: GraduationCap, roles: ["super admin", "admin"] },
-    { id: "pondok_kantin", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Master Kantin", label: "Master Kantin", shortLabel: "Kantin", icon: Store, roles: ["super admin", "admin"] },
-    { id: "pengguna", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Manajemen Akun", label: "Manajemen Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
-    { id: "hak_akses", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Hak Akses & Peran", label: "Hak Akses & Peran", shortLabel: "Hak Akses", icon: Lock, roles: ["super admin", "admin"] },
+    { id: "pondok_sesi", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Sesi Mengaji", label: "Sesi Mengaji", shortLabel: "Sesi", icon: Clock, roles: ["super admin", "admin"] },
+    { id: "pondok_kamar", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Kamar", label: "Kamar", shortLabel: "Kamar", icon: Home, roles: ["super admin", "admin"] },
+    { id: "pondok_pengajian_plotting", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Kelas Pengajian", label: "Kelas Pengajian", shortLabel: "Pengajian", icon: BookOpen, roles: ["super admin", "admin"] },
+    { id: "pondok_wali_kamar", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Wali Kamar", label: "Wali Kamar", shortLabel: "Wali Kamar", icon: UserCheck, roles: ["super admin", "admin"] },
+    { id: "pondok_guru", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Guru Pondok", label: "Guru Pondok", shortLabel: "Guru Pondok", icon: GraduationCap, roles: ["super admin", "admin"] },
+    { id: "pondok_kantin", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Kantin", label: "Kantin", shortLabel: "Kantin", icon: Store, roles: ["super admin", "admin"] },
+    { id: "pengguna", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Akun", label: "Akun", shortLabel: "Akun", icon: Shield, roles: ["super admin"] },
+    { id: "hak_akses", group: "MANAJEMEN_PONDOK", isSubmenu: true, subLabel: "Hak & Akses", label: "Hak & Akses", shortLabel: "Hak & Akses", icon: Lock, roles: ["super admin", "admin"] },
 
     // MANAJEMEN SEKOLAH GROUP WITH SUBMENUS
-    { id: "sekolah_plotting", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Plotting Kelas", label: "Plotting Kelas Sekolah", shortLabel: "Plotting", icon: Sliders, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_wali_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Wali Kelas", label: "Plotting Wali Kelas", shortLabel: "Wali Kelas", icon: UserCheck, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_guru_sekolah", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Sekolah", label: "Plotting Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Mata Pelajaran", label: "Master Mata Pelajaran", shortLabel: "Mapel", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_guru_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Mata Pelajaran", label: "Plotting Guru Mapel", shortLabel: "Guru Mapel", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_buat_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Buat Kelas", label: "Buat Kelas Sekolah", shortLabel: "Kelas", icon: Plus, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_jam", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Jam Pelajaran", label: "Jam Pelajaran Sekolah", shortLabel: "Jam", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_jadwal", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Jadwal Pelajaran", label: "Jadwal Pelajaran Sekolah", shortLabel: "Jadwal", icon: Calendar, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_pengumuman", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Pengumuman", label: "Pengumuman Sekolah", shortLabel: "Pengumuman", icon: Megaphone, roles: ["super admin", "admin", "guru SMP"] },
-    { id: "sekolah_jam_absensi", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Plotting Jam Absensi", label: "Plotting Jam Absensi Guru", shortLabel: "Jam Absensi", icon: QrCode, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_plotting", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Kelas Sekolah", label: "Kelas Sekolah", shortLabel: "Kelas", icon: Sliders, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_wali_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Wali Kelas", label: "Wali Kelas", shortLabel: "Wali Kelas", icon: UserCheck, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_guru_sekolah", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Sekolah", label: "Guru Sekolah", shortLabel: "Guru Sekolah", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Mata Pelajaran", label: "Mata Pelajaran", shortLabel: "Mapel", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_guru_mapel", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Guru Mata Pelajaran", label: "Guru Mata Pelajaran", shortLabel: "Guru Mapel", icon: GraduationCap, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_buat_kelas", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Buat Kelas Sekolah", label: "Buat Kelas Sekolah", shortLabel: "Buat Kelas", icon: Plus, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_jam", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Jam Pelajaran", label: "Jam Pelajaran", shortLabel: "Jam", icon: Clock, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_jadwal", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Jadwal Pelajaran", label: "Jadwal Pelajaran", shortLabel: "Jadwal", icon: Calendar, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_pengumuman", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Pengumuman", label: "Pengumuman", shortLabel: "Pengumuman", icon: Megaphone, roles: ["super admin", "admin", "guru SMP"] },
+    { id: "sekolah_jam_absensi", group: "MANAJEMEN_SEKOLAH", isSubmenu: true, subLabel: "Manajemen Presensi Guru", label: "Manajemen Presensi Guru", shortLabel: "Presensi Guru", icon: QrCode, roles: ["super admin", "admin", "guru SMP"] },
 
     // CAPAIAN MATERI GROUP WITH SUBMENUS
     { id: "capaian_materi", group: "CAPAIAN_MATERI", isSubmenu: true, subLabel: "Capaian Materi Siswa", label: "Capaian Materi Siswa", shortLabel: "Capaian Siswa", icon: Award, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok", "wali kamar", "wali_kamar"] },
     { id: "capaian_materi_kelas", group: "CAPAIAN_MATERI", isSubmenu: true, subLabel: "Capaian Materi Kelas", label: "Capaian Materi Kelas / Asrama", shortLabel: "Capaian Kelas", icon: TrendingUp, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok", "wali kamar", "wali_kamar"] },
 
     // PENGAJIAN
-    { id: "manajemen_materi", group: "PENGAJIAN", isSubmenu: true, subLabel: "Master Materi", label: "Master Materi Pengajian", shortLabel: "Materi", icon: BookOpen, roles: ["super admin", "admin"] },
-    { id: "target_pengajian", group: "PENGAJIAN", isSubmenu: true, subLabel: "Target Pengajian", label: "Target Capaian Pengajian", shortLabel: "Target", icon: Target, roles: ["super admin", "admin", "guru pondok", "pondok"] },
-    { id: "jurnal_pengajian", group: "PENGAJIAN", isSubmenu: true, subLabel: "Jurnal & Absensi", label: "Jurnal & Absensi Pengajian", shortLabel: "Jurnal", icon: ClipboardEdit, roles: ["super admin", "admin", "guru pondok", "pondok"] },
+    { id: "manajemen_materi", group: "PENGAJIAN", isSubmenu: true, subLabel: "Materi Pengajian", label: "Materi Pengajian", shortLabel: "Materi", icon: BookOpen, roles: ["super admin", "admin"] },
+    { id: "target_pengajian", group: "PENGAJIAN", isSubmenu: true, subLabel: "Target Pengajian", label: "Target Pengajian", shortLabel: "Target", icon: Target, roles: ["super admin", "admin", "guru pondok", "pondok"] },
+    { id: "jurnal_pengajian", group: "PENGAJIAN", isSubmenu: true, subLabel: "Jurnal Pengajian", label: "Jurnal Pengajian", shortLabel: "Jurnal", icon: ClipboardEdit, roles: ["super admin", "admin", "guru pondok", "pondok"] },
     { id: "rekap_jurnal", group: "PENGAJIAN", isSubmenu: true, subLabel: "Rekap Jurnal", label: "Rekap Jurnal Pengajian", shortLabel: "Rekap Jurnal", icon: FileText, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok"] },
-    { id: "rekap_absensi", group: "PENGAJIAN", isSubmenu: true, subLabel: "Rekap Absensi", label: "Rekap Absensi Pengajian", shortLabel: "Rekap Absen", icon: ClipboardList, roles: ["super admin", "admin", "pimpinan", "guru pondok", "pondok"] },
   ];
   
   const hasKantinAccess = 
@@ -2132,7 +2131,7 @@ export default function App() {
             )}
 
             {/* REKAP PRESENSI GROUP (ACCORDION) */}
-            {accessibleTabs.some(t => t.group === "REKAP PRESENSI") && (!sidebarSearchQuery || "rekap presensi sholat sekolah coming soon".includes(sidebarSearchQuery.toLowerCase())) && (
+            {accessibleTabs.some(t => t.group === "REKAP PRESENSI") && (!sidebarSearchQuery || "rekap presensi sholat sekolah pengajian coming soon".includes(sidebarSearchQuery.toLowerCase())) && (
               <div 
                 className="w-full pt-1.5 relative group/flyout"
                 onMouseEnter={() => setHoveredFlyout("rekap")}
@@ -2155,7 +2154,7 @@ export default function App() {
                     <button
                       onClick={() => setIsRekapExpanded(!isRekapExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["rekap_sholat", "rekap_sekolah", "rekap_presensi"].includes(activeTab)
+                        ["rekap_sholat", "rekap_sekolah", "rekap_presensi", "rekap_absensi", "rekap_guru"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}
@@ -2877,7 +2876,7 @@ export default function App() {
                     <button
                       onClick={() => setIsPengajianExpanded(!isPengajianExpanded)}
                       className={`p-2 rounded-xl transition-colors ${
-                        ["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal", "rekap_absensi"].includes(activeTab)
+                        ["manajemen_materi", "target_pengajian", "jurnal_pengajian", "rekap_jurnal"].includes(activeTab)
                           ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200/80 dark:border-slate-700/60"
                           : "text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                       }`}

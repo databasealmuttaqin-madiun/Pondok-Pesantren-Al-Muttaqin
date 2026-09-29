@@ -85,7 +85,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   // 2. SEKOLAH
   {
     key: "dashboard_guru",
-    name: "Dashboard Guru",
+    name: "Dashboard",
     category: "SEKOLAH",
     description: "Dasbor aktivitas harian mengajar dan jadwal sekolah guru.",
     icon: LayoutDashboard,
@@ -93,7 +93,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "presensi_guru",
-    name: "Presensi Guru",
+    name: "Presensi",
     category: "SEKOLAH",
     description: "Presensi kehadiran guru berbasis jam absensi sekolah.",
     icon: Clock,
@@ -101,19 +101,11 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "jurnal_mengajar",
-    name: "Jurnal Mengajar",
+    name: "Jurnal",
     category: "SEKOLAH",
     description: "Pengisian jurnal tatap muka kelas, materi, dan absensi jam pelajaran.",
     icon: BookOpen,
     defaultPermissions: { can_view: true, can_input: true, can_edit: true, can_delete: true }
-  },
-  {
-    key: "rekap_absensi_guru",
-    name: "Rekap Absensi Guru",
-    category: "SEKOLAH",
-    description: "Laporan rekapitulasi kehadiran dan jam mengajar guru formal.",
-    icon: FileSpreadsheet,
-    defaultPermissions: { can_view: true, can_input: false, can_edit: false, can_delete: false }
   },
 
   // 3. PERIZINAN
@@ -153,7 +145,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   // 4. REKAP PRESENSI
   {
     key: "rekap_guru",
-    name: "Rekap: Presensi Guru",
+    name: "Rekap: Guru",
     category: "REKAP PRESENSI",
     description: "Laporan presensi guru pondok & sekolah per periode bulan.",
     icon: UserCheck,
@@ -161,15 +153,23 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "rekap_sholat",
-    name: "Rekap: Sholat Berjamaah",
+    name: "Rekap: Sholat",
     category: "REKAP PRESENSI",
     description: "Rekap kehadiran sholat fardhu berjamaah dan kegiatan asrama.",
     icon: Moon,
     defaultPermissions: { can_view: true, can_input: true, can_edit: true, can_delete: false }
   },
   {
+    key: "rekap_absensi",
+    name: "Rekap: Pengajian",
+    category: "REKAP PRESENSI",
+    description: "Laporan rekapitulasi kehadiran santri dalam kegiatan pengajian pondok.",
+    icon: ClipboardList,
+    defaultPermissions: { can_view: true, can_input: true, can_edit: true, can_delete: false }
+  },
+  {
     key: "rekap_sekolah",
-    name: "Rekap: Siswa Sekolah",
+    name: "Rekap: Sekolah",
     category: "REKAP PRESENSI",
     description: "Rekapitulasi absensi santri di sekolah formal (SMP/SMA).",
     icon: School,
@@ -283,7 +283,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "pondok_kamar",
-    name: "Pondok: Plotting Kamar",
+    name: "Pondok: Kamar",
     category: "MANAJEMEN PONDOK",
     description: "Plotting pembagian santri ke kamar asrama pondok.",
     icon: Home,
@@ -315,7 +315,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "pondok_kantin",
-    name: "Pondok: Master Kantin",
+    name: "Pondok: Kantin",
     category: "MANAJEMEN PONDOK",
     description: "Pengaturan master kantin pondok dan penugasan pengelola.",
     icon: Store,
@@ -323,7 +323,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "pengguna",
-    name: "Pondok: Manajemen Akun",
+    name: "Pondok: Akun",
     category: "MANAJEMEN PONDOK",
     description: "Persetujuan akun registrasi staf, reset password, dan daftar pengguna.",
     icon: Shield,
@@ -331,7 +331,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "hak_akses",
-    name: "Pondok: Hak Akses & Peran",
+    name: "Pondok: Hak & Akses",
     category: "MANAJEMEN PONDOK",
     description: "Pengaturan role permissions base dan kontrol visibilitas sidebar.",
     icon: Lock,
@@ -341,7 +341,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   // 10. MANAJEMEN SEKOLAH
   {
     key: "sekolah_plotting",
-    name: "Sekolah: Plotting Kelas",
+    name: "Sekolah: Kelas Sekolah",
     category: "MANAJEMEN SEKOLAH",
     description: "Penempatan rombel siswa ke kelas formal (SMP/SMA).",
     icon: Sliders,
@@ -373,7 +373,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "sekolah_guru_mapel",
-    name: "Sekolah: Guru Mapel",
+    name: "Sekolah: Guru Mata Pelajaran",
     category: "MANAJEMEN SEKOLAH",
     description: "Plotting guru pengampu untuk setiap mata pelajaran dan kelas.",
     icon: GraduationCap,
@@ -381,7 +381,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "sekolah_buat_kelas",
-    name: "Sekolah: Buat Kelas",
+    name: "Sekolah: Buat Kelas Sekolah",
     category: "MANAJEMEN SEKOLAH",
     description: "Pembuatan tingkatan kelas baru (7A, 8B, 9C, dsb).",
     icon: Plus,
@@ -413,7 +413,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "sekolah_jam_absensi",
-    name: "Sekolah: Plotting Jam Absensi",
+    name: "Sekolah: Manajemen Presensi Guru",
     category: "MANAJEMEN SEKOLAH",
     description: "Plotting batas jam masuk & pulang absensi guru sekolah.",
     icon: QrCode,
@@ -441,7 +441,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   // 12. PENGAJIAN
   {
     key: "manajemen_materi",
-    name: "Pengajian: Master Materi",
+    name: "Pengajian: Materi Pengajian",
     category: "PENGAJIAN",
     description: "Master kitab kuning, bab pengajian, dan target kurikulum pondok.",
     icon: BookOpen,
@@ -449,7 +449,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "target_pengajian",
-    name: "Pengajian: Target Capaian",
+    name: "Pengajian: Target Pengajian",
     category: "PENGAJIAN",
     description: "Setting target khataman per semester untuk masing-masing kelas ngaji.",
     icon: Target,
@@ -457,7 +457,7 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "jurnal_pengajian",
-    name: "Pengajian: Jurnal & Absensi",
+    name: "Pengajian: Jurnal Pengajian",
     category: "PENGAJIAN",
     description: "Input jurnal materi ngaji dan presensi santri per halaqah pengajian.",
     icon: ClipboardEdit,
@@ -465,19 +465,11 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
   },
   {
     key: "rekap_jurnal",
-    name: "Pengajian: Rekap Jurnal",
+    name: "Pengajian: Rekap Jurnal Pengajian",
     category: "PENGAJIAN",
     description: "Laporan rekapitulasi materi ngaji yang telah diajarkan guru pengajian.",
     icon: FileText,
     defaultPermissions: { can_view: true, can_input: false, can_edit: false, can_delete: false }
-  },
-  {
-    key: "rekap_absensi",
-    name: "Pengajian: Rekap Absensi",
-    category: "PENGAJIAN",
-    description: "Laporan rekapitulasi kehadiran santri dalam kegiatan pengajian pondok.",
-    icon: ClipboardList,
-    defaultPermissions: { can_view: true, can_input: true, can_edit: true, can_delete: false }
   }
 ];
 
@@ -912,6 +904,7 @@ export function normalizeMenuKey(tabOrRoute: string): string {
   if (key === "data_santri" || key === "santri") return "list";
   if (key === "rekap_absensi_pengajian") return "rekap_absensi";
   if (key === "rekap_absensi_sekolah") return "rekap_sekolah";
+  if (key === "rekap_absensi_guru") return "rekap_guru";
   if (key === "manajemen_pengguna") return "pengguna";
   if (key === "manajemen_hak_akses") return "hak_akses";
   if (key === "absensi_guru") return "presensi_guru";
