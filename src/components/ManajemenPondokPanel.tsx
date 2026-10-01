@@ -4,6 +4,8 @@ import { SantriData } from "../supabaseClient";
 import ManajemenSesiPanel from "./ManajemenSesiPanel";
 import ManagementPanel from "./ManagementPanel";
 import MasterKantinPanel from "./MasterKantinPanel";
+import PlottingKamarPanel from "./PlottingKamarPanel";
+import PlottingPengajianPanel from "./PlottingPengajianPanel";
 import PageHeader from "./PageHeader";
 
 interface ManajemenPondokPanelProps {
@@ -17,6 +19,7 @@ interface ManajemenPondokPanelProps {
   metadataMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>;
   onAssignMetadata: (nik: string, key: "kamar" | "kelas_sekolah" | "kelas_pengajian", value: string) => void;
   initialSubTab?: "sesi" | "kamar" | "pengajian" | "kantin";
+  currentUser?: any;
 }
 
 export default function ManajemenPondokPanel({
@@ -29,7 +32,8 @@ export default function ManajemenPondokPanel({
   setSchoolClasses,
   metadataMap,
   onAssignMetadata,
-  initialSubTab = "sesi"
+  initialSubTab = "sesi",
+  currentUser
 }: ManajemenPondokPanelProps) {
   const getSubTitle = () => {
     if (initialSubTab === "sesi") return "Sesi Mengaji";
@@ -41,7 +45,9 @@ export default function ManajemenPondokPanel({
 
   return (
     <div className="space-y-6" id="manajemen_pondok_module">
-      <PageHeader category="Plotting Pondok" title={getSubTitle()} />
+      {initialSubTab !== "kamar" && initialSubTab !== "pengajian" && (
+        <PageHeader category="Plotting Pondok" title={getSubTitle()} />
+      )}
 
       {/* Rendering panels */}
       {initialSubTab === "sesi" && (
@@ -51,33 +57,25 @@ export default function ManajemenPondokPanel({
       )}
       {initialSubTab === "kamar" && (
         <div className="w-full">
-          <ManagementPanel
-            initialMode="kamar"
+          <PlottingKamarPanel
             students={students}
             rooms={rooms}
             setRooms={setRooms}
-            recitationClasses={recitationClasses}
-            setRecitationClasses={setRecitationClasses}
-            schoolClasses={schoolClasses}
-            setSchoolClasses={setSchoolClasses}
             metadataMap={metadataMap}
             onAssignMetadata={onAssignMetadata}
+            currentUser={currentUser}
           />
         </div>
       )}
       {initialSubTab === "pengajian" && (
         <div className="w-full">
-          <ManagementPanel
-            initialMode="pengajian"
+          <PlottingPengajianPanel
             students={students}
-            rooms={rooms}
-            setRooms={setRooms}
             recitationClasses={recitationClasses}
             setRecitationClasses={setRecitationClasses}
-            schoolClasses={schoolClasses}
-            setSchoolClasses={setSchoolClasses}
             metadataMap={metadataMap}
             onAssignMetadata={onAssignMetadata}
+            currentUser={currentUser}
           />
         </div>
       )}

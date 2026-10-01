@@ -197,20 +197,21 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
 
     const lines = santriList.map((santri, idx) => {
       const statuses = sessionsOnDate.map(sesi => {
-        return santri.id && absensiMap[String(santri.id)] ? absensiMap[String(santri.id)][sesi.key] || "hadir" : "hadir";
+        const sId = String(santri.id);
+        const dbStatus = (sId && absensiMap[sId]) ? absensiMap[sId][sesi.key] : null;
+        return dbStatus || "hadir";
       });
 
       const emojis = statuses.map(s => {
-        if (s === "hadir") return "✅";
-        if (s === "terlambat") return "⚠️";
         if (s === "sakit") return "🤒";
         if (s === "izin") return "✉️";
         if (s === "alpa") return "❌";
+        if (s === "terlambat" || s === "telat") return "⚠️";
         return "✅";
       }).join(" ");
 
       const hasAlpa = statuses.includes("alpa");
-      const hasSickOrLeave = statuses.includes("sakit") || statuses.includes("izin") || statuses.includes("terlambat");
+      const hasSickOrLeave = statuses.includes("sakit") || statuses.includes("izin") || statuses.includes("terlambat") || statuses.includes("telat");
 
       if (hasAlpa) {
         countAlpa++;
@@ -277,7 +278,7 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6" id="rekap_absensi_pengajian_root">
+    <div className="w-full space-y-6" id="rekap_absensi_pengajian_root">
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>

@@ -3188,7 +3188,7 @@ export default function App() {
               />
             )}
 
-            {(activeTab === "list" || activeTab === "form") && (
+            {activeTab === "list" && (
               <SantriList
                 students={displayedStudents}
                 onEdit={handleTriggerEdit}
@@ -3375,6 +3375,7 @@ export default function App() {
                   setSchoolClasses={setSchoolClasses}
                   metadataMap={metadataMap}
                   onAssignMetadata={handleAssignMetadata}
+                  currentUser={currentUser}
                 />
               </div>
             )}
@@ -3392,6 +3393,7 @@ export default function App() {
                   setSchoolClasses={setSchoolClasses}
                   metadataMap={metadataMap}
                   onAssignMetadata={handleAssignMetadata}
+                  currentUser={currentUser}
                 />
               </div>
             )}

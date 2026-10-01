@@ -683,17 +683,18 @@ export default function RekapAbsensiSiswaPanel({ students: santriListProp }: { s
         if (s === "S") return "🤒";
         if (s === "I") return "✉️";
         if (s === "A") return "❌";
-        return "✅";
+        return "➖";
       }).join(" ");
 
       const hasAlpa = statuses.includes("A");
       const hasSickOrLeave = statuses.includes("S") || statuses.includes("I") || statuses.includes("T");
+      const hasHadir = statuses.includes("H");
 
       if (hasAlpa) {
         countAlpa++;
       } else if (hasSickOrLeave) {
         countSakitIzin++;
-      } else {
+      } else if (hasHadir) {
         countHadir++;
       }
 

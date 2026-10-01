@@ -30,8 +30,42 @@ export default function JurnalPengajianPanel({
   // Filter Atas
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [selectedKelompok, setSelectedKelompok] = useState<"alquran" | "himpunan" | "">("alquran");
+  const [selectedKelompok, setSelectedKelompok] = useState<"alquran" | "himpunan" | "pegon" | "bacaan" | "pegon_bacaan" | "">("alquran");
   const [selectedSesi, setSelectedSesi] = useState<string>("");
+
+  // Deteksi kelas Pegon & Bacaan
+  const isPegonClass = (selectedClass || "").toLowerCase().includes("pegon");
+  const isBacaanClass = (selectedClass || "").toLowerCase().includes("bacaan");
+  const isPegonOrBacaan = isPegonClass || isBacaanClass;
+  const isKelompokPegonBacaan = selectedKelompok === "pegon" || selectedKelompok === "bacaan" || selectedKelompok === "pegon_bacaan";
+
+  // List kelas pengajian yang tersedia (memastikan kelas Pegon & Bacaan selalu tersedia sebagai pilihan)
+  const classOptions = useMemo(() => {
+    const list = [...recitationClasses];
+    if (!list.some(c => c.toLowerCase().includes("pegon") || c.toLowerCase().includes("bacaan"))) {
+      list.push("Pegon & Bacaan");
+    }
+    return list;
+  }, [recitationClasses]);
+
+  // Set default class jika belum dipilih
+  useEffect(() => {
+    if (!selectedClass && classOptions.length > 0) {
+      const defaultCls = classOptions[0];
+      setSelectedClass(defaultCls);
+      const lower = defaultCls.toLowerCase();
+      if (lower.includes("pegon") || lower.includes("bacaan")) {
+        setSelectedKelompok("pegon");
+        setMateriPegonBacaan("Pegon");
+      }
+    }
+  }, [classOptions]);
+
+  // State Khusus Pegon & Bacaan
+  const [materiPegonBacaan, setMateriPegonBacaan] = useState<string>("Pegon & Bacaan");
+  const [customMateriInput, setCustomMateriInput] = useState<string>("");
+  const [realisasiSingkat, setRealisasiSingkat] = useState<string>("");
+  const [genderFilterPegon, setGenderFilterPegon] = useState<"L" | "P" | "semua">("L");
   
   // Data master
   const [sesiList, setSesiList] = useState<any[]>([]);
@@ -311,20 +345,30 @@ export default function JurnalPengajianPanel({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // 1. Get Target dari target_pengajian
-      const { data: targetData } = await supabase
-        .from("target_pengajian")
-        .select("*, materi_pengajian!inner(nama_materi, kelompok)")
-        .eq("kelas_pengajian", selectedClass)
-        .eq("tanggal", selectedDate)
-        .eq("materi_pengajian.kelompok", selectedKelompok)
-        .maybeSingle();
-
-      let enhancedTarget: any = targetData ? { ...targetData } : null;
+      let enhancedTarget: any = null;
       let hasLive = false;
 
-      // Hubungkan detail dari tabel target_quran (Supabase)
-      if (selectedKelompok === "alquran") {
+      // 1. Get Target
+      if (isKelompokPegonBacaan) {
+        // Kelas Pegon & Bacaan tidak tertulis di dalam kurikulum pondok
+        enhancedTarget = {
+          isPegonBacaan: true,
+          pertemuan_ke: "-",
+          materi_pengajian: {
+            nama_materi: selectedKelompok === "pegon" ? "Materi Pegon" : selectedKelompok === "bacaan" ? "Materi Bacaan" : "Materi Pegon & Bacaan",
+            kelompok: selectedKelompok
+          }
+        };
+      } else if (selectedKelompok === "alquran") {
+        const { data: targetData } = await supabase
+          .from("target_pengajian")
+          .select("*, materi_pengajian!inner(nama_materi, kelompok)")
+          .eq("kelas_pengajian", selectedClass)
+          .eq("tanggal", selectedDate)
+          .eq("materi_pengajian.kelompok", "alquran")
+          .maybeSingle();
+
+        enhancedTarget = targetData ? { ...targetData } : null;
         try {
           let tq = null;
           if (targetData?.id) {
@@ -369,6 +413,16 @@ export default function JurnalPengajianPanel({
           console.warn("Notice loading target_quran:", errQ);
         }
       } else {
+        const { data: targetData } = await supabase
+          .from("target_pengajian")
+          .select("*, materi_pengajian!inner(nama_materi, kelompok)")
+          .eq("kelas_pengajian", selectedClass)
+          .eq("tanggal", selectedDate)
+          .eq("materi_pengajian.kelompok", "himpunan")
+          .maybeSingle();
+
+        enhancedTarget = targetData ? { ...targetData } : null;
+
         // Hubungkan detail dari tabel target_hadits (Supabase)
         try {
           let th = null;
@@ -420,19 +474,46 @@ export default function JurnalPengajianPanel({
       setTargetInfo(enhancedTarget || null);
 
       // 2. Check if Jurnal already exists
-      const { data: jurnalData } = await supabase
+      let queryJurnal = supabase
         .from("jurnal_pengajian")
-        .select("*, materi_pengajian!inner(kelompok)")
+        .select("*, materi_pengajian(id, nama_materi, kelompok)")
         .eq("kelas_pengajian", selectedClass)
         .eq("tanggal", selectedDate)
-        .eq("sesi_id", selectedSesi)
-        .eq("materi_pengajian.kelompok", selectedKelompok)
-        .maybeSingle();
+        .eq("sesi_id", selectedSesi);
+
+      if (selectedKelompok === "alquran") {
+        queryJurnal = queryJurnal.eq("materi_pengajian.kelompok", "alquran");
+      } else if (selectedKelompok === "himpunan") {
+        queryJurnal = queryJurnal.eq("materi_pengajian.kelompok", "himpunan");
+      }
+
+      const { data: jurnalData } = await queryJurnal.maybeSingle();
 
       if (jurnalData) {
         setExistingJurnal(jurnalData);
         setSelectedUstaz(jurnalData.ustaz_id ? jurnalData.ustaz_id.toString() : (currentUser?.id?.toString() || ""));
         setCatatan(jurnalData.catatan_kendala || "");
+
+        // Parsing untuk Pegon & Bacaan
+        if (isKelompokPegonBacaan) {
+          if (jurnalData.materi && typeof jurnalData.materi === "string" && jurnalData.materi.trim()) {
+            setRealisasiSingkat(jurnalData.materi.trim());
+          } else {
+            const rawCat = jurnalData.catatan_kendala || "";
+            const matMatch = rawCat.match(/\[Materi:\s*([^\]]+)\]/i);
+            const capMatch = rawCat.match(/Capaian:\s*([^|]+)/i);
+            if (capMatch) {
+              setRealisasiSingkat(capMatch[1].trim());
+            } else if (matMatch) {
+              setRealisasiSingkat(matMatch[1].trim());
+            } else if (rawCat && !rawCat.includes("Catatan:")) {
+              setRealisasiSingkat(rawCat.trim());
+            }
+          }
+          if (jurnalData.catatan_kendala && jurnalData.catatan_kendala.includes("Catatan:")) {
+            setCatatan(jurnalData.catatan_kendala.split("Catatan:")[1].trim());
+          }
+        }
 
         // Cek apakah ada record di capaian_quran
         if (selectedKelompok === "alquran") {
@@ -497,6 +578,17 @@ export default function JurnalPengajianPanel({
       } else {
         setExistingJurnal(null);
         setCatatan("");
+        if (isKelompokPegonBacaan) {
+          setRealisasiSingkat("");
+          setCustomMateriInput("");
+          setMateriPegonBacaan(
+            selectedKelompok === "bacaan"
+              ? "Bacaan Dasar"
+              : selectedKelompok === "pegon"
+              ? "Pegon Dasar"
+              : "Pegon & Bacaan"
+          );
+        }
 
         // Auto-fill dari target yang sudah ditetapkan jika jurnal baru
         if (selectedKelompok === "alquran" && enhancedTarget?.target_quran_detail) {
@@ -571,7 +663,22 @@ export default function JurnalPengajianPanel({
       // Load Santri for this class
       const cached = localStorage.getItem("santri_data");
       let allSantri: SantriData[] = cached ? JSON.parse(cached) : [];
-      const classSantri = allSantri.filter(s => (s as any).kelas_pengajian === selectedClass);
+      if (allSantri.length === 0) {
+        try {
+          const { data: dbSantri } = await supabase.from("santri").select("*");
+          if (dbSantri) allSantri = dbSantri as any;
+        } catch (e) {
+          console.warn("Failed to fetch santri from db:", e);
+        }
+      }
+      const classSantri = allSantri.filter(s => {
+        const kp = ((s as any).kelas_pengajian || "").trim().toLowerCase();
+        const sc = selectedClass.trim().toLowerCase();
+        if (!sc) return false;
+        if (kp === sc) return true;
+        if ((sc.includes("pegon") || sc.includes("bacaan")) && (kp.includes("pegon") || kp.includes("bacaan"))) return true;
+        return false;
+      });
       setSantriList(classSantri);
 
       // Inisialisasi absensi default jika jurnal baru
@@ -601,10 +708,32 @@ export default function JurnalPengajianPanel({
     }));
   };
 
+  // Filter santri khusus Pegon & Bacaan (Siswa / Siswi) & search
+  const displayedSantriList = useMemo(() => {
+    return santriList.filter(s => {
+      // Filter Siswa / Siswi khusus kelas Pegon & Bacaan (karena kelas siswa dan siswi berbeda)
+      if ((isPegonOrBacaan || isKelompokPegonBacaan) && genderFilterPegon !== "semua") {
+        const rawJk = (s.jenis_kelamin || "").trim().toUpperCase();
+        const isLaki = rawJk === "L" || rawJk.startsWith("L") || rawJk.startsWith("PUTRA") || rawJk.startsWith("PRIA");
+        const isPerempuan = rawJk === "P" || rawJk.startsWith("P") || rawJk.startsWith("PUTRI") || rawJk.startsWith("WANITA");
+        if (genderFilterPegon === "L" && !isLaki) return false;
+        if (genderFilterPegon === "P" && !isPerempuan) return false;
+      }
+      // Search
+      if (searchSantri.trim()) {
+        const q = searchSantri.toLowerCase();
+        const matchName = (s.nama_lengkap || "").toLowerCase().includes(q);
+        const matchKamar = (s.kamar || "").toLowerCase().includes(q);
+        if (!matchName && !matchKamar) return false;
+      }
+      return true;
+    });
+  }, [santriList, isPegonOrBacaan, genderFilterPegon, searchSantri]);
+
   const handleMarkAllHadir = () => {
     setAbsensiMap(prev => {
       const updated = { ...prev };
-      santriList.forEach(s => {
+      displayedSantriList.forEach(s => {
         if (s.id) {
           updated[s.id] = {
             status: "hadir",
@@ -621,7 +750,7 @@ export default function JurnalPengajianPanel({
     let izin = 0;
     let sakit = 0;
     let alpa = 0;
-    santriList.forEach(s => {
+    displayedSantriList.forEach(s => {
       if (!s.id) return;
       const status = absensiMap[s.id]?.status || "hadir";
       if (status === "hadir") hadir++;
@@ -630,7 +759,7 @@ export default function JurnalPengajianPanel({
       else if (status === "alpa") alpa++;
     });
     return { hadir, izin, sakit, alpa };
-  }, [santriList, absensiMap]);
+  }, [displayedSantriList, absensiMap]);
 
   // Salin Target Kurikulum ke Form Realisasi Mengajar
   const handleApplyTargetToRealisasi = () => {
@@ -683,7 +812,23 @@ export default function JurnalPengajianPanel({
     let materiIdToSave = 1;
     let ringkasanInfo = "";
 
-    if (selectedKelompok === "alquran") {
+    if (isKelompokPegonBacaan) {
+      if (!realisasiSingkat.trim()) {
+        onTriggerNotification("Isian materi mengajar singkat tidak boleh kosong", "warning");
+        return;
+      }
+      const effectiveMateri = realisasiSingkat.trim();
+
+      realisasiMulaiHal = 1;
+      realisasiSelesaiHal = 1;
+      const pegonMat = materiList.find(m => 
+        m.nama_materi.toLowerCase().includes("pegon") || 
+        m.nama_materi.toLowerCase().includes("bacaan") || 
+        m.id === 25
+      ) || materiList[0];
+      materiIdToSave = pegonMat?.id || 25;
+      ringkasanInfo = `[Materi: ${effectiveMateri}]`;
+    } else if (selectedKelompok === "alquran") {
       const sAwal = QURAN_SURAHS.find(s => s.nomor === quranSuratAwal);
       const sAkhir = QURAN_SURAHS.find(s => s.nomor === quranSuratAkhir);
 
@@ -749,16 +894,19 @@ export default function JurnalPengajianPanel({
       let jurnalId: number;
 
       // 1. Simpan ke jurnal_pengajian
-      const payloadJurnal = {
+      const payloadJurnal: any = {
         target_id: targetInfo ? targetInfo.id : null,
         materi_id: materiIdToSave,
+        materi: isKelompokPegonBacaan ? realisasiSingkat.trim() : (materiList.find(m => m.id === materiIdToSave)?.nama_materi || ringkasanInfo),
         kelas_pengajian: selectedClass,
         sesi_id: selectedSesi || null,
         ustaz_id: selectedUstaz || null,
         tanggal: selectedDate,
         realisasi_halaman_mulai: realisasiMulaiHal,
         realisasi_halaman_selesai: realisasiSelesaiHal,
-        catatan_kendala: catatan ? `${ringkasanInfo} | Catatan: ${catatan}` : ringkasanInfo,
+        catatan_kendala: isKelompokPegonBacaan
+          ? (catatan && catatan.trim() ? catatan.trim() : null)
+          : (catatan ? `${ringkasanInfo} | Catatan: ${catatan}` : ringkasanInfo),
       };
 
       if (existingJurnal) {
@@ -870,7 +1018,7 @@ export default function JurnalPengajianPanel({
       MySwal.fire({
         icon: "success",
         title: "Berhasil Disimpan!",
-        text: `Realisasi ${selectedKelompok === 'alquran' ? "Al-Qur'an" : "Al-Hadist"} dan data presensi santri berhasil disimpan ke database.`,
+        text: `Realisasi ${selectedKelompok === 'alquran' ? "Al-Qur'an" : selectedKelompok === 'himpunan' ? "Al-Hadist" : (selectedKelompok === 'pegon' ? "Pegon" : selectedKelompok === 'bacaan' ? "Bacaan" : "Pegon & Bacaan")} dan data presensi santri berhasil disimpan ke database.`,
         timer: 2200,
         showConfirmButton: false
       });
@@ -950,7 +1098,7 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="w-full space-y-6">
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -984,14 +1132,16 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
           </button>
 
           <span className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border shadow-xs ${
-            selectedKelompok === "alquran" 
+            isKelompokPegonBacaan
+              ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+              : selectedKelompok === "alquran" 
               ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
               : selectedKelompok === "himpunan"
               ? "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800"
               : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300"
           }`}>
-            {selectedKelompok === "alquran" ? <BookOpen className="w-4 h-4 text-emerald-600" /> : <Book className="w-4 h-4 text-indigo-600" />}
-            <span>Mode: {selectedKelompok === "alquran" ? "Al-Qur'an" : selectedKelompok === "himpunan" ? "Al-Hadist / Himpunan" : "Belum Dipilih"}</span>
+            {isKelompokPegonBacaan ? <span>✍️📖</span> : selectedKelompok === "alquran" ? <BookOpen className="w-4 h-4 text-emerald-600" /> : <Book className="w-4 h-4 text-indigo-600" />}
+            <span>Mode: {selectedKelompok === "pegon_bacaan" ? "Pegon & Bacaan" : selectedKelompok === "pegon" ? "Pegon" : selectedKelompok === "bacaan" ? "Bacaan" : selectedKelompok === "alquran" ? "Al-Qur'an" : selectedKelompok === "himpunan" ? "Al-Hadist / Himpunan" : "Belum Dipilih"}</span>
           </span>
         </div>
       </div>
@@ -1032,11 +1182,21 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
           </label>
           <select
             value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedClass(val);
+              const lower = val.toLowerCase();
+              if (lower.includes("pegon") || lower.includes("bacaan")) {
+                setSelectedKelompok("pegon_bacaan");
+                setMateriPegonBacaan("Pegon & Bacaan");
+              } else if (isKelompokPegonBacaan) {
+                setSelectedKelompok("alquran");
+              }
+            }}
             className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium"
           >
             <option value="">-- Pilih Kelas --</option>
-            {recitationClasses.map(c => (
+            {classOptions.map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -1045,15 +1205,23 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
         <div>
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-indigo-500" />
-            Kelompok Materi
+            Materi
           </label>
           <select
             value={selectedKelompok}
-            onChange={(e) => setSelectedKelompok(e.target.value as any)}
+            onChange={(e) => {
+              const val = e.target.value as any;
+              setSelectedKelompok(val);
+              if (val === "pegon_bacaan") setMateriPegonBacaan("Pegon & Bacaan");
+              else if (val === "pegon") setMateriPegonBacaan("Pegon Dasar");
+              else if (val === "bacaan") setMateriPegonBacaan("Bacaan Dasar");
+            }}
             className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-semibold text-indigo-600 dark:text-indigo-400"
           >
-            <option value="alquran">📖 Al-Qur'an</option>
-            <option value="himpunan">📚 Al-Hadist (Himpunan)</option>
+            <option value="pegon">Pegon</option>
+            <option value="bacaan">Bacaan</option>
+            <option value="alquran">Al Quran</option>
+            <option value="himpunan">Al Hadist</option>
           </select>
         </div>
 
@@ -1107,6 +1275,19 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                       {targetInfo.materi_pengajian?.nama_materi || "Materi Kurikulum"}
                     </span>
                   </div>
+
+                  {/* Jika Kelas Pegon & Bacaan */}
+                  {isKelompokPegonBacaan && (
+                    <div className="p-3 bg-amber-50/90 dark:bg-amber-950/40 rounded-xl border border-amber-200/80 dark:border-amber-800/50 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300 text-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Materi Mandiri &amp; Fleksibel</span>
+                      </div>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                        Materi kelas {selectedKelompok === "pegon" ? "Pegon" : selectedKelompok === "bacaan" ? "Bacaan" : "Pegon & Bacaan"} tidak tertulis di dalam kurikulum pondok. Guru pengajar dapat mengisi capaian materi pembelajaran pada form isian singkat di bawah.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Target Spesifik Al-Qur'an */}
                   {selectedKelompok === "alquran" && (
@@ -1241,7 +1422,7 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                   <span>Realisasi Mengajar</span>
                 </h3>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  {selectedKelompok === "alquran" ? "Al-Qur'an" : "Al-Hadist"}
+                  {isKelompokPegonBacaan ? (selectedKelompok === "bacaan" ? "Bacaan" : selectedKelompok === "pegon" ? "Pegon" : "Pegon & Bacaan") : selectedKelompok === "alquran" ? "Al-Qur'an" : "Al-Hadist"}
                 </span>
               </div>
 
@@ -1262,6 +1443,30 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                   ))}
                 </select>
               </div>
+
+              {/* ========================================================= */}
+              {/* FORM KHUSUS KELAS PEGON & BACAAN                          */}
+              {/* ========================================================= */}
+              {isKelompokPegonBacaan && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Materi <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={realisasiSingkat}
+                    onChange={(e) => setRealisasiSingkat(e.target.value)}
+                    placeholder={
+                      selectedKelompok === "pegon"
+                        ? "Misal: Menulis huruf pegon hal. 1 - 5, latihan menyambung huruf..."
+                        : selectedKelompok === "bacaan"
+                        ? "Misal: Membaca surat Al-Baqarah ayat 1-10, praktik makhraj dan kelancaran..."
+                        : "Misal: Menyambung huruf pegon..."
+                    }
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
+                  />
+                </div>
+              )}
 
               {/* ========================================================= */}
               {/* 2. FORM JIKA KELOMPOK MATERI = AL-QUR'AN                  */}
@@ -1697,20 +1902,43 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                   <span>Presensi Kehadiran Santri</span>
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Kelas: <span className="font-semibold text-slate-700 dark:text-slate-200">{selectedClass}</span> &bull; Total: <span className="font-semibold text-slate-700 dark:text-slate-200">{santriList.length} Santri</span>
+                  Kelas: <span className="font-semibold text-slate-700 dark:text-slate-200">{selectedClass}</span> &bull; Santri: <span className="font-semibold text-slate-700 dark:text-slate-200">{displayedSantriList.length} dari {santriList.length}</span>
                 </p>
               </div>
 
-              {/* Search Santri */}
-              <div className="relative w-full sm:w-56">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Cari santri..."
-                  value={searchSantri}
-                  onChange={(e) => setSearchSantri(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-blue-500"
-                />
+              {/* Filter Siswa/Siswi & Search */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Dropdown Siswa / Siswi khusus kelas Pegon & Bacaan (karena kelas siswa dan siswi berbeda) */}
+                {(isPegonOrBacaan || isKelompokPegonBacaan) && (
+                  <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 rounded-xl border border-blue-200 dark:border-blue-800 shadow-2xs">
+                    <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Pilihan Kelas:</span>
+                    </span>
+                    <select
+                      value={genderFilterPegon}
+                      onChange={(e) => setGenderFilterPegon(e.target.value as "L" | "P" | "semua")}
+                      className="bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-200 rounded-lg px-2 py-0.5 text-xs font-bold outline-none cursor-pointer"
+                      title="Pilih filter santri Siswa (Putra) atau Siswi (Putri) karena kelas berbeda"
+                    >
+                      <option value="L">👦 Siswa (Putra / Laki-laki)</option>
+                      <option value="P">👧 Siswi (Putri / Perempuan)</option>
+                      <option value="semua">👥 Semua (Siswa &amp; Siswi)</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Search Santri */}
+                <div className="relative w-full sm:w-48">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari santri..."
+                    value={searchSantri}
+                    onChange={(e) => setSearchSantri(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1731,12 +1959,12 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                 </span>
               </div>
 
-              {santriList.length > 0 && (
+              {displayedSantriList.length > 0 && (
                 <button
                   type="button"
                   onClick={handleMarkAllHadir}
                   className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"
-                  title="Tandai semua santri hadir"
+                  title="Tandai semua santri yang ditampilkan hadir"
                 >
                   <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Semua Hadir</span>
@@ -1745,9 +1973,9 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
             </div>
 
             {/* Scrollable Table Container */}
-            {santriList.length === 0 ? (
+            {displayedSantriList.length === 0 ? (
               <div className="p-12 text-center text-slate-400 text-xs">
-                Tidak ada santri yang terdaftar di kelas pengajian {selectedClass}.
+                Tidak ada santri yang sesuai kriteria pencarian / filter di kelas {selectedClass}.
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl min-h-[300px] max-h-[580px]">
@@ -1761,9 +1989,7 @@ CREATE POLICY "Izinkan semua akses capaian_hadits" ON public.capaian_hadits FOR 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                    {santriList
-                      .filter(s => s.nama_lengkap.toLowerCase().includes(searchSantri.toLowerCase()))
-                      .map((santri, idx) => {
+                    {displayedSantriList.map((santri, idx) => {
                         const currentAbs = santri.id ? absensiMap[santri.id] : null;
                         const statusVal = currentAbs?.status || 'hadir';
 
