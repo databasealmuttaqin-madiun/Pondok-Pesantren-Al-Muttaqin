@@ -31,6 +31,7 @@ export interface WaliKamarItem {
 
 interface PenggunaUser {
   id: string;
+  pengguna_id?: string;
   nama: string;
   username?: string;
 }
@@ -167,13 +168,36 @@ export default function PlottingWaliKamarPanel({ rooms = [] }: PlottingWaliKamar
           .select("id, pengguna_id, nama, kamar, created_at");
 
         if (!error && dbWali) {
-          const mapped: WaliKamarItem[] = dbWali.map((item: any) => ({
-            id: String(item.id),
-            pengguna_id: item.pengguna_id ? String(item.pengguna_id) : undefined,
-            nama: item.nama || "Wali Kamar",
-            kamar: item.kamar || "Kamar",
-            created_at: item.created_at
-          }));
+          const isRawId = (val: any) => {
+            if (!val) return true;
+            const s = String(val).trim();
+            return /^\d+$/.test(s) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+          };
+
+          const mapped: WaliKamarItem[] = dbWali.map((item: any) => {
+            const rawId = String(item.pengguna_id || "");
+            const explicitName = item.nama;
+            const matchedUser = uniqueUList.find(
+              u => String(u.id) === rawId ||
+                   (u.pengguna_id && String(u.pengguna_id) === rawId) ||
+                   (explicitName && u.nama.toLowerCase() === explicitName.toLowerCase())
+            );
+
+            let resolvedNama = "Wali Kamar";
+            if (explicitName && !isRawId(explicitName)) {
+              resolvedNama = explicitName;
+            } else if (matchedUser && matchedUser.nama && !isRawId(matchedUser.nama)) {
+              resolvedNama = matchedUser.nama;
+            }
+
+            return {
+              id: String(item.id),
+              pengguna_id: item.pengguna_id ? String(item.pengguna_id) : undefined,
+              nama: resolvedNama,
+              kamar: item.kamar || "Kamar",
+              created_at: item.created_at
+            };
+          });
           setItems(mapped);
           localStorage.setItem("plotting_wali_kamar_data", JSON.stringify(mapped));
         }

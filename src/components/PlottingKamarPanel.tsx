@@ -542,7 +542,9 @@ export default function PlottingKamarPanel({
                   filteredRooms.map((roomName) => {
                     const gender = roomGenderMap[roomName] || "Laki-laki";
                     const count = roomStudentCounts[roomName] || 0;
-                    const ketua = roomKetuaMap[roomName] || "Belum Ditentukan";
+                    const rawKetua = roomKetuaMap[roomName] || "";
+                    const matchedWali = waliKamarList.find(w => w.id === rawKetua || w.nama === rawKetua);
+                    const ketua = matchedWali ? matchedWali.nama : (rawKetua && !/^\d+$/.test(rawKetua.trim()) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawKetua.trim()) ? rawKetua : "Belum Ditentukan");
 
                     return (
                       <tr key={roomName} className="hover:bg-slate-50/80 transition-colors">

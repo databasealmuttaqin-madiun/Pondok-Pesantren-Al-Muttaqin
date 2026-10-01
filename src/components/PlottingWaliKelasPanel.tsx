@@ -203,13 +203,33 @@ export default function PlottingWaliKelasPanel({ schoolClasses = [] }: PlottingW
 
         if (!error && dbWali) {
           const mapped: WaliKelasItem[] = dbWali.map((item: any) => {
-            const matchedGuru = gList.find(g => g.id === String(item.guru_id));
+            const rawGuruId = String(item.guru_id || "");
+            const explicitGuruName = item.guru_nama;
+            const isRawId = (val: any) => {
+              if (!val) return true;
+              const s = String(val).trim();
+              return /^\d+$/.test(s) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+            };
+
+            const matchedGuru = gList.find(
+              g => String(g.id) === rawGuruId ||
+                   (g.pengguna_id && String(g.pengguna_id) === rawGuruId) ||
+                   (explicitGuruName && g.nama.toLowerCase() === explicitGuruName.toLowerCase())
+            );
+
+            let resolvedGuruNama = "Guru Wali Kelas";
+            if (explicitGuruName && !isRawId(explicitGuruName)) {
+              resolvedGuruNama = explicitGuruName;
+            } else if (matchedGuru && matchedGuru.nama && !isRawId(matchedGuru.nama)) {
+              resolvedGuruNama = matchedGuru.nama;
+            }
+
             return {
               id: String(item.id),
               kelas_id: item.kelas_id ? String(item.kelas_id) : undefined,
               kelas_nama: item.kelas_nama || "Kelas",
               guru_id: item.guru_id ? String(item.guru_id) : undefined,
-              guru_nama: matchedGuru ? matchedGuru.nama : "Guru Wali Kelas",
+              guru_nama: resolvedGuruNama,
               nomor_hp: matchedGuru?.no_hp || "",
               created_at: item.created_at
             };

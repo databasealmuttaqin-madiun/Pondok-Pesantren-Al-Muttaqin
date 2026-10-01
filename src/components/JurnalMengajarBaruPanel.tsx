@@ -662,7 +662,22 @@ export default function JurnalMengajarBaruPanel({
                     <span className="text-[10px] text-slate-400">{j.tanggal}</span>
                   </td>
                   <td className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 font-semibold text-slate-850 dark:text-slate-250">
-                    {teachers.find(t => t.id === j.guru_id)?.nama || "Guru Sekolah"}
+                    {(() => {
+                      if (!j.guru_id) return "Guru Sekolah";
+                      const idStr = String(j.guru_id).trim();
+                      const match = teachers.find(
+                        t => String(t.id) === idStr || String(t.pengguna_id) === idStr || String(t.guru_id) === idStr
+                      );
+                      if (match && match.nama && !/^\d+$/.test(match.nama.trim())) return match.nama;
+                      const dbMatch = dbGurusList.find(
+                        g => String(g.id) === idStr || String(g.pengguna_id) === idStr
+                      );
+                      if (dbMatch && (dbMatch.nama_lengkap || dbMatch.nama)) return dbMatch.nama_lengkap || dbMatch.nama;
+                      if (/^\d+$/.test(idStr) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr)) {
+                        return "Guru Sekolah";
+                      }
+                      return idStr;
+                    })()}
                   </td>
                   <td className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 text-center font-bold">
                     {j.jam_ke}

@@ -255,7 +255,27 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
 
         if (!error && dbPlot && dbPlot.length > 0) {
           const mapped: GuruMapelItem[] = dbPlot.map((item: any) => {
-            const matchedGuru = gList.find(g => g.id === String(item.guru_id));
+            const rawGuruId = String(item.guru_id || "");
+            const explicitGuruName = item.guru_nama;
+            const isRawId = (val: any) => {
+              if (!val) return true;
+              const s = String(val).trim();
+              return /^\d+$/.test(s) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+            };
+
+            const matchedGuru = gList.find(
+              g => String(g.id) === rawGuruId ||
+                   String((g as any).guru_id || "") === rawGuruId ||
+                   String(g.pengguna_id || "") === rawGuruId ||
+                   (explicitGuruName && g.nama.toLowerCase() === explicitGuruName.toLowerCase())
+            );
+
+            let resolvedGuruNama = "Guru";
+            if (explicitGuruName && !isRawId(explicitGuruName)) {
+              resolvedGuruNama = explicitGuruName;
+            } else if (matchedGuru && matchedGuru.nama && !isRawId(matchedGuru.nama)) {
+              resolvedGuruNama = matchedGuru.nama;
+            }
             const matchedMapel = mList.find(m => m.id === String(item.mapel_id));
             
             // Resolve kelas_nama jika di record db null tapi ada kelas_id
@@ -271,7 +291,7 @@ export default function PlottingGuruMapelPanel({ schoolClasses = [] }: PlottingG
             return {
               id: String(item.id),
               guru_id: item.guru_id,
-              guru_nama: matchedGuru ? matchedGuru.nama : "Guru",
+              guru_nama: resolvedGuruNama,
               mapel_id: item.mapel_id,
               mapel_kode: matchedMapel?.kode_mapel,
               mapel_nama: matchedMapel ? matchedMapel.nama_mapel : "Mata Pelajaran",

@@ -230,16 +230,28 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
         console.warn("Notice fetch master_hadits_kitab:", eH);
       }
 
-      // 5. Fetch Ustaz/Pengguna names
+      // Helper to check if a string looks like a UUID or raw ID
+      const isUuidOrRawId = (str: string) => {
+        if (!str) return false;
+        const s = str.trim();
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+        const isNumeric = /^\d+$/.test(s);
+        return isUuid || isNumeric;
+      };
+
+      // 5. Fetch Ustaz/Pengguna names across all potential tables
       const userMap: Record<string, string> = {};
+
       try {
-        const { data: usersData } = await supabase.from("pengguna").select("id, nama, nama_lengkap, username");
+        const { data: usersData } = await supabase.from("pengguna").select("*");
         if (usersData) {
           usersData.forEach((u: any) => {
             const name = u.nama_lengkap || u.nama;
             if (name) {
-              userMap[String(u.id)] = name;
-              if (u.username) userMap[u.username.toLowerCase()] = name;
+              if (u.id) userMap[String(u.id).toLowerCase()] = name;
+              if (u.user_id) userMap[String(u.user_id).toLowerCase()] = name;
+              if (u.auth_id) userMap[String(u.auth_id).toLowerCase()] = name;
+              if (u.username) userMap[String(u.username).toLowerCase()] = name;
             }
           });
         }
@@ -248,14 +260,15 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
       }
 
       try {
-        const { data: guruData } = await supabase.from("guru").select("id, pengguna_id, nama, nama_lengkap, username");
+        const { data: guruData } = await supabase.from("guru").select("*");
         if (guruData) {
           guruData.forEach((g: any) => {
             const name = g.nama_lengkap || g.nama;
             if (name) {
-              userMap[String(g.id)] = name;
-              if (g.pengguna_id) userMap[String(g.pengguna_id)] = name;
-              if (g.username) userMap[g.username.toLowerCase()] = name;
+              if (g.id) userMap[String(g.id).toLowerCase()] = name;
+              if (g.pengguna_id) userMap[String(g.pengguna_id).toLowerCase()] = name;
+              if (g.user_id) userMap[String(g.user_id).toLowerCase()] = name;
+              if (g.username) userMap[String(g.username).toLowerCase()] = name;
             }
           });
         }
@@ -269,8 +282,9 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
           plotData.forEach((p: any) => {
             const name = (p.guru_nama || p.nama || "").trim();
             if (name) {
-              if (p.id) userMap[String(p.id)] = name;
-              if (p.guru_id) userMap[String(p.guru_id)] = name;
+              if (p.id) userMap[String(p.id).toLowerCase()] = name;
+              if (p.guru_id) userMap[String(p.guru_id).toLowerCase()] = name;
+              if (p.pengguna_id) userMap[String(p.pengguna_id).toLowerCase()] = name;
             }
           });
         }
@@ -286,36 +300,114 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
             plotData.forEach((p: any) => {
               const name = (p.guru_nama || p.nama || "").trim();
               if (name) {
-                if (p.id) userMap[String(p.id)] = name;
-                if (p.guru_id) userMap[String(p.guru_id)] = name;
+                if (p.id) userMap[String(p.id).toLowerCase()] = name;
+                if (p.guru_id) userMap[String(p.guru_id).toLowerCase()] = name;
+                if (p.pengguna_id) userMap[String(p.pengguna_id).toLowerCase()] = name;
               }
             });
           }
         }
       } catch {}
 
+      try {
+        const savedUser = localStorage.getItem("admin_user");
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          const name = u.nama_lengkap || u.nama || u.name;
+          if (name) {
+            if (u.id) userMap[String(u.id).toLowerCase()] = name;
+            if (u.username) userMap[String(u.username).toLowerCase()] = name;
+          }
+        }
+      } catch {}
+
+      // Direct fallback lookup query for any UUIDs/IDs present in loadedJurnals that are not yet in userMap
+      const missingIds = new Set<string>();
+      loadedJurnals.forEach((j: any) => {
+        if (j.ustaz_id && isUuidOrRawId(String(j.ustaz_id))) {
+          const k = String(j.ustaz_id).trim().toLowerCase();
+          if (!userMap[k]) missingIds.add(k);
+        }
+        if (j.guru_id && isUuidOrRawId(String(j.guru_id))) {
+          const k = String(j.guru_id).trim().toLowerCase();
+          if (!userMap[k]) missingIds.add(k);
+        }
+      });
+
+      if (missingIds.size > 0) {
+        const idList = Array.from(missingIds);
+        try {
+          const { data: pData } = await supabase
+            .from("pengguna")
+            .select("id, nama, nama_lengkap")
+            .in("id", idList);
+          if (pData) {
+            pData.forEach((u: any) => {
+              const name = u.nama_lengkap || u.nama;
+              if (name && u.id) userMap[String(u.id).toLowerCase()] = name;
+            });
+          }
+        } catch {}
+
+        try {
+          const { data: gData } = await supabase
+            .from("guru")
+            .select("id, nama, nama_lengkap")
+            .in("id", idList);
+          if (gData) {
+            gData.forEach((g: any) => {
+              const name = g.nama_lengkap || g.nama;
+              if (name && g.id) userMap[String(g.id).toLowerCase()] = name;
+            });
+          }
+        } catch {}
+      }
+
       // 6. Enrich each journal item with structured Al-Qur'an / Al-Hadist details
       const enrichedJurnals = loadedJurnals.map((jurnal) => {
         // Teacher name
         let teacherName = "-";
-        if (jurnal.ustaz_id) {
-          const key = String(jurnal.ustaz_id).trim();
-          if (userMap[key]) {
-            teacherName = userMap[key];
-          } else if (userMap[key.toLowerCase()]) {
-            teacherName = userMap[key.toLowerCase()];
-          } else if (isNaN(Number(key)) && key !== "null" && key !== "undefined") {
-            teacherName = key;
+        const rawUstazId = jurnal.ustaz_id ? String(jurnal.ustaz_id).trim() : "";
+        const rawGuruId = jurnal.guru_id ? String(jurnal.guru_id).trim() : "";
+
+        if (rawUstazId) {
+          const keyLower = rawUstazId.toLowerCase();
+          if (userMap[keyLower]) {
+            teacherName = userMap[keyLower];
+          } else if (!isUuidOrRawId(rawUstazId)) {
+            teacherName = rawUstazId;
           }
         }
-        if (teacherName === "-" && (jurnal.ustaz_nama || jurnal.guru_nama)) {
-          teacherName = jurnal.ustaz_nama || jurnal.guru_nama;
+
+        if (teacherName === "-" && rawGuruId) {
+          const keyLower = rawGuruId.toLowerCase();
+          if (userMap[keyLower]) {
+            teacherName = userMap[keyLower];
+          } else if (!isUuidOrRawId(rawGuruId)) {
+            teacherName = rawGuruId;
+          }
         }
+
+        if (teacherName === "-" && (jurnal.ustaz_nama || jurnal.guru_nama)) {
+          const nameVal = (jurnal.ustaz_nama || jurnal.guru_nama || "").trim();
+          if (nameVal && !isUuidOrRawId(nameVal)) {
+            teacherName = nameVal;
+          } else if (nameVal && userMap[nameVal.toLowerCase()]) {
+            teacherName = userMap[nameVal.toLowerCase()];
+          }
+        }
+
         if (teacherName === "-" && jurnal.pengguna) {
           teacherName = jurnal.pengguna.nama_lengkap || jurnal.pengguna.nama || "-";
         }
+
         if (teacherName === "-" && jurnal.guru) {
           teacherName = jurnal.guru.nama_lengkap || jurnal.guru.nama || "-";
+        }
+
+        // Final fallback: If teacherName is still "-" or a raw UUID string, don't show raw UUID
+        if (isUuidOrRawId(teacherName)) {
+          teacherName = "-";
         }
 
         // Find matching capaian Al-Qur'an

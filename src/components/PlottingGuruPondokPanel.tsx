@@ -288,6 +288,12 @@ export default function PlottingGuruPondokPanel() {
             const rawId = String(item.guru_id || "");
             const explicitName = item.guru_nama || item.nama;
 
+            const isRawId = (val: any) => {
+              if (!val) return true;
+              const s = String(val).trim();
+              return /^\d+$/.test(s) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+            };
+
             // Cari dari guru list
             const matchedGuru = sortedGurus.find(
               g => String(g.guru_id) === rawId ||
@@ -304,10 +310,19 @@ export default function PlottingGuruPondokPanel() {
             );
             const fallbackName = matchedDbGuru ? (matchedDbGuru.nama_lengkap || matchedDbGuru.nama) : null;
 
+            let resolvedName = "Guru Pondok";
+            if (explicitName && !isRawId(explicitName)) {
+              resolvedName = explicitName;
+            } else if (matchedGuru && matchedGuru.nama && !isRawId(matchedGuru.nama)) {
+              resolvedName = matchedGuru.nama;
+            } else if (fallbackName) {
+              resolvedName = fallbackName;
+            }
+
             return {
               id: String(item.id),
               guru_id: rawId,
-              nama: explicitName || (matchedGuru ? matchedGuru.nama : (fallbackName || "Guru Pondok")),
+              nama: resolvedName,
               created_at: item.created_at
             };
           });

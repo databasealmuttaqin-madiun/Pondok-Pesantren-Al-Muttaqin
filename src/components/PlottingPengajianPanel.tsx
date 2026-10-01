@@ -533,8 +533,13 @@ export default function PlottingPengajianPanel({
                   filteredClasses.map((className) => {
                     const counts = classStudentCounts[className] || { laki: 0, perempuan: 0 };
                     const kategori = classKategoriMap[className] || "Reguler";
-                    const ketuaLaki = classKetuaLakiMap[className] || "Belum Ditentukan";
-                    const ketuaPerempuan = classKetuaPerempuanMap[className] || "Belum Ditentukan";
+                    const rawKL = classKetuaLakiMap[className] || "";
+                    const matchedKL = ustazList.find(p => p.id === rawKL || p.nama === rawKL);
+                    const ketuaLaki = matchedKL ? matchedKL.nama : (rawKL && !/^\d+$/.test(rawKL.trim()) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawKL.trim()) ? rawKL : "Belum Ditentukan");
+
+                    const rawKP = classKetuaPerempuanMap[className] || "";
+                    const matchedKP = ustazList.find(p => p.id === rawKP || p.nama === rawKP);
+                    const ketuaPerempuan = matchedKP ? matchedKP.nama : (rawKP && !/^\d+$/.test(rawKP.trim()) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawKP.trim()) ? rawKP : "Belum Ditentukan");
 
                     return (
                       <tr key={className} className="hover:bg-slate-50/80 transition-colors">
