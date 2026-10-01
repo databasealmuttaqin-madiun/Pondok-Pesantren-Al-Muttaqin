@@ -139,11 +139,14 @@ export default function PlottingPengajianPanel({
 
     students.forEach((s) => {
       const cls = s.kelas_pengajian?.trim();
-      if (cls && counts[cls] !== undefined) {
-        if (s.jenis_kelamin === "P") {
-          counts[cls].perempuan++;
-        } else {
-          counts[cls].laki++;
+      if (cls) {
+        const match = recitationClasses.find((c) => c.trim().toLowerCase() === cls.toLowerCase());
+        if (match) {
+          if (s.jenis_kelamin === "P") {
+            counts[match].perempuan++;
+          } else {
+            counts[match].laki++;
+          }
         }
       }
     });

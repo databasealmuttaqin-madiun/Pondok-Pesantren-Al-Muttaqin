@@ -336,7 +336,8 @@ export default function App() {
     list: SantriData[],
     cloudStatusMap?: Record<string, "Aktif" | "Sakit" | "Pulang" | "Haid">,
     cloudPlottingMap?: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }>,
-    cloudNfcMap?: Record<string, string>
+    cloudNfcMap?: Record<string, string>,
+    cloudFlags?: { kamarActive?: boolean; pengajianActive?: boolean; schoolActive?: boolean }
   ): SantriData[] => {
     const savedMetadataMap = JSON.parse(localStorage.getItem("santri_custom_metadata_map") || "{}");
     return list.map((s) => {
@@ -353,9 +354,23 @@ export default function App() {
       // NFC Mapping override
       const cloudNfcId = cloudNfcMap ? cloudNfcMap[nameKey] : null;
 
-      const rawKamar = (cloudPlot?.kamar !== undefined ? cloudPlot.kamar : (localPlot.kamar !== undefined ? localPlot.kamar : formatted.kamar)) || "";
-      const rawPengajian = (cloudPlot?.kelas_pengajian !== undefined ? cloudPlot.kelas_pengajian : (localPlot.kelas_pengajian !== undefined ? localPlot.kelas_pengajian : formatted.kelas_pengajian)) || "";
-      const rawSekolah = (cloudPlot?.kelas_sekolah !== undefined ? cloudPlot.kelas_sekolah : (localPlot.kelas_sekolah !== undefined ? localPlot.kelas_sekolah : formatted.kelas_sekolah)) || "";
+      const rawKamar = cloudFlags?.kamarActive
+        ? (cloudPlot?.kamar || "")
+        : (cloudPlottingMap
+          ? (cloudPlot?.kamar !== undefined ? cloudPlot.kamar : (s.kamar || ""))
+          : (localPlot.kamar !== undefined ? localPlot.kamar : (s.kamar || "")));
+
+      const rawPengajian = cloudFlags?.pengajianActive
+        ? (cloudPlot?.kelas_pengajian || "")
+        : (cloudPlottingMap
+          ? (cloudPlot?.kelas_pengajian !== undefined ? cloudPlot.kelas_pengajian : (s.kelas_pengajian || ""))
+          : (localPlot.kelas_pengajian !== undefined ? localPlot.kelas_pengajian : (s.kelas_pengajian || "")));
+
+      const rawSekolah = cloudFlags?.schoolActive
+        ? (cloudPlot?.kelas_sekolah || "")
+        : (cloudPlottingMap
+          ? (cloudPlot?.kelas_sekolah !== undefined ? cloudPlot.kelas_sekolah : (s.kelas_sekolah || ""))
+          : (localPlot.kelas_sekolah !== undefined ? localPlot.kelas_sekolah : (s.kelas_sekolah || "")));
       
       return {
         ...formatted,
@@ -382,13 +397,16 @@ export default function App() {
         [key]: value
       }
     };
+    if (value === "" && updated[nik]) {
+      delete updated[nik][key];
+    }
     setMetadataMap(updated);
     localStorage.setItem("santri_custom_metadata_map", JSON.stringify(updated));
 
     // Update students state immediately for ultra-fast local reactivity
     setStudents((prev) =>
       prev.map((s) => {
-        if (String(s.id) === String(nik)) {
+        if (String(s.id) === String(nik) || String(s.nik) === String(nik) || String(s.nisn) === String(nik)) {
           return {
             ...s,
             [key]: value
@@ -400,10 +418,17 @@ export default function App() {
 
     // Try to update database if connected
     if (dbStatus === "connected") {
-      const studentObj = students.find((s) => String(s.id) === String(nik));
+      const studentObj = students.find((s) => String(s.id) === String(nik) || String(s.nik) === String(nik) || String(s.nisn) === String(nik));
       if (studentObj) {
         const studentName = studentObj.nama_lengkap.trim();
         try {
+          // Direct update on primary 'siswa' table in Supabase
+          if (studentObj.id) {
+            await supabase
+              .from(TABLE_NAME)
+              .update({ [key]: value })
+              .eq("id", studentObj.id);
+          }
           if (key === "kamar") {
             // Check if there is already an entry for this student in 'kamar' table
             const { data: existingKamar } = await supabase
@@ -597,11 +622,15 @@ export default function App() {
 
         // Fetch new plotting table records to merge overrides
         let cloudPlottingMap: Record<string, { kamar?: string; kelas_sekolah?: string; kelas_pengajian?: string }> = {};
-        
+        let isKamarTableActive = false;
+        let isPengajianTableActive = false;
+        let isSchoolTableActive = false;
+
         // 1. Load room mappings from 'kamar' table
         try {
-          const { data: assignmentsKamar } = await supabase.from("kamar").select("nama, kamar");
-          if (assignmentsKamar) {
+          const { data: assignmentsKamar, error: errKamar } = await supabase.from("kamar").select("nama, kamar");
+          if (!errKamar && assignmentsKamar) {
+             isKamarTableActive = true;
              assignmentsKamar.forEach((row) => {
                if (row.nama) {
                  const key = row.nama.trim().toLowerCase();
@@ -616,8 +645,9 @@ export default function App() {
 
         // 2. Load recitation class mappings from 'kelas_pengajian' table
         try {
-          const { data: assignmentsPengajian } = await supabase.from("kelas_pengajian").select("nama, kelas");
-          if (assignmentsPengajian) {
+          const { data: assignmentsPengajian, error: errPengajian } = await supabase.from("kelas_pengajian").select("nama, kelas");
+          if (!errPengajian && assignmentsPengajian) {
+             isPengajianTableActive = true;
              assignmentsPengajian.forEach((row) => {
                if (row.nama) {
                  const key = row.nama.trim().toLowerCase();
@@ -636,10 +666,12 @@ export default function App() {
           const { data: dbSpace, error: spaceErr } = await supabase.from("kelas sekolah").select("nama, kelas");
           if (!spaceErr && dbSpace) {
             assignmentsSchool = dbSpace;
+            isSchoolTableActive = true;
           } else {
-            const { data: dbUnderline } = await supabase.from("kelas_sekolah").select("nama, kelas");
-            if (dbUnderline) {
+            const { data: dbUnderline, error: underlineErr } = await supabase.from("kelas_sekolah").select("nama, kelas");
+            if (!underlineErr && dbUnderline) {
               assignmentsSchool = dbUnderline;
+              isSchoolTableActive = true;
             }
           }
           if (assignmentsSchool) {
@@ -807,7 +839,13 @@ export default function App() {
           console.warn("Gagal memuat data siswa_mutasi:", err);
         }
 
-        const formattedList = hydrateWithAllStatusSources(data || [], cloudStatusMap, cloudPlottingMap, cloudNfcMap);
+        const formattedList = hydrateWithAllStatusSources(
+          data || [], 
+          cloudStatusMap, 
+          cloudPlottingMap, 
+          cloudNfcMap,
+          { kamarActive: isKamarTableActive, pengajianActive: isPengajianTableActive, schoolActive: isSchoolTableActive }
+        );
         setStudents(formattedList);
         // Also save to localStorage as background backup!
         localStorage.setItem("santri_data", JSON.stringify(formattedList));

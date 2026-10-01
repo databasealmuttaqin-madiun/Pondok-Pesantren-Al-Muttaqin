@@ -155,8 +155,11 @@ export default function PlottingKamarPanel({
     rooms.forEach((r) => (counts[r] = 0));
     students.forEach((s) => {
       const room = s.kamar?.trim();
-      if (room && counts[room] !== undefined) {
-        counts[room]++;
+      if (room) {
+        const match = rooms.find((r) => r.trim().toLowerCase() === room.toLowerCase());
+        if (match) {
+          counts[match]++;
+        }
       }
     });
     return counts;

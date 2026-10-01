@@ -35,6 +35,7 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
   // WhatsApp Modal States
   const [isWaModalOpen, setIsWaModalOpen] = useState(false);
   const [selectedWaDate, setSelectedWaDate] = useState<string>("");
+  const [selectedWaKamar, setSelectedWaKamar] = useState<string>("");
   const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
@@ -174,6 +175,35 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
     return dates;
   }, [jurnals]);
 
+  // Extract available rooms for dropdown
+  const kamarOptions = useMemo(() => {
+    const roomSet = new Set<string>();
+    santriList.forEach(s => {
+      if (s.kamar && s.kamar.trim() && s.kamar.trim() !== "-") {
+        roomSet.add(s.kamar.trim());
+      }
+    });
+
+    try {
+      const cachedRooms: string[] = JSON.parse(localStorage.getItem("manajemen_rooms") || "[]");
+      cachedRooms.forEach(r => {
+        if (r && r.trim()) roomSet.add(r.trim());
+      });
+    } catch {}
+
+    return Array.from(roomSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+  }, [santriList]);
+
+  // Filter santri list based on selectedWaKamar
+  const filteredSantriForWa = useMemo(() => {
+    if (!selectedWaKamar || selectedWaKamar === "semua" || selectedWaKamar === "") {
+      return santriList;
+    }
+    return santriList.filter(s =>
+      (s.kamar || "").trim().toLowerCase() === selectedWaKamar.trim().toLowerCase()
+    );
+  }, [santriList, selectedWaKamar]);
+
   // Generate formatting text for WhatsApp
   const waFormattedText = useMemo(() => {
     if (!selectedWaDate) return "";
@@ -195,7 +225,7 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
     let countSakitIzin = 0;
     let countAlpa = 0;
 
-    const lines = santriList.map((santri, idx) => {
+    const lines = filteredSantriForWa.map((santri, idx) => {
       const statuses = sessionsOnDate.map(sesi => {
         const sId = String(santri.id);
         const dbStatus = (sId && absensiMap[sId]) ? absensiMap[sId][sesi.key] : null;
@@ -235,12 +265,14 @@ export default function RekapAbsensiPengajianPanel({ recitationClasses, onTrigge
       return `${idx + 1}. ${santri.nama_lengkap} ${emojis}${noteStr}`;
     });
 
-    const result = `📅 *LAPORAN ABSENSI KELAS ${selectedClass.toUpperCase()}*
+    const kamarTitleHeader = selectedWaKamar && selectedWaKamar !== "semua" ? ` - KAMAR ${selectedWaKamar.toUpperCase()}` : "";
+
+    const result = `📅 *LAPORAN ABSENSI KELAS ${selectedClass.toUpperCase()}${kamarTitleHeader}*
 _${dayName}, ${formattedDateString}_
 
 *Daftar Kehadiran Siswa:*
 
-${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
+${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa untuk filter ini."}
 
 *Ringkasan Kehadiran:*
 • Hadir: ${countHadir} Siswa
@@ -248,7 +280,7 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
 • Alpha: ${countAlpa} Siswa`;
 
     return result;
-  }, [selectedWaDate, selectedClass, santriList, jurnals, absensiMap]);
+  }, [selectedWaDate, selectedWaKamar, selectedClass, filteredSantriForWa, jurnals, absensiMap]);
 
   const handleCopyText = async () => {
     try {
@@ -483,44 +515,69 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              {/* Date Selector Inside Modal */}
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Pilih Tanggal Laporan
-                </label>
-                {availableDates.length > 0 ? (
+              
+              {/* Selectors Grid: Date & Room Filter */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                
+                {/* Date Selector */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Pilih Tanggal Laporan
+                  </label>
+                  {availableDates.length > 0 ? (
+                    <select
+                      value={selectedWaDate}
+                      onChange={(e) => setSelectedWaDate(e.target.value)}
+                      className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs font-semibold p-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      {availableDates.map(d => {
+                        const parsed = new Date(d);
+                        const displayDate = parsed.toLocaleDateString("id-ID", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric"
+                        });
+                        return (
+                          <option key={d} value={d}>
+                            {displayDate}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <input
+                      type="date"
+                      value={selectedWaDate}
+                      onChange={(e) => setSelectedWaDate(e.target.value)}
+                      className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs font-semibold p-2.5"
+                    />
+                  )}
+                  {availableDates.length === 0 && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                      * Belum ada riwayat KBM di bulan ini.
+                    </p>
+                  )}
+                </div>
+
+                {/* Room Filter Selector */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Filter Kamar
+                  </label>
                   <select
-                    value={selectedWaDate}
-                    onChange={(e) => setSelectedWaDate(e.target.value)}
-                    className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-sm font-semibold p-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    value={selectedWaKamar}
+                    onChange={(e) => setSelectedWaKamar(e.target.value)}
+                    className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-xs font-semibold p-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                   >
-                    {availableDates.map(d => {
-                      const parsed = new Date(d);
-                      const displayDate = parsed.toLocaleDateString("id-ID", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric"
-                      });
-                      return (
-                        <option key={d} value={d}>
-                          {displayDate}
-                        </option>
-                      );
-                    })}
+                    <option value="">-- Semua Kamar --</option>
+                    {kamarOptions.map((kamar) => (
+                      <option key={kamar} value={kamar}>
+                        Kamar {kamar}
+                      </option>
+                    ))}
                   </select>
-                ) : (
-                  <input
-                    type="date"
-                    value={selectedWaDate}
-                    onChange={(e) => setSelectedWaDate(e.target.value)}
-                    className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white text-sm font-semibold p-2.5"
-                  />
-                )}
-                {availableDates.length === 0 && (
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                    * Belum ada riwayat KBM di kelas ini untuk bulan terpilih. Menggunakan tanggal hari ini.
-                  </p>
-                )}
+                </div>
+
               </div>
 
               {/* Text Area Preview */}
