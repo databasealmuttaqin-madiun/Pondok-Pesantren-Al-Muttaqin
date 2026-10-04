@@ -460,11 +460,11 @@ export default function PerizinanGuruPanel({
       </div>
 
       {/* 2. CENTER PILL SUB-TAB SELECTOR */}
-      <div className="flex justify-center my-2">
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-1.5 shadow-2xs inline-flex items-center gap-1">
+      <div className="flex justify-center my-1 px-1">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-1 shadow-2xs flex items-center gap-1 w-full max-w-sm">
           <button
             onClick={() => { setActiveTab("daftar"); setCurrentPage(1); }}
-            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeTab === "daftar"
                 ? "bg-blue-50 text-blue-600 border border-blue-100 shadow-2xs"
                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
@@ -475,7 +475,7 @@ export default function PerizinanGuruPanel({
 
           <button
             onClick={() => { setActiveTab("saya"); setCurrentPage(1); }}
-            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeTab === "saya"
                 ? "bg-blue-50 text-blue-600 border border-blue-100 shadow-2xs"
                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
@@ -490,64 +490,147 @@ export default function PerizinanGuruPanel({
       <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden">
         
         {/* CARD HEADER TOOLBAR */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-3 bg-white">
+        <div className="p-3.5 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-white">
           
           {/* SEARCH INPUT */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-64 flex-1">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Cari"
+              placeholder="Cari..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-white border border-slate-200/90 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
           </div>
 
-          {/* FILTER BUTTON WITH BADGE */}
-          <div className="relative">
-            <button
-              onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-              className="p-2 border border-slate-200/90 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-all flex items-center justify-center cursor-pointer relative"
-              title="Filter Status"
-            >
-              <Filter className="w-4 h-4" />
-              {filterStatus !== "Semua" && (
-                <span className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full text-[9px] w-4 h-4 font-bold flex items-center justify-center">
-                  1
-                </span>
+          {/* ACTION BUTTONS GROUP (FILTER & COLUMNS) - HORIZONTAL ALIGNED ON MOBILE */}
+          <div className="flex items-center justify-end gap-2 self-end sm:self-auto">
+            {/* FILTER BUTTON WITH BADGE */}
+            <div className="relative">
+              <button
+                onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                className="p-2 border border-slate-200/90 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-all flex items-center justify-center cursor-pointer relative"
+                title="Filter Status"
+              >
+                <Filter className="w-4 h-4" />
+                {filterStatus !== "Semua" && (
+                  <span className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full text-[9px] w-4 h-4 font-bold flex items-center justify-center">
+                    1
+                  </span>
+                )}
+              </button>
+
+              {/* Filter Dropdown Menu */}
+              {isFilterDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-40 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 font-medium text-xs">
+                  {["Semua", "Menunggu", "Disetujui", "Ditolak"].map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => { setFilterStatus(st); setIsFilterDropdownOpen(false); }}
+                      className={`w-full text-left px-3.5 py-1.5 hover:bg-slate-50 transition-colors ${
+                        filterStatus === st ? "text-blue-600 font-bold bg-blue-50/50" : "text-slate-700"
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
               )}
+            </div>
+
+            {/* COLUMNS TOGGLE ICON */}
+            <button 
+              className="p-2 border border-slate-200/90 rounded-xl text-slate-500 hover:bg-slate-50 transition-all flex items-center justify-center cursor-pointer"
+              title="Tampilan Kolom"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
             </button>
-
-            {/* Filter Dropdown Menu */}
-            {isFilterDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-40 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 font-medium text-xs">
-                {["Semua", "Menunggu", "Disetujui", "Ditolak"].map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => { setFilterStatus(st); setIsFilterDropdownOpen(false); }}
-                    className={`w-full text-left px-3.5 py-1.5 hover:bg-slate-50 transition-colors ${
-                      filterStatus === st ? "text-blue-600 font-bold bg-blue-50/50" : "text-slate-700"
-                    }`}
-                  >
-                    {st}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-
-          {/* COLUMNS TOGGLE ICON */}
-          <button 
-            className="p-2 border border-slate-200/90 rounded-xl text-slate-500 hover:bg-slate-50 transition-all flex items-center justify-center cursor-pointer"
-            title="Tampilan Kolom"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-          </button>
         </div>
 
-        {/* TABLE COMPONENT */}
-        <div className="overflow-x-auto">
+        {/* MOBILE CARD VIEW (VISIBLE ON SMALL SCREENS) */}
+        <div className="block sm:hidden divide-y divide-slate-100 bg-slate-50/40">
+          {isLoading ? (
+            <div className="py-10 text-center text-slate-400 text-xs">
+              <RefreshCw className="w-4 h-4 animate-spin text-blue-600 inline mr-2" />
+              <span>Memuat data perizinan...</span>
+            </div>
+          ) : paginatedList.length === 0 ? (
+            <div className="py-10 text-center text-slate-400 text-xs">
+              Belum ada data perizinan.
+            </div>
+          ) : (
+            paginatedList.map((item) => (
+              <div key={item.id} className="p-3.5 bg-white space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-bold text-slate-900 text-xs truncate">
+                    {item.guru_nama}
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
+                    item.status === "Disetujui"
+                      ? "bg-emerald-50 text-emerald-600 border border-emerald-100/60"
+                      : item.status === "Ditolak"
+                      ? "bg-rose-50 text-rose-600 border border-rose-100/60"
+                      : "bg-amber-50 text-amber-600 border border-amber-100/60"
+                  }`}>
+                    {item.status}
+                  </span>
+                </div>
+
+                <div className="text-[11px] text-slate-600 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100/80">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Tanggal & Lama:</span>
+                    <span className="font-semibold text-slate-800">{item.tanggal_mulai} ({item.lamanya})</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block mb-0.5">Alasan:</span>
+                    <p className="font-medium text-slate-700 leading-snug">{item.alasan}</p>
+                  </div>
+                  {item.disetujui_oleh && (
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 text-[10px]">
+                      <span className="text-slate-400">Disetujui oleh:</span>
+                      <span className="font-semibold text-slate-700">{item.disetujui_oleh}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    onClick={() => setSelectedDetailItem(item)}
+                    className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Detail</span>
+                  </button>
+
+                  {isTimPerizinan && item.status === "Menunggu" && (
+                    <>
+                      <button
+                        onClick={() => handleUpdateStatus(item, "Disetujui")}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Setujui</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleUpdateStatus(item, "Ditolak")}
+                        className="px-3 py-1.5 border border-rose-300 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Tolak</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* DESKTOP TABLE COMPONENT (VISIBLE ON MEDIUM/LARGE SCREENS) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50/70 border-b border-slate-200/80 text-slate-700 font-bold text-[12px]">
