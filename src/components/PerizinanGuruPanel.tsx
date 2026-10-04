@@ -49,7 +49,7 @@ export default function PerizinanGuruPanel({
   onTriggerNotification
 }: PerizinanGuruPanelProps) {
   // Navigation & Sub-Tabs
-  const [activeTab, setActiveTab] = useState<"daftar" | "saya" | "approval">("daftar");
+  const [activeTab, setActiveTab] = useState<"daftar" | "saya">("daftar");
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [selectedDetailItem, setSelectedDetailItem] = useState<PerizinanGuruItem | null>(null);
 
@@ -402,10 +402,6 @@ export default function PerizinanGuruPanel({
         if (u && item.guru_username && item.guru_username !== u) {
           return false;
         }
-      } else if (activeTab === "approval") {
-        if (filterStatus === "Semua" && item.status !== "Menunggu") {
-          // In approval tab, default focus on pending unless filter selected
-        }
       }
 
       // Filter by status dropdown
@@ -487,24 +483,6 @@ export default function PerizinanGuruPanel({
           >
             Perizinan Saya
           </button>
-
-          {isTimPerizinan && (
-            <button
-              onClick={() => { setActiveTab("approval"); setCurrentPage(1); }}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                activeTab === "approval"
-                  ? "bg-blue-50 text-blue-600 border border-blue-100 shadow-2xs"
-                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
-              }`}
-            >
-              <span>Tim Perizinan</span>
-              {pendingCount > 0 && (
-                <span className="px-1.5 py-0.2 bg-blue-600 text-white rounded-full text-[10px] font-black">
-                  {pendingCount}
-                </span>
-              )}
-            </button>
-          )}
         </div>
       </div>
 
@@ -654,13 +632,22 @@ export default function PerizinanGuruPanel({
                           </button>
 
                           {isTimPerizinan && item.status === "Menunggu" ? (
-                            <button
-                              onClick={() => handleUpdateStatus(item, "Disetujui")}
-                              className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-2xs transition-all cursor-pointer"
-                              title="Setujui Perizinan"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleUpdateStatus(item, "Disetujui")}
+                                className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-2xs transition-all cursor-pointer"
+                                title="Setujui Perizinan"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleUpdateStatus(item, "Ditolak")}
+                                className="p-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                title="Tolak Perizinan"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
                           ) : (
                             <button
                               onClick={() => setSelectedDetailItem(item)}
