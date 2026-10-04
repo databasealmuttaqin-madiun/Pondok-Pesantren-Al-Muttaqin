@@ -190,17 +190,55 @@ export default function DashboardGuruSekolah({
           const formattedTime = todayMatch.waktu_absen ? new Date(todayMatch.waktu_absen).toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' }) : "-";
           setTodayAttendance({
             ...todayMatch,
+            status: todayMatch.status || "Hadir",
             jam_masuk: (todayMatch.keterangan || "").toLowerCase().includes("pulang") ? undefined : formattedTime,
             jam_pulang: (todayMatch.keterangan || "").toLowerCase().includes("pulang") ? formattedTime : undefined,
           });
         } else {
-          // Cek localStorage fallback
-          const localKey = `absensi_guru_${currentUser.username}_${todayYMD}`;
-          const localSaved = localStorage.getItem(localKey);
-          if (localSaved) {
-            setTodayAttendance(JSON.parse(localSaved));
+          // Check perizinan_guru table or cache for approved leave today
+          let approvedLeave: any = null;
+          try {
+            const { data: leaveList } = await supabase
+              .from("perizinan_guru")
+              .select("*")
+              .eq("guru_username", currentUser.username)
+              .eq("status", "Disetujui")
+              .lte("tanggal_mulai", todayYMD);
+
+            if (leaveList && leaveList.length > 0) {
+              approvedLeave = leaveList.find(l => {
+                const end = l.tanggal_selesai || l.tanggal_mulai;
+                return todayYMD >= l.tanggal_mulai && todayYMD <= end;
+              }) || leaveList[0];
+            }
+          } catch (_) {}
+
+          if (!approvedLeave) {
+            try {
+              const cachedList = JSON.parse(localStorage.getItem("perizinan_guru_list_cache") || "[]");
+              approvedLeave = cachedList.find((p: any) => 
+                p.guru_username === currentUser.username &&
+                p.status === "Disetujui" &&
+                p.tanggal_mulai <= todayYMD &&
+                (p.tanggal_selesai ? todayYMD <= p.tanggal_selesai : true)
+              );
+            } catch (_) {}
+          }
+
+          if (approvedLeave) {
+            setTodayAttendance({
+              status: "Izin",
+              keterangan: `Izin Guru (${approvedLeave.lamanya}): ${approvedLeave.alasan}`
+            } as any);
           } else {
-            setTodayAttendance(null);
+            // Cek localStorage fallback
+            const localKey = `absensi_guru_${currentUser.username}_${todayYMD}`;
+            const localSaved = localStorage.getItem(localKey);
+            if (localSaved) {
+              setTodayAttendance(JSON.parse(localSaved));
+            } else {
+              setTodayAttendance(null);
+            }
           }
         }
       }
