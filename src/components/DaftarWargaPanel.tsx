@@ -807,7 +807,7 @@ export default function DaftarWargaPanel({ viewType, onSwitchType, onNavigateToU
                     {selectedDetail.nama}
                   </h3>
                   <p className="text-xs text-slate-400 font-mono">
-                    @{selectedDetail.username || "guru"} • Gender: {selectedDetail.gender === "L" ? "Laki-laki (Ustadz)" : "Perempuan (Ustadzah)"}
+                    Gender: {selectedDetail.gender === "L" ? "Laki-laki (Ustadz)" : "Perempuan (Ustadzah)"}
                   </p>
                 </div>
               </div>

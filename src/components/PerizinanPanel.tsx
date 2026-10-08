@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { SantriData, supabase } from "../supabaseClient";
+import Swal, { showSuccess, showWarning, showError, showConfirm } from "../utils/sweetalert";
 import { 
   UserCheck, 
   RefreshCw, 
@@ -32,7 +33,7 @@ import {
 } from "lucide-react";
 import { SearchableSelect } from "./ui/SearchableSelect";
 
-export type SubMenuPerizinan = "sakit" | "sambang" | "haid";
+export type SubMenuPerizinan = "sakit" | "sambang" | "haid" | "pulang";
 
 export interface PerizinanItem {
   id: number;
@@ -91,8 +92,8 @@ export const getItemKeperluan = (item: PerizinanItem): string => {
 };
 
 interface PerizinanPanelProps {
-  students: SantriData[];
-  rooms: string[];
+  students?: SantriData[];
+  rooms?: string[];
   onRefreshAll: () => Promise<void>;
   onTriggerNotification: (message: string, type: "success" | "error" | "warning") => void;
   initialSubMenu?: SubMenuPerizinan;
@@ -101,14 +102,16 @@ interface PerizinanPanelProps {
 }
 
 export default function PerizinanPanel({
-  students,
-  rooms,
+  students = [],
+  rooms = [],
   onRefreshAll,
   onTriggerNotification,
   initialSubMenu = "sambang",
   onSubMenuChange,
   currentUserName = "Petugas"
 }: PerizinanPanelProps) {
+  const safeStudents = useMemo(() => Array.isArray(students) ? students : [], [students]);
+  const safeRooms = useMemo(() => Array.isArray(rooms) ? rooms : [], [rooms]);
   const [activeSubMenu, setActiveSubMenu] = useState<SubMenuPerizinan>(initialSubMenu);
   const [items, setItems] = useState<PerizinanItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -118,6 +121,24 @@ export default function PerizinanPanel({
   const [filterKategoriSub, setFilterKategoriSub] = useState("All");
   const [filterDaerah, setFilterDaerah] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
+
+  // Pulang Serentak States
+  const [pulangKegiatan, setPulangKegiatan] = useState("Pulang Serentak Oktober 2026");
+  const [pulangTglKembali, setPulangTglKembali] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 10);
+    return d.toISOString().split("T")[0];
+  });
+  const [pulangJamKembali, setPulangJamKembali] = useState("17:00");
+  const [pulangCatatan, setPulangCatatan] = useState("Pulang Serentak Libur Pesantren");
+  const [pulangSearchSantri, setPulangSearchSantri] = useState("");
+  const [isTapProcessing, setIsTapProcessing] = useState(false);
+  const [lastTappedSantri, setLastTappedSantri] = useState<{
+    santri: SantriData;
+    waktu: string;
+    kegiatan: string;
+    status: string;
+  } | null>(null);
   
   // Modal State for New Input
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -191,6 +212,7 @@ export default function PerizinanPanel({
     let lastKeyTime = 0;
 
     const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (!e || !e.key) return;
       const now = Date.now();
       if (now - lastKeyTime > 120) {
         scanBuffer = "";
@@ -200,7 +222,7 @@ export default function PerizinanPanel({
       if (e.key === "Enter") {
         const code = scanBuffer.trim();
         if (code.length >= 3) {
-          const matched = students.find(s => 
+          const matched = safeStudents.find(s => 
             (s.nfc_id && s.nfc_id.toLowerCase() === code.toLowerCase()) ||
             (s.id && String(s.id) === code)
           );
@@ -211,14 +233,14 @@ export default function PerizinanPanel({
           }
         }
         scanBuffer = "";
-      } else if (e.key.length === 1) {
+      } else if (typeof e.key === "string" && e.key.length === 1) {
         scanBuffer += e.key;
       }
     };
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [isModalOpen, students]);
+  }, [isModalOpen, safeStudents]);
 
   // Otomatis sinkron batas waktu (tanggal selesai) berdasarkan durasi sambang
   useEffect(() => {
@@ -236,6 +258,326 @@ export default function PerizinanPanel({
 
   // SQL Modal State
   const [showSqlModal, setShowSqlModal] = useState(false);
+
+  // Sound Effect Chimes for Pulang Tap Card
+  const playSuccessChime = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.35);
+    } catch (e) {}
+  };
+
+  const playWarningChime = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(320, ctx.currentTime);
+      osc.frequency.setValueAtTime(240, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {}
+  };
+
+  const playErrorChime = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(200, ctx.currentTime);
+      osc.frequency.setValueAtTime(140, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.45);
+    } catch (e) {}
+  };
+
+  const lastTappedCodeRef = useRef<{ code: string; time: number }>({ code: "", time: 0 });
+
+  // Handler Proses Pulang Serentak saat Tap Kartu atau Pilih Santri
+  const handleProcessPulangSantri = async (student: SantriData) => {
+    if (isTapProcessing) return;
+
+    // 1. CEK CEGAH DOBEL TAP: Jika santri sudah tercatat berstatus Pulang dan belum kembali
+    const alreadyPulang = currentCategoryItems.some(item => {
+      const isReturned = ["sudah kembali", "sudah sembuh", "sudah suci"].includes((item.status || "").toLowerCase());
+      if (isReturned) return false;
+
+      const sameId = student.id && item.siswa_id && String(item.siswa_id) === String(student.id);
+      const sameName = item.nama_siswa && student.nama_lengkap && item.nama_siswa.trim().toLowerCase() === student.nama_lengkap.trim().toLowerCase();
+      
+      return sameId || sameName;
+    });
+
+    if (alreadyPulang) {
+      playWarningChime();
+      Swal.fire({
+        icon: "warning",
+        title: "Dobel Tap Terdeteksi!",
+        html: `
+          <div style="text-align: center; line-height: 1.6; margin-top: 6px;">
+            <div style="font-size: 17px; font-weight: 800; color: #d97706;">
+              ${student.nama_lengkap}
+            </div>
+            <div style="font-size: 13px; margin-top: 4px; color: #475569;">
+              Kamar / Kelas: <strong>${student.kamar || "Belum Set"}</strong>
+            </div>
+            <div style="font-size: 12px; margin-top: 10px; padding: 10px 12px; background-color: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 8px; font-weight: 700;">
+              Santri ini SUDAH TERCATAT BERSTATUS PULANG dalam daftar Pulang Serentak saat ini.
+            </div>
+          </div>
+        `,
+        confirmButtonColor: "#d97706",
+        confirmButtonText: "Mengerti",
+        timer: 4000,
+        timerProgressBar: true
+      });
+      setPulangSearchSantri("");
+      return;
+    }
+
+    setIsTapProcessing(true);
+
+    const nowIso = new Date().toISOString();
+    const todayStr = nowIso.split("T")[0];
+    const nowTimeStr = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+
+    const kegiatanText = pulangKegiatan.trim() || "Pulang Serentak Oktober 2026";
+
+    // Clean dbPayload for Supabase insert (no invalid kategori_izin column)
+    const dbPayload = {
+      siswa_id: student.id ? Number(student.id) : null,
+      nama_siswa: student.nama_lengkap,
+      jenis_kelamin: student.jenis_kelamin || "L",
+      kamar: student.kamar || "Belum Set",
+      keperluan: `Pulang Serentak: ${kegiatanText}`,
+      tujuan: "Pulang ke Rumah / Orang Tua",
+      penjemput: `Pulang Serentak (${kegiatanText})`,
+      no_hp_penjemput: null,
+      tanggal_mulai: todayStr,
+      jam_mulai: nowTimeStr,
+      tanggal_selesai: pulangTglKembali || todayStr,
+      jam_selesai: pulangJamKembali || "17:00",
+      status: "Sedang Sambang",
+      petugas: currentUserName || "Petugas",
+      catatan: pulangCatatan || "Pulang Serentak Libur Pesantren",
+      created_at: nowIso
+    };
+
+    try {
+      // 1. Masukkan data ke izin_sambang di Supabase
+      const { data, error } = await supabase
+        .from("izin_sambang")
+        .insert([dbPayload])
+        .select();
+
+      if (error) {
+        console.warn("Notice insert izin_sambang:", error.message);
+      }
+
+      // 2. Langsung ubah status_siswa menjadi "Pulang"
+      try {
+        await supabase
+          .from("status_siswa")
+          .upsert({
+            nama: student.nama_lengkap,
+            status: "Pulang",
+            created_at: nowIso
+          }, { onConflict: "nama" });
+      } catch (e) {
+        console.warn("Could not sync status_siswa for Pulang:", e);
+      }
+
+      // 3. Simpan di localStorage status map & perizinan local records untuk tanggap instan & offline
+      const savedStatusMap = JSON.parse(localStorage.getItem("santri_status_map") || "{}");
+      savedStatusMap[student.nama_lengkap] = "Pulang";
+      if (student.id) savedStatusMap[student.id] = "Pulang";
+      localStorage.setItem("santri_status_map", JSON.stringify(savedStatusMap));
+
+      // 4. Update state items di frontend
+      const newRecord: PerizinanItem = {
+        id: data && data[0] ? data[0].id : Date.now(),
+        kategori_izin: "sambang",
+        ...(dbPayload as any)
+      };
+      setItems(prev => [newRecord, ...prev.filter(item => item.id !== newRecord.id)]);
+
+      try {
+        const localRecords = JSON.parse(localStorage.getItem("local_perizinan_records") || "[]");
+        localStorage.setItem("local_perizinan_records", JSON.stringify([newRecord, ...localRecords.filter((r: any) => r.id !== newRecord.id)]));
+      } catch (e) {
+        console.warn("Could not update local_perizinan_records:", e);
+      }
+
+      // 5. Sound & SweetAlert feedback
+      playSuccessChime();
+
+      Swal.fire({
+        icon: "success",
+        title: "Berhasil Pulang!",
+        html: `
+          <div style="text-align: center; line-height: 1.6; margin-top: 6px;">
+            <div style="font-size: 17px; font-weight: 800; color: #059669;">
+              ${student.nama_lengkap}
+            </div>
+            <div style="font-size: 12px; margin-top: 6px; color: #64748b;">
+              Kamar / Kelas: <strong>${student.kamar || "Belum Set"}</strong> &bull; Gender: <strong>${student.jenis_kelamin === "P" ? "Perempuan" : "Laki-laki"}</strong>
+            </div>
+            <div style="font-size: 12px; margin-top: 4px; color: #047857; font-weight: 600;">
+              Kegiatan: ${kegiatanText}
+            </div>
+          </div>
+        `,
+        timer: 2500,
+        timerProgressBar: true,
+        confirmButtonColor: "#059669",
+        confirmButtonText: "Selesai"
+      });
+
+      await fetchPerizinanData();
+      await onRefreshAll();
+    } catch (err: any) {
+      console.error("Pulang serentak error:", err);
+      showError("Gagal Memproses Pulang", err.message || "Terjadi kesalahan saat memproses data.");
+    } finally {
+      setIsTapProcessing(false);
+      setPulangSearchSantri("");
+    }
+  };
+
+  // Filter items by active submenu (sakit, sambang, haid, pulang)
+  const currentCategoryItems = useMemo(() => {
+    if (activeSubMenu === "pulang") {
+      return items.filter(item => 
+        item.kategori_izin === "sambang" && (
+          (item.keperluan || "").toLowerCase().includes("pulang serentak") ||
+          (item.catatan || "").toLowerCase().includes("pulang serentak")
+        )
+      );
+    }
+    return items.filter(item => item.kategori_izin === activeSubMenu);
+  }, [items, activeSubMenu]);
+
+  // Global Keydown Listener khusus Pulang Serentak (Tap Kartu RFID / NFC Scanner)
+  useEffect(() => {
+    if (activeSubMenu !== "pulang") return;
+
+    let scanBuffer = "";
+    let lastKeyTime = 0;
+
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (!e || !e.key) return;
+      const target = e.target as HTMLElement;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) {
+        if (target.id !== "pulang-tap-input") {
+          return;
+        }
+      }
+
+      const now = Date.now();
+      if (now - lastKeyTime > 150) {
+        scanBuffer = "";
+      }
+      lastKeyTime = now;
+
+      if (e.key === "Enter") {
+        const tapInputEl = document.getElementById("pulang-tap-input") as HTMLInputElement;
+        const inputVal = tapInputEl ? tapInputEl.value.trim() : "";
+        const rawCode = (scanBuffer.trim() || inputVal || (target && (target as HTMLInputElement).value ? (target as HTMLInputElement).value.trim() : "")).trim();
+
+        scanBuffer = "";
+        if (tapInputEl) tapInputEl.value = "";
+        setPulangSearchSantri("");
+
+        if (!rawCode) return;
+
+        const nowTime = Date.now();
+        // Cek hardware rapid re-tap (< 3 detik dengan kode yang sama)
+        if (lastTappedCodeRef.current.code.toLowerCase() === rawCode.toLowerCase() && nowTime - lastTappedCodeRef.current.time < 3000) {
+          playWarningChime();
+          Swal.fire({
+            icon: "warning",
+            title: "Dobel Tap Terdeteksi!",
+            html: `
+              <div style="text-align: center; line-height: 1.6; margin-top: 6px;">
+                <div style="font-size: 15px; font-weight: 700; color: #d97706;">
+                  Kode Kartu: <code style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px;">${rawCode}</code>
+                </div>
+                <div style="font-size: 13px; margin-top: 8px; color: #475569;">
+                  Kartu ini baru saja ditap beberapa detik yang lalu. Mohon tunggu sejenak sebelum men-tap kembali.
+                </div>
+              </div>
+            `,
+            confirmButtonColor: "#d97706",
+            confirmButtonText: "Mengerti",
+            timer: 3500,
+            timerProgressBar: true
+          });
+          return;
+        }
+        lastTappedCodeRef.current = { code: rawCode, time: nowTime };
+
+        // Cari data santri berdasarkan ID NFC, ID, NIK, NISN, atau Nama Lengkap
+        const matched = safeStudents.find(s =>
+          (s.nfc_id && s.nfc_id.trim().toLowerCase() === rawCode.toLowerCase()) ||
+          (s.id && String(s.id).trim() === rawCode) ||
+          (s.nik && String(s.nik).trim() === rawCode) ||
+          (s.nisn && String(s.nisn).trim() === rawCode) ||
+          ((s as any).nis && String((s as any).nis).trim() === rawCode) ||
+          (s.nama_lengkap && s.nama_lengkap.trim().toLowerCase() === rawCode.toLowerCase())
+        );
+
+        if (matched) {
+          handleProcessPulangSantri(matched);
+        } else {
+          // KARTU TIDAK TERBACA / TIDAK TERDAFTAR SWEET ALERT
+          playErrorChime();
+          Swal.fire({
+            icon: "error",
+            title: "Kartu Tidak Terbaca!",
+            html: `
+              <div style="text-align: center; line-height: 1.6; margin-top: 6px;">
+                <div style="font-size: 15px; font-weight: 700; color: #dc2626; margin-bottom: 6px;">
+                  Kode / ID: <code style="background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 4px;">${rawCode}</code>
+                </div>
+                <div style="font-size: 13px; color: #475569;">
+                  Kartu tidak terbaca atau ID santri tidak terdaftar di sistem. Silakan periksa kembali kartu NFC / Barcode santri.
+                </div>
+              </div>
+            `,
+            confirmButtonColor: "#dc2626",
+            confirmButtonText: "Coba Lagi",
+            timer: 4000,
+            timerProgressBar: true
+          });
+        }
+      } else if (typeof e.key === "string" && e.key.length === 1) {
+        scanBuffer += e.key;
+      }
+    };
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => window.removeEventListener("keydown", handleWindowKeyDown);
+  }, [activeSubMenu, safeStudents, currentCategoryItems, isTapProcessing, pulangKegiatan, pulangTglKembali, pulangJamKembali, pulangCatatan, currentUserName]);
   const [copiedSql, setCopiedSql] = useState(false);
   const [tableMissingWarning, setTableMissingWarning] = useState(false);
 
@@ -270,17 +612,17 @@ export default function PerizinanPanel({
 
   // Rooms list derived from props or students
   const allRooms = useMemo(() => {
-    if (rooms && rooms.length > 0) {
-      return Array.from(new Set(rooms.filter(Boolean))).sort((a, b) =>
+    if (safeRooms && safeRooms.length > 0) {
+      return Array.from(new Set(safeRooms.filter(Boolean))).sort((a, b) =>
         a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
       );
     }
     return Array.from(
-      new Set(students.map(s => s.kamar).filter((k): k is string => !!k))
+      new Set(safeStudents.map(s => s.kamar).filter((k): k is string => !!k))
     ).sort((a, b) =>
       a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
     );
-  }, [rooms, students]);
+  }, [safeRooms, safeStudents]);
 
   // Fetch Perizinan Data from Supabase
   const fetchPerizinanData = async () => {
@@ -360,11 +702,6 @@ export default function PerizinanPanel({
     };
   }, []);
 
-  // Filter items by active submenu (sakit, sambang, haid)
-  const currentCategoryItems = useMemo(() => {
-    return items.filter(item => item.kategori_izin === activeSubMenu);
-  }, [items, activeSubMenu]);
-
   // Check if an item is considered "Melewati Batas" (Overdue)
   const isItemOverdue = (item: PerizinanItem): boolean => {
     const isReturned = ["sudah kembali", "sudah sembuh", "sudah suci"].includes(item.status.toLowerCase());
@@ -442,12 +779,14 @@ export default function PerizinanPanel({
   // Students mapping and options for 6-field filter card
   const studentsMap = useMemo(() => {
     const map = new Map<string, SantriData>();
-    students.forEach(s => {
-      map.set(s.nama_lengkap.toLowerCase(), s);
-      if (String(String(s.id || ""))) map.set(String(String(String(s.id || ""))), s);
+    safeStudents.forEach(s => {
+      if (s && s.nama_lengkap) {
+        map.set(s.nama_lengkap.toLowerCase(), s);
+        if (s.id) map.set(String(s.id), s);
+      }
     });
     return map;
-  }, [students]);
+  }, [safeStudents]);
 
   const uniqueDaerah = useMemo(() => {
     return [];
@@ -1132,7 +1471,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
 
   // Filter students for modal selection
   const modalEligibleStudents = useMemo(() => {
-    let list = students;
+    let list = safeStudents;
     if (activeSubMenu === "haid") {
       list = list.filter(s => s.jenis_kelamin === "P");
     }
@@ -1140,11 +1479,11 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
       list = list.filter(s => (s.kamar || "Belum Set") === formKamar);
     }
     return list;
-  }, [students, activeSubMenu, formKamar]);
+  }, [safeStudents, activeSubMenu, formKamar]);
 
   // Filter students for tap card / search input
   const searchedModalStudents = useMemo(() => {
-    let list = students;
+    let list = safeStudents;
     if (activeSubMenu === "haid") {
       list = list.filter(s => s.jenis_kelamin === "P");
     }
@@ -1156,10 +1495,51 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
       (String(s.id || "")).includes(q) ||
       (s.kamar || "").toLowerCase().includes(q)
     ).slice(0, 40);
-  }, [students, activeSubMenu, formSearchSantri]);
+  }, [safeStudents, activeSubMenu, formSearchSantri]);
 
   return (
     <div className="space-y-5" id="perizinan-container">
+      {/* SUB-TAB NAVIGATOR (Sambang, Sakit, Haid) - Sembunyikan jika di menu Pulang Serentak */}
+      {activeSubMenu !== "pulang" && (
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl w-fit border border-slate-200/80 dark:border-slate-700/60 overflow-x-auto max-w-full">
+          <button
+            onClick={() => handleTabSwitch("sambang")}
+            className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              activeSubMenu === "sambang"
+                ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-2xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            <Footprints className="w-4 h-4" />
+            <span>Izin Sambang</span>
+          </button>
+
+          <button
+            onClick={() => handleTabSwitch("sakit")}
+            className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              activeSubMenu === "sakit"
+                ? "bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-2xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            <HeartPulse className="w-4 h-4" />
+            <span>Izin Sakit</span>
+          </button>
+
+          <button
+            onClick={() => handleTabSwitch("haid")}
+            className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+              activeSubMenu === "haid"
+                ? "bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-2xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            <Droplets className="w-4 h-4" />
+            <span>Izin Haid</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. TOP HEADER BRANDING (MATCHES OTHER MENUS: BREADCRUMBS + DISPLAY TITLE + ACTIONS) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 select-none pb-1" id="perizinan-brand-header">
         <div>
@@ -1167,11 +1547,11 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
             <span>Perizinan Santri</span>
             <ChevronRight className="w-3.5 h-3.5" />
             <span>
-              {activeSubMenu === "sakit" ? "Izin Sakit" : activeSubMenu === "sambang" ? "Izin Sambang" : "Izin Haid"}
+              {activeSubMenu === "sakit" ? "Izin Sakit" : activeSubMenu === "sambang" ? "Izin Sambang" : activeSubMenu === "haid" ? "Izin Haid" : "Pulang Serentak"}
             </span>
           </div>
           <h2 className="text-[28px] font-bold text-slate-900 dark:text-white tracking-tight leading-none mt-1.5">
-            {activeSubMenu === "sakit" ? "Perizinan Sakit" : activeSubMenu === "sambang" ? "Perizinan Sambang" : "Perizinan Haid"}
+            {activeSubMenu === "sakit" ? "Perizinan Sakit" : activeSubMenu === "sambang" ? "Perizinan Sambang" : activeSubMenu === "haid" ? "Perizinan Haid" : "Pulang Serentak"}
           </h2>
         </div>
 
@@ -1190,14 +1570,15 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </button>
 
-          {/* Primary Action: Tambah Izin Baru */}
-          <button
-            onClick={handleOpenModal}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Input Izin {activeSubMenu === "sakit" ? "Sakit" : activeSubMenu === "sambang" ? "Sambang" : "Haid"}</span>
-          </button>
+          {activeSubMenu !== "pulang" && (
+            <button
+              onClick={handleOpenModal}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Input Izin {activeSubMenu === "sakit" ? "Sakit" : activeSubMenu === "sambang" ? "Sambang" : "Haid"}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1222,7 +1603,351 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
         </div>
       )}
 
-      {/* 2. THE 4 BANNER CARDS (EXACT MATCH TO image.png) */}
+      {/* ========================================================================= */}
+      {/* VIEW MODUL PULANG SERENTAK (TAP KARTU MASSAL)                            */}
+      {/* ========================================================================= */}
+      {activeSubMenu === "pulang" ? (
+        <div className="space-y-5 animate-fadeIn">
+          
+          {/* 1. STATS BANNER CARDS UNTUK PULANG SERENTAK */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 select-none">
+            {/* CARD 1: Total Santri Pulang Massal */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between relative overflow-hidden border-b-[3px] border-b-emerald-500 dark:border-b-emerald-400 min-h-[115px]">
+              <div>
+                <span className="text-slate-500 dark:text-slate-400 text-xs sm:text-[13px] font-medium block">
+                  Total Santri Pulang Serentak
+                </span>
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1 mb-2 tracking-tight">
+                  {currentCategoryItems.length}
+                </div>
+              </div>
+              <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
+                <span>Data masuk ke Izin Sambang</span>
+                <Home className="w-4 h-4 opacity-80" />
+              </div>
+            </div>
+
+            {/* CARD 2: Santri Putra Pulang */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between relative overflow-hidden border-b-[3px] border-b-blue-500 dark:border-b-blue-400 min-h-[115px]">
+              <div>
+                <span className="text-slate-500 dark:text-slate-400 text-xs sm:text-[13px] font-medium block">
+                  Santri Putra Pulang
+                </span>
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1 mb-2 tracking-tight">
+                  {currentCategoryItems.filter(i => i.jenis_kelamin === "L").length}
+                </div>
+              </div>
+              <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                <span>Tercatat berstatus Pulang</span>
+                <span className="text-sm font-bold">♂</span>
+              </div>
+            </div>
+
+            {/* CARD 3: Santri Putri Pulang */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between relative overflow-hidden border-b-[3px] border-b-pink-500 dark:border-b-pink-400 min-h-[115px]">
+              <div>
+                <span className="text-slate-500 dark:text-slate-400 text-xs sm:text-[13px] font-medium block">
+                  Santri Putri Pulang
+                </span>
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1 mb-2 tracking-tight">
+                  {currentCategoryItems.filter(i => i.jenis_kelamin === "P").length}
+                </div>
+              </div>
+              <div className="text-xs font-semibold text-pink-600 dark:text-pink-400 flex items-center justify-between">
+                <span>Tercatat berstatus Pulang</span>
+                <span className="text-sm font-bold">♀</span>
+              </div>
+            </div>
+
+            {/* CARD 4: Sisa Santri di Pesantren */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between relative overflow-hidden border-b-[3px] border-b-amber-400 dark:border-b-amber-500 min-h-[115px]">
+              <div>
+                <span className="text-slate-500 dark:text-slate-400 text-xs sm:text-[13px] font-medium block">
+                  Sisa Santri di Pesantren
+                </span>
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-1 mb-2 tracking-tight">
+                  {Math.max(0, safeStudents.length - currentCategoryItems.length)}
+                </div>
+              </div>
+              <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center justify-between">
+                <span>Santri berstatus Aktif</span>
+                <UserCheck className="w-4 h-4 opacity-80" />
+              </div>
+            </div>
+          </div>
+
+          {/* 2. CONFIG PARAMETER INPUT CARD (1. INPUT KEGIATAN & TANGGAL) */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                  1
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    Input Parameter Pulang Serentak
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Atur nama kegiatan, tanggal pulang, dan tanggal kembali sebelum men-tap kartu santri.
+                  </p>
+                </div>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                Mode Siap Tap
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              {/* INPUT 1: Nama Kegiatan */}
+              <div className="space-y-1.5">
+                <label className="block font-semibold text-slate-800 dark:text-slate-200">
+                  Nama Kegiatan / Event Pulang <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={pulangKegiatan}
+                  onChange={(e) => setPulangKegiatan(e.target.value)}
+                  placeholder="misal: Pulang Serentak Oktober 2026"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-emerald-600 text-xs font-semibold text-slate-900 dark:text-white shadow-2xs"
+                  required
+                />
+                <span className="text-[10.5px] text-slate-400 block">
+                  Tersimpan di kolom Keperluan izin_sambang
+                </span>
+              </div>
+
+              {/* INPUT 2: Tanggal Pulang */}
+              <div className="space-y-1.5">
+                <label className="block font-semibold text-slate-800 dark:text-slate-200">
+                  Tanggal Pulang
+                </label>
+                <input
+                  type="date"
+                  value={new Date().toISOString().split("T")[0]}
+                  readOnly
+                  className="w-full px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-not-allowed"
+                />
+                <span className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-medium block">
+                  ✓ Otomatis tercatat tanggal & jam saat tap kartu
+                </span>
+              </div>
+
+              {/* INPUT 3: Tanggal Kembali */}
+              <div className="space-y-1.5">
+                <label className="block font-semibold text-slate-800 dark:text-slate-200">
+                  Tanggal Kembali / Batas Libur <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={pulangTglKembali}
+                  onChange={(e) => setPulangTglKembali(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:border-emerald-600 text-xs font-bold text-slate-900 dark:text-white shadow-2xs"
+                  required
+                />
+                <span className="text-[10.5px] text-slate-400 block">
+                  Estimasi santri kembali ke pondok
+                </span>
+              </div>
+            </div>
+
+            {/* BARIS OPSIONAL: Jam & Catatan */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1 border-t border-slate-100 dark:border-slate-800/80">
+              <div className="space-y-1">
+                <label className="block font-medium text-slate-700 dark:text-slate-300">
+                  Jam Estimasi Kembali
+                </label>
+                <input
+                  type="time"
+                  value={pulangJamKembali}
+                  onChange={(e) => setPulangJamKembali(e.target.value)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block font-medium text-slate-700 dark:text-slate-300">
+                  Catatan Tambahan
+                </label>
+                <input
+                  type="text"
+                  value={pulangCatatan}
+                  onChange={(e) => setPulangCatatan(e.target.value)}
+                  placeholder="Catatan perizinan..."
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 3. FAST TAP CARD SCANNER STATION CARD */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white rounded-2xl p-6 shadow-xl space-y-4 border border-teal-800/50 relative overflow-hidden">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="relative flex items-center justify-center">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 animate-pulse">
+                    <Radio className="w-7 h-7" />
+                  </div>
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-slate-900 animate-ping"></span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold tracking-tight text-white flex items-center gap-2">
+                    <span>Tempelkan Kartu Santri</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-400 text-slate-950">
+                      AUTO TAP
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Tap kartu santri secara bergantian. Status siswa langsung berubah menjadi <strong className="text-emerald-300 font-extrabold">PULANG</strong> & otomatis masuk ke database <strong className="text-teal-200">Izin Sambang</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/60 text-xs shrink-0">
+                <span className="text-slate-300 font-medium px-2">Petugas:</span>
+                <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 font-bold rounded-lg border border-emerald-500/30">
+                  {currentUserName}
+                </span>
+              </div>
+            </div>
+
+            {/* SCANNER / MANUAL SEARCH BAR */}
+            <div className="bg-slate-900/90 border border-teal-500/40 rounded-xl p-3 flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3.5 top-3 w-4 h-4 text-emerald-400" />
+                <input
+                  id="pulang-tap-input"
+                  type="text"
+                  value={pulangSearchSantri}
+                  onChange={(e) => setPulangSearchSantri(e.target.value)}
+                  placeholder="Scan kartu NFC / Barcode NIK atau ketik nama santri..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 text-white placeholder-slate-400 text-xs sm:text-sm font-semibold rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
+                />
+              </div>
+
+              {/* MANUAL SELECTION LIST IF TYPING */}
+              {pulangSearchSantri.trim() && (
+                <div className="w-full sm:w-auto shrink-0 flex items-center gap-2">
+                  <select
+                    onChange={(e) => {
+                      const s = safeStudents.find(st => String(st.id) === e.target.value || st.nama_lengkap === e.target.value);
+                      if (s) handleProcessPulangSantri(s);
+                    }}
+                    className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2.5 outline-none cursor-pointer"
+                  >
+                    <option value="">Pilih Hasil Pencarian</option>
+                    {safeStudents.filter(st => (st.nama_lengkap || "").toLowerCase().includes(pulangSearchSantri.toLowerCase())).slice(0, 15).map(st => (
+                      <option key={st.id} value={st.id}>
+                        {st.nama_lengkap} - Kamar {st.kamar || "-"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. TABEL REKAP LOG PULANG SERENTAK */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden space-y-4 p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                  <Home className="w-4 h-4 text-emerald-600" />
+                  <span>Daftar Santri Pulang Serentak ({currentCategoryItems.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Data otomatis tercatat di tabel Izin Sambang dengan status "Sedang Sambang / Pulang".
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={exportToCSV}
+                disabled={currentCategoryItems.length === 0}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-40"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Ekspor CSV Pulang</span>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase text-[11px] tracking-wider">
+                    <th className="py-3 px-4 w-12 text-center">No</th>
+                    <th className="py-3 px-4">Nama Santri</th>
+                    <th className="py-3 px-4">Kamar / Kelas</th>
+                    <th className="py-3 px-4">Nama Kegiatan</th>
+                    <th className="py-3 px-4">Waktu Pulang</th>
+                    <th className="py-3 px-4">Estimasi Kembali</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                  {currentCategoryItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
+                        Belum ada santri yang men-tap kartu untuk Pulang Serentak hari ini.
+                      </td>
+                    </tr>
+                  ) : (
+                    currentCategoryItems.map((item, idx) => (
+                      <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="py-3 px-4 text-center text-slate-400 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              item.jenis_kelamin === "P" 
+                                ? "bg-pink-100 text-pink-700 dark:bg-pink-950/60 dark:text-pink-300"
+                                : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                            }`}>
+                              {item.jenis_kelamin === "P" ? "♀" : "♂"}
+                            </span>
+                            <span>{item.nama_siswa}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-600 dark:text-slate-400">
+                          {item.kamar || "—"}
+                        </td>
+                        <td className="py-3 px-4 font-semibold text-emerald-700 dark:text-emerald-400">
+                          {item.keperluan || "Pulang Serentak"}
+                        </td>
+                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
+                          <div>{item.tanggal_mulai}</div>
+                          {item.jam_mulai && <div className="text-[10px] text-slate-400">{item.jam_mulai} WIB</div>}
+                        </td>
+                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">
+                          <div>{item.tanggal_selesai || "—"}</div>
+                          {item.jam_selesai && <div className="text-[10px] text-slate-400">{item.jam_selesai} WIB</div>}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            Pulang
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleMarkReturned(item)}
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 cursor-pointer"
+                          >
+                            Sudah Kembali
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* 2. THE 4 BANNER CARDS (EXACT MATCH TO image.png) */}
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeSubMenu === "sambang" ? "lg:grid-cols-4" : "lg:grid-cols-2"} gap-4 select-none`}>
         
         {/* CARD 1: Sedang Sambang / Sedang Sakit / Sedang Haid (Orange/Amber Underline) */}
@@ -1612,6 +2337,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
           </table>
         </div>
       </div>
+        </>
+      )}
 
       {/* 5. MODAL FORM INPUT IZIN BARU (SESUAI CONTOH FORM IZIN SAKIT & SAMBANG) */}
       {isModalOpen && (

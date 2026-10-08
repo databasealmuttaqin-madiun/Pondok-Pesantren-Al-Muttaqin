@@ -10,7 +10,8 @@ import {
   Copy, 
   Send, 
   Check, 
-  Share2 
+  Share2,
+  RefreshCw
 } from "lucide-react";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
@@ -322,12 +323,23 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa untuk filter ini."
             Lihat laporan absensi santri per kelas dan bulan.
           </p>
         </div>
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 py-2 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-        >
-          <Printer className="w-4 h-4" /> Cetak Rekap
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => loadData()}
+            disabled={isLoading}
+            className="p-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+            title="Refresh Data Tabel"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-blue-600" : ""}`} />
+          </button>
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 py-2 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+          >
+            <Printer className="w-4 h-4" /> Cetak Rekap
+          </button>
+        </div>
       </div>
 
       {/* FILTER BAR SECTION */}

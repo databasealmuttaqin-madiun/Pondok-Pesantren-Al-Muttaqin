@@ -853,6 +853,15 @@ ${lines.length > 0 ? lines.join("\n") : "Tidak ada data siswa."}
         <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 justify-end">
           <button
             type="button"
+            onClick={() => loadRekapData()}
+            disabled={isLoading}
+            className="p-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+            title="Refresh Data Tabel"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-blue-600" : ""}`} />
+          </button>
+          <button
+            type="button"
             onClick={handleExportPdf}
             disabled={isExporting || isLoading}
             className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 disabled:opacity-50"

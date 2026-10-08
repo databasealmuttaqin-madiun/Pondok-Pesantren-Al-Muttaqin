@@ -504,8 +504,19 @@ export default function PerizinanGuruPanel({
             />
           </div>
 
-          {/* ACTION BUTTONS GROUP (FILTER & COLUMNS) - HORIZONTAL ALIGNED ON MOBILE */}
+          {/* ACTION BUTTONS GROUP (REFRESH, FILTER & COLUMNS) */}
           <div className="flex items-center justify-end gap-2 self-end sm:self-auto">
+            
+            {/* CIRCULAR REFRESH BUTTON */}
+            <button
+              onClick={() => loadPerizinanData()}
+              disabled={isLoading}
+              className="p-2 rounded-full border border-slate-200/90 bg-white text-slate-600 hover:text-blue-600 hover:bg-blue-50/80 hover:border-blue-200 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-2xs disabled:opacity-50"
+              title="Refresh Data Tabel"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-blue-600" : ""}`} />
+            </button>
+
             {/* FILTER BUTTON WITH BADGE */}
             <div className="relative">
               <button

@@ -11,6 +11,7 @@ import {
   HeartPulse,
   Footprints,
   Droplets,
+  LogOut,
   UserCheck,
   Moon,
   School,
@@ -131,6 +132,14 @@ export const CORE_SIDEBAR_MENUS: MenuItemCatalog[] = [
     category: "PERIZINAN",
     description: "Pencatatan siklus uzur syar'i / haid santriwati dan dispensasi ibadah.",
     icon: Droplets,
+    defaultPermissions: { can_view: true, can_input: true, can_edit: true, can_delete: false }
+  },
+  {
+    key: "perizinan_pulang",
+    name: "Perizinan: Pulang Serentak",
+    category: "PERIZINAN",
+    description: "Ubah status santri menjadi pulang massal secara cepat dengan tap kartu NFC/RFID.",
+    icon: LogOut,
     defaultPermissions: { can_view: true, can_input: true, can_edit: true, can_delete: false }
   },
   {
@@ -668,6 +677,7 @@ export function getDefaultPermissionsForRole(roleName: string): MenuPermissionsM
     perms["perizinan_sakit"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     perms["perizinan_sambang"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     perms["perizinan_haid"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
+    perms["perizinan_pulang"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     perms["perizinan_riwayat"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };
     perms["rekap_sholat"] = { can_view: true, can_input: true, can_edit: true, can_delete: false };
     perms["rekap_sekolah"] = { can_view: true, can_input: false, can_edit: false, can_delete: false };

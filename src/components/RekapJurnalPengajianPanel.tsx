@@ -18,7 +18,8 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from "lucide-react";
 
 interface Props {
@@ -924,6 +925,16 @@ export default function RekapJurnalPengajianPanel({ recitationClasses, onTrigger
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap print:hidden">
+          <button
+            type="button"
+            onClick={() => loadData()}
+            disabled={isLoading}
+            className="p-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+            title="Refresh Data Tabel"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-blue-600" : ""}`} />
+          </button>
+
           <button
             onClick={handlePrint}
             className="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 py-2 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-xs cursor-pointer"

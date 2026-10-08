@@ -171,7 +171,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "hak_akses" | "hak_akses_detail" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi" | "sekolah_perizinan_guru" | "sekolah_tim_perizinan">(() => {
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "dashboard_guru" | "form" | "list" | "warga_guru" | "warga_pengurus" | "warga_mutasi" | "warga_lulus" | "management" | "absensi" | "rekap_presensi" | "rekap_sholat" | "rekap_sekolah" | "rekap_absensi_guru" | "rekap_guru" | "manajemen_sesi" | "perizinan" | "perizinan_sakit" | "perizinan_sambang" | "perizinan_haid" | "perizinan_pulang" | "perizinan_riwayat" | "nfc" | "nfc_daftar" | "nfc_database" | "pengguna" | "hak_akses" | "hak_akses_detail" | "absensi_guru" | "presensi_guru" | "jurnal_mengajar" | "manajemen_pondok" | "manajemen_sekolah" | "manajemen_materi" | "target_pengajian" | "capaian_materi" | "capaian_materi_kelas" | "jurnal_pengajian" | "rekap_jurnal" | "rekap_absensi" | "pelanggaran_input" | "pelanggaran_rekap" | "kantin_input" | "kantin_rekap" | "pondok_sesi" | "pondok_kamar" | "pondok_pengajian_plotting" | "pondok_wali_kamar" | "pondok_guru" | "pondok_kantin" | "sekolah_plotting" | "sekolah_wali_kelas" | "sekolah_mapel" | "sekolah_guru_mapel" | "sekolah_buat_kelas" | "sekolah_jam" | "sekolah_jadwal" | "sekolah_pengumuman" | "sekolah_guru_sekolah" | "sekolah_jam_absensi" | "sekolah_perizinan_guru" | "sekolah_tim_perizinan">(() => {
     if (typeof window !== "undefined") {
       const path = window.location.pathname.toLowerCase();
       const hash = window.location.hash.toLowerCase();
@@ -1551,10 +1551,11 @@ export default function App() {
     { id: "jurnal_mengajar", group: "SEKOLAH", isSubmenu: true, subLabel: "Jurnal", label: "Jurnal", shortLabel: "Jurnal", icon: BookOpen, roles: ["super admin", "admin", "guru SMP"] },
     { id: "sekolah_perizinan_guru", group: "SEKOLAH", isSubmenu: true, subLabel: "Perizinan Guru", label: "Perizinan Guru", shortLabel: "Perizinan", icon: ClipboardCheck, roles: ["super admin", "admin", "guru SMP", "guru pondok", "pimpinan", "pengurus"] },
 
-    // PERIZINAN GROUP WITH SUBMENUS (Sakit, Sambang, Haid)
+    // PERIZINAN GROUP WITH SUBMENUS (Sakit, Sambang, Haid, Pulang Serentak)
     { id: "perizinan_sakit", group: "PERIZINAN", isSubmenu: true, subLabel: "Sakit", label: "Izin Sakit", shortLabel: "Sakit", icon: HeartPulse, roles: ["super admin", "admin", "guru pondok"] },
     { id: "perizinan_sambang", group: "PERIZINAN", isSubmenu: true, subLabel: "Sambang", label: "Izin Sambang", shortLabel: "Sambang", icon: Footprints, roles: ["super admin", "admin", "guru pondok"] },
     { id: "perizinan_haid", group: "PERIZINAN", isSubmenu: true, subLabel: "Haid", label: "Izin Haid", shortLabel: "Haid", icon: Droplets, roles: ["super admin", "admin", "guru pondok"] },
+    { id: "perizinan_pulang", group: "PERIZINAN", isSubmenu: true, subLabel: "Pulang Serentak", label: "Pulang Serentak", shortLabel: "Pulang Serentak", icon: Home, roles: ["super admin", "admin", "guru pondok"] },
     { id: "perizinan_riwayat", group: "PERIZINAN", isSubmenu: true, subLabel: "Riwayat", label: "Riwayat Perizinan", shortLabel: "Riwayat", icon: Clock, roles: ["super admin", "admin", "guru pondok"] },
 
     // REKAP PRESENSI GROUP WITH SUBMENUS
@@ -3310,7 +3311,7 @@ export default function App() {
               </div>
             )}
 
-            {["perizinan", "perizinan_sakit", "perizinan_sambang", "perizinan_haid", "perizinan_riwayat"].includes(activeTab) && activeTab !== "perizinan_riwayat" && (
+            {["perizinan", "perizinan_sakit", "perizinan_sambang", "perizinan_haid", "perizinan_pulang", "perizinan_riwayat"].includes(activeTab) && activeTab !== "perizinan_riwayat" && (
               <div className="w-full">
                 <PerizinanPanel
                   students={userGenderAccess !== "Semua" ? displayedStudents.filter(s => s.jenis_kelamin === userGenderAccess) : displayedStudents}
@@ -3319,7 +3320,8 @@ export default function App() {
                   onTriggerNotification={triggerNotification}
                   initialSubMenu={
                     activeTab === "perizinan_sakit" ? "sakit" :
-                    activeTab === "perizinan_haid" ? "haid" : "sambang"
+                    activeTab === "perizinan_haid" ? "haid" :
+                    activeTab === "perizinan_pulang" ? "pulang" : "sambang"
                   }
                   onSubMenuChange={(sub) => {
                     setActiveTab(`perizinan_${sub}` as any);

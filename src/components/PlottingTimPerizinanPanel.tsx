@@ -386,14 +386,27 @@ export default function PlottingTimPerizinanPanel() {
             />
           </div>
 
-          {/* Add Member Button */}
-          <button
-            onClick={openAddModal}
-            className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Anggota Tim</span>
-          </button>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {/* CIRCULAR REFRESH BUTTON */}
+            <button
+              onClick={() => fetchData()}
+              disabled={isLoading}
+              className="p-2 rounded-full border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-200 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-2xs disabled:opacity-50"
+              title="Refresh Data Tabel"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-blue-600" : ""}`} />
+            </button>
+
+            {/* Add Member Button */}
+            <button
+              onClick={openAddModal}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Anggota Tim</span>
+            </button>
+          </div>
         </div>
 
         {/* TABLE TIM PERIZINAN */}
@@ -436,7 +449,6 @@ export default function PlottingTimPerizinanPanel() {
                     {/* Nama Guru */}
                     <td className="py-3 px-4 font-bold text-slate-900">
                       <div>{item.guru_nama}</div>
-                      <div className="text-[10px] text-slate-400 font-normal">@{item.guru_username}</div>
                     </td>
 
                     {/* Jabatan Tim */}
@@ -516,7 +528,7 @@ export default function PlottingTimPerizinanPanel() {
                 >
                   {teacherList.map((t) => (
                     <option key={t.id} value={t.username}>
-                      {t.nama} (@{t.username})
+                      {t.nama}
                     </option>
                   ))}
                 </select>

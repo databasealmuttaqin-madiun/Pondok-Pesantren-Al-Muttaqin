@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { supabase, SantriData } from "../supabaseClient";
 import PageHeader from "./PageHeader";
+import PlottingSekolahPanel from "./PlottingSekolahPanel";
 import { showSuccess, showError, showWarning, showToast, showDeleteConfirm, showConfirm } from "../utils/sweetalert";
 import { 
   DAYS_OF_WEEK, 
@@ -645,7 +646,9 @@ export default function ManajemenSekolahPanel({
 
   return (
     <div className="space-y-6" id="manajemen_sekolah_module">
-      <PageHeader category="Plotting Sekolah" title={getSubTitle()} />
+      {activeSubTab !== "plotting" && (
+        <PageHeader category="Plotting Sekolah" title={getSubTitle()} />
+      )}
 
       {/* Floating feedback */}
       {feedback && (
@@ -663,161 +666,14 @@ export default function ManajemenSekolahPanel({
 
       {/* Tab: PLOTTING KELAS */}
       {activeSubTab === "plotting" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Plot form */}
-          <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase leading-none">
-                Plotting Kelas Siswa
-              </h3>
-              <p className="text-[10px] text-slate-450 font-bold mt-1 uppercase">
-                Petakan siswa ke kelas masing-masing
-              </p>
-            </div>
-
-            <form onSubmit={handleSavePlot} className="space-y-4">
-              <div className="space-y-1.5 relative">
-                <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block">
-                  Cari & Pilih Siswa
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Ketik nama siswa..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setIsDropdownOpen(true);
-                      setSelectedNik("");
-                    }}
-                    onFocus={() => setIsDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
-                    className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
-                    required={!selectedNik}
-                  />
-                  
-                  {isDropdownOpen && (
-                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg max-h-48 overflow-auto flex flex-col">
-                      {students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 ? (
-                        students.filter(s => s.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase())).map((student, sIdx) => {
-                          const clsVal = student.kelas_sekolah || "Belum ada kelas";
-                          const isSelected = selectedNik === String(student.id || "");
-                          return (
-                            <div
-                              key={`sch-st-dd-${student.id || sIdx}-${sIdx}`}
-                              onClick={() => {
-                                setSelectedNik(String(student.id || ""));
-                                setSearchQuery(`${student.nama_lengkap} (${clsVal})`);
-                                setIsDropdownOpen(false);
-                              }}
-                              className={`p-2.5 text-xs font-bold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-150 dark:border-slate-850 last:border-0 ${isSelected ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400" : "text-slate-700 dark:text-slate-300"}`}
-                            >
-                              {student.nama_lengkap} <span className="text-slate-400 font-medium ml-1">({clsVal})</span>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="p-3 text-xs text-center text-slate-500 font-medium">Tidak ada siswa yang cocok</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-550 dark:text-slate-400 uppercase tracking-wider block">
-                  Pilih Kelas Tujuan
-                </label>
-                <select
-                  required
-                  value={selectedTargetClass}
-                  onChange={(e) => setSelectedTargetClass(e.target.value)}
-                  className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-800 dark:text-slate-200"
-                >
-                  <option value="">-- PILIH KELAS --</option>
-                  {schoolClasses.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls.toLowerCase().startsWith("kelas") ? cls : `Kelas ${cls}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 bg-indigo-650 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all text-center cursor-pointer uppercase tracking-wider"
-              >
-                Simpan Plotting Kelas
-              </button>
-            </form>
-          </div>
-
-          {/* Plot summary grid */}
-          <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm min-h-[400px] flex flex-col justify-between">
-            <div className="space-y-4">
-              <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-tight">
-                  Ringkasan Penempatan Kelas Siswa
-                </h3>
-                <span className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-900 font-bold px-2 py-0.5 rounded font-mono uppercase">
-                  Total {schoolClasses.length} Kelas
-                </span>
-              </div>
-
-              {schoolClasses.length === 0 ? (
-                <div className="text-center py-16 text-slate-400 font-semibold text-xs italic">
-                  Belum ada kelas sekolah yang dibuat. Silakan tambahkan kelas baru terlebih dahulu pada menu "Buat Kelas Sekolah".
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {schoolClasses.map((clsName) => {
-                    const mapped = students.filter(s => s.kelas_sekolah === clsName);
-                    return (
-                      <div key={clsName} className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/20 dark:bg-slate-950/40 hover:bg-slate-50/50 transition-all flex flex-col justify-between space-y-3">
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                            <span className="font-extrabold text-xs text-slate-900 dark:text-slate-100 block">
-                              {clsName.toLowerCase().startsWith("kelas") ? clsName : `Kelas ${clsName}`}
-                            </span>
-                            <span className="text-[10px] text-indigo-650 dark:text-indigo-400 font-black bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full font-mono">
-                              {mapped.length} Siswa
-                            </span>
-                          </div>
-
-                          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                            {mapped.length === 0 ? (
-                              <p className="text-[10px] text-slate-400 italic py-1 font-medium">Kosong (belum ada siswa)</p>
-                            ) : (
-                              mapped.map((siswa, idx) => (
-                                <div key={`sch-cls-st-${siswa.id || idx}-${idx}`} className="flex justify-between items-center text-[11px] py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1">
-                                  <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
-                                    {idx + 1}. {siswa.nama_lengkap}
-                                  </span>
-                                  <button
-                                    onClick={() => {
-                                      setMoveTarget(clsName);
-                                      setMovingStudent({
-                                        nik: String(siswa.id || ""),
-                                        name: siswa.nama_lengkap,
-                                        currentVal: clsName
-                                      });
-                                    }}
-                                    className="text-[9px] text-indigo-600 hover:text-indigo-800 font-extrabold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 px-2 py-0.5 rounded leading-none transition-colors"
-                                  >
-                                    Pindah
-                                  </button>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="w-full">
+          <PlottingSekolahPanel
+            students={students}
+            schoolClasses={schoolClasses}
+            setSchoolClasses={setSchoolClasses}
+            metadataMap={metadataMap}
+            onAssignMetadata={onAssignMetadata}
+          />
         </div>
       )}
 

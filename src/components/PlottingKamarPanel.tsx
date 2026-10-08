@@ -498,6 +498,15 @@ export default function PlottingKamarPanel({
           
           {/* Toolbar Atas Tabel */}
           <div className="p-4 border-b border-slate-100 flex items-center justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={() => loadRoomDetails()}
+              className="p-2 rounded-full border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-200 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
+              title="Refresh Data Tabel"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+
             <div className="relative w-full max-w-xs">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input

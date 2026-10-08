@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, BookOpen, Calendar, Clock, Trash2, Edit3, X, CheckCircle2, AlertCircle, Printer, Search } from "lucide-react";
+import { Plus, BookOpen, Calendar, Clock, Trash2, Edit3, X, CheckCircle2, AlertCircle, Printer, Search, RefreshCw } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { parsePeriod } from "../lib/periodHelper";
 import { showSuccess, showError, showWarning, showToast, showDeleteConfirm } from "../utils/sweetalert";
@@ -636,6 +636,15 @@ export default function JurnalMengajarBaruPanel({
           <span className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
             Lembar Kerja Rekapitulasi Jurnal ({filteredJurnals.length} Entri)
           </span>
+
+          <button
+            type="button"
+            onClick={() => fetchJurnals()}
+            className="p-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95"
+            title="Refresh Data Tabel"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
 
         <div className="overflow-x-auto">

@@ -425,7 +425,7 @@ export default function HakAksesUserPanel({ userId, onBack }: HakAksesUserPanelP
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Kelola izin akses modul dan peran untuk <strong className="text-slate-800 dark:text-white">{userData?.nama_lengkap || userData?.nama || userData?.username}</strong> (@{userData?.username})
+              Kelola izin akses modul dan peran untuk <strong className="text-slate-800 dark:text-white">{userData?.nama_lengkap || userData?.nama || userData?.username}</strong>
             </p>
           </div>
         </div>

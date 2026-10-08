@@ -17,6 +17,7 @@ interface SantriListProps {
   schoolClasses?: string[];
   recitationClasses?: string[];
   onAddNewStudent?: () => void;
+  onRefresh?: () => void;
 }
 
 // Helper to infer gender based on common Indonesian female name keywords for authentic visual parity with the mockup screen
@@ -110,7 +111,8 @@ export default function SantriList({
   currentUserRole,
   schoolClasses,
   recitationClasses,
-  onAddNewStudent
+  onAddNewStudent,
+  onRefresh
 }: SantriListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>(initialFilterCategory);
@@ -568,6 +570,18 @@ export default function SantriList({
             <span className="text-xs text-slate-500 font-medium mr-2">
               Menampilkan <strong className="text-slate-800 dark:text-white font-semibold">{filteredStudents.length}</strong> dari <strong className="text-slate-800 dark:text-white font-semibold">{students.length}</strong> siswa
             </span>
+
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="p-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95"
+                title="Refresh Data Tabel"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            )}
+
             <button
               onClick={exportToCSV}
               disabled={filteredStudents.length === 0}
