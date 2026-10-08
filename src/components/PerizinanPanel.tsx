@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { SantriData, supabase } from "../supabaseClient";
 import Swal, { showSuccess, showWarning, showError, showConfirm } from "../utils/sweetalert";
+import { parseNfcPayload } from "./NfcRegisterPanel";
 import { 
   UserCheck, 
   RefreshCw, 
@@ -221,11 +222,9 @@ export default function PerizinanPanel({
 
       if (e.key === "Enter") {
         const code = scanBuffer.trim();
-        if (code.length >= 3) {
-          const matched = safeStudents.find(s => 
-            (s.nfc_id && s.nfc_id.toLowerCase() === code.toLowerCase()) ||
-            (s.id && String(s.id) === code)
-          );
+        if (code.length >= 2) {
+          const scanRes = parseNfcPayload(code, safeStudents);
+          const matched = scanRes.matchedStudent;
           if (matched) {
             handleSelectStudent(matched);
             setCardScannedSuccess(`Kartu Terbaca: ${matched.nama_lengkap} (Kamar ${matched.kamar || "-"})`);
@@ -428,9 +427,7 @@ export default function PerizinanPanel({
         console.warn("Could not update local_perizinan_records:", e);
       }
 
-      // 5. Sound & SweetAlert feedback
-      playSuccessChime();
-
+      // 5. SweetAlert feedback (Suara saat selesai tap dihilangkan)
       Swal.fire({
         icon: "success",
         title: "Berhasil Pulang!",
@@ -536,15 +533,9 @@ export default function PerizinanPanel({
         }
         lastTappedCodeRef.current = { code: rawCode, time: nowTime };
 
-        // Cari data santri berdasarkan ID NFC, ID, NIK, NISN, atau Nama Lengkap
-        const matched = safeStudents.find(s =>
-          (s.nfc_id && s.nfc_id.trim().toLowerCase() === rawCode.toLowerCase()) ||
-          (s.id && String(s.id).trim() === rawCode) ||
-          (s.nik && String(s.nik).trim() === rawCode) ||
-          (s.nisn && String(s.nisn).trim() === rawCode) ||
-          ((s as any).nis && String((s as any).nis).trim() === rawCode) ||
-          (s.nama_lengkap && s.nama_lengkap.trim().toLowerCase() === rawCode.toLowerCase())
-        );
+        // Cari data santri menggunakan converter universal NFC & ID
+        const scanRes = parseNfcPayload(rawCode, safeStudents);
+        const matched = scanRes.matchedStudent;
 
         if (matched) {
           handleProcessPulangSantri(matched);

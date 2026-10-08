@@ -67,26 +67,55 @@ export function parseNfcPayload(code: string, students: SantriData[]) {
     }
   }
 
-  // Bidirectional universal matching against nfc_id (Hex & Decimal both Little-Endian / Big-Endian) or nik
+  // Bidirectional universal matching against nfc_id (Hex & Decimal both Little-Endian / Big-Endian) or nik/nisn/id/nama
+  const upperCode = cleanCode.toUpperCase();
+  const lowerCode = cleanCode.toLowerCase();
+  const alphanumericScan = cleanCode.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
   let matchedStudent = students.find((s) => {
-    if (s.nfc_id && isNfcMatch(cleanCode, s.nfc_id)) {
+    if (!s) return false;
+
+    // 1. Check NFC ID with converter & format variations
+    if (s.nfc_id && s.nfc_id.trim() !== "") {
+      if (isNfcMatch(cleanCode, s.nfc_id)) {
+        return true;
+      }
+      const cleanStudentNfc = s.nfc_id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+      if (cleanStudentNfc !== "" && alphanumericScan !== "" && cleanStudentNfc === alphanumericScan) {
+        return true;
+      }
+      if (s.nfc_id.trim().toLowerCase() === lowerCode) {
+        return true;
+      }
+    }
+
+    // 2. Check ID, NIK, NISN, NIS
+    const stId = s.id ? String(s.id).trim().toUpperCase() : "";
+    const stNik = s.nik ? String(s.nik).trim().toUpperCase() : "";
+    const stNisn = s.nisn ? String(s.nisn).trim().toUpperCase() : "";
+    const stNis = (s as any).nis ? String((s as any).nis).trim().toUpperCase() : "";
+
+    if (
+      (stId !== "" && stId === upperCode) ||
+      (stNik !== "" && stNik === upperCode) ||
+      (stNisn !== "" && stNisn === upperCode) ||
+      (stNis !== "" && stNis === upperCode)
+    ) {
       return true;
     }
-    const studentNikNormalized = s.id ? String(s.id).trim().toUpperCase() : "";
-    return studentNikNormalized !== "" && studentNikNormalized === cleanCode.toUpperCase();
+
+    return false;
   });
 
-  // FALLBACK: If not matched by card ID / NIK, match directly against student name or nickname
+  // FALLBACK: If not matched by card ID / NIK / NISN, match directly against student name
   if (!matchedStudent && cleanCode.length > 2) {
-    const cleanAndNormalizeString = (str: string) => {
-      return str.trim();
-    };
-    const scanNormalized = cleanAndNormalizeString(cleanCode);
+    const scanNorm = cleanCode.trim().toLowerCase();
     
     matchedStudent = students.find((s) => {
-      const studentNameNormalized = cleanAndNormalizeString(s.nama_lengkap);
+      if (!s || !s.nama_lengkap) return false;
+      const studentNameNorm = s.nama_lengkap.trim().toLowerCase();
       return (
-        studentNameNormalized === scanNormalized || String(s.id || "").trim() === scanNormalized
+        studentNameNorm === scanNorm || String(s.id || "").trim() === scanNorm
       );
     });
   }
