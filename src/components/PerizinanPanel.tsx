@@ -30,7 +30,8 @@ import {
   Download,
   CreditCard,
   Radio,
-  Lock
+  Lock,
+  Sparkles
 } from "lucide-react";
 import { SearchableSelect } from "./ui/SearchableSelect";
 
@@ -133,6 +134,9 @@ export default function PerizinanPanel({
   const [pulangJamKembali, setPulangJamKembali] = useState("17:00");
   const [pulangCatatan, setPulangCatatan] = useState("Pulang Serentak Libur Pesantren");
   const [pulangSearchSantri, setPulangSearchSantri] = useState("");
+  const [showPulangPredictions, setShowPulangPredictions] = useState(false);
+  const [selectedPredictionIndex, setSelectedPredictionIndex] = useState(-1);
+  const pulangSearchContainerRef = useRef<HTMLDivElement>(null);
   const [isTapProcessing, setIsTapProcessing] = useState(false);
   const [lastTappedSantri, setLastTappedSantri] = useState<{
     santri: SantriData;
@@ -458,6 +462,8 @@ export default function PerizinanPanel({
     } finally {
       setIsTapProcessing(false);
       setPulangSearchSantri("");
+      setShowPulangPredictions(false);
+      setSelectedPredictionIndex(-1);
     }
   };
 
@@ -473,6 +479,90 @@ export default function PerizinanPanel({
     }
     return items.filter(item => item.kategori_izin === activeSubMenu);
   }, [items, activeSubMenu]);
+
+  // Cek apakah santri sudah tercatat pulang di sesi ini
+  const checkIsStudentAlreadyPulang = (student: SantriData) => {
+    return currentCategoryItems.some(item => {
+      const isReturned = ["sudah kembali", "sudah sembuh", "sudah suci"].includes((item.status || "").toLowerCase());
+      if (isReturned) return false;
+
+      const sameId = student.id && item.siswa_id && String(item.siswa_id) === String(student.id);
+      const sameName = item.nama_siswa && student.nama_lengkap && item.nama_siswa.trim().toLowerCase() === student.nama_lengkap.trim().toLowerCase();
+      
+      return sameId || sameName;
+    });
+  };
+
+  // Prediksi santri langsung muncul saat mengetik di menu Pulang Serentak
+  const predictedPulangStudents = useMemo(() => {
+    const q = pulangSearchSantri.trim().toLowerCase();
+    if (!q) return [];
+    return safeStudents
+      .filter((s) => {
+        const name = (s.nama_lengkap || "").toLowerCase();
+        const kamar = (s.kamar || "").toLowerCase();
+        const nik = (s.nik || "").toLowerCase();
+        const nisn = (s.nisn || "").toLowerCase();
+        const nfcId = (s.nfc_id || "").toLowerCase();
+        const id = String(s.id || "").toLowerCase();
+        return (
+          name.includes(q) ||
+          kamar.includes(q) ||
+          nik.includes(q) ||
+          nisn.includes(q) ||
+          nfcId.includes(q) ||
+          id === q
+        );
+      })
+      .slice(0, 15);
+  }, [pulangSearchSantri, safeStudents]);
+
+  // Tutup floating prediksi saat klik di luar area pencarian
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        pulangSearchContainerRef.current &&
+        !pulangSearchContainerRef.current.contains(e.target as Node)
+      ) {
+        setShowPulangPredictions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Keyboard navigation untuk input pencarian pulang
+  const handlePulangSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showPulangPredictions || predictedPulangStudents.length === 0) {
+      if (e.key === "Escape") {
+        setShowPulangPredictions(false);
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedPredictionIndex(prev => 
+        prev < predictedPulangStudents.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedPredictionIndex(prev => 
+        prev > 0 ? prev - 1 : predictedPulangStudents.length - 1
+      );
+    } else if (e.key === "Enter") {
+      if (selectedPredictionIndex >= 0 && selectedPredictionIndex < predictedPulangStudents.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetStudent = predictedPulangStudents[selectedPredictionIndex];
+        setShowPulangPredictions(false);
+        setSelectedPredictionIndex(-1);
+        handleProcessPulangSantri(targetStudent);
+      }
+    } else if (e.key === "Escape") {
+      setShowPulangPredictions(false);
+    }
+  };
 
   // Global Keydown Listener khusus Pulang Serentak (Tap Kartu RFID / NFC Scanner)
   useEffect(() => {
@@ -504,6 +594,8 @@ export default function PerizinanPanel({
         scanBuffer = "";
         if (tapInputEl) tapInputEl.value = "";
         setPulangSearchSantri("");
+        setShowPulangPredictions(false);
+        setSelectedPredictionIndex(-1);
 
         if (!rawCode) return;
 
@@ -535,7 +627,13 @@ export default function PerizinanPanel({
 
         // Cari data santri menggunakan converter universal NFC & ID
         const scanRes = parseNfcPayload(rawCode, safeStudents);
-        const matched = scanRes.matchedStudent;
+        let matched = scanRes.matchedStudent;
+
+        // Fallback: jika diketik nama manual dan belum pas di NFC ID, cocokkan nama
+        if (!matched && rawCode.length >= 2) {
+          const q = rawCode.toLowerCase().trim();
+          matched = safeStudents.find(s => (s.nama_lengkap || "").toLowerCase().includes(q));
+        }
 
         if (matched) {
           handleProcessPulangSantri(matched);
@@ -1771,7 +1869,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
           </div>
 
           {/* 3. FAST TAP CARD SCANNER STATION CARD */}
-          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white rounded-2xl p-6 shadow-xl space-y-4 border border-teal-800/50 relative overflow-hidden">
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white rounded-2xl p-6 shadow-xl space-y-4 border border-teal-800/50 relative">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="relative flex items-center justify-center">
@@ -1801,37 +1899,144 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.izin_haid;
               </div>
             </div>
 
-            {/* SCANNER / MANUAL SEARCH BAR */}
-            <div className="bg-slate-900/90 border border-teal-500/40 rounded-xl p-3 flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3.5 top-3 w-4 h-4 text-emerald-400" />
-                <input
-                  id="pulang-tap-input"
-                  type="text"
-                  value={pulangSearchSantri}
-                  onChange={(e) => setPulangSearchSantri(e.target.value)}
-                  placeholder="Scan kartu NFC / Barcode NIK atau ketik nama santri..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 text-white placeholder-slate-400 text-xs sm:text-sm font-semibold rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-                />
+            {/* SCANNER / MANUAL SEARCH BAR WITH LIVE PREDICTIONS */}
+            <div ref={pulangSearchContainerRef} className="relative w-full">
+              <div className="bg-slate-900/95 border border-teal-500/40 rounded-xl p-2.5 sm:p-3 shadow-lg">
+                <div className="relative w-full flex items-center">
+                  <Search className={`absolute left-3.5 w-4 h-4 transition-colors ${pulangSearchSantri ? "text-emerald-400" : "text-slate-400"}`} />
+                  <input
+                    id="pulang-tap-input"
+                    type="text"
+                    value={pulangSearchSantri}
+                    onFocus={() => {
+                      if (pulangSearchSantri.trim()) setShowPulangPredictions(true);
+                    }}
+                    onChange={(e) => {
+                      setPulangSearchSantri(e.target.value);
+                      setShowPulangPredictions(true);
+                      setSelectedPredictionIndex(-1);
+                    }}
+                    onKeyDown={handlePulangSearchKeyDown}
+                    placeholder="Scan kartu NFC / Barcode atau ketik nama santri (prediksi langsung muncul)..."
+                    className="w-full pl-10 pr-28 py-2.5 bg-slate-800/90 text-white placeholder-slate-400 text-xs sm:text-sm font-semibold rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 transition-all"
+                  />
+
+                  {/* Badges / Clear inside input */}
+                  <div className="absolute right-2.5 flex items-center gap-1.5">
+                    {pulangSearchSantri.trim() && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold rounded-md border border-emerald-500/30">
+                        <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>{predictedPulangStudents.length} Prediksi</span>
+                      </span>
+                    )}
+                    {pulangSearchSantri && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPulangSearchSantri("");
+                          setShowPulangPredictions(false);
+                          setSelectedPredictionIndex(-1);
+                        }}
+                        className="p-1 text-slate-400 hover:text-white hover:bg-slate-700/60 rounded-md transition-colors cursor-pointer"
+                        title="Hapus ketikan"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* MANUAL SELECTION LIST IF TYPING */}
-              {pulangSearchSantri.trim() && (
-                <div className="w-full sm:w-auto shrink-0 flex items-center gap-2">
-                  <select
-                    onChange={(e) => {
-                      const s = safeStudents.find(st => String(st.id) === e.target.value || st.nama_lengkap === e.target.value);
-                      if (s) handleProcessPulangSantri(s);
-                    }}
-                    className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2.5 outline-none cursor-pointer"
-                  >
-                    <option value="">Pilih Hasil Pencarian</option>
-                    {safeStudents.filter(st => (st.nama_lengkap || "").toLowerCase().includes(pulangSearchSantri.toLowerCase())).slice(0, 15).map(st => (
-                      <option key={st.id} value={st.id}>
-                        {st.nama_lengkap} - Kamar {st.kamar || "-"}
-                      </option>
-                    ))}
-                  </select>
+              {/* LIVE FLOATING PREDICTIONS DROPDOWN (MUNCUL OTOMATIS SAAT DIKETIK) */}
+              {showPulangPredictions && pulangSearchSantri.trim().length > 0 && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-2 bg-slate-900 border border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150">
+                  {/* Header info */}
+                  <div className="px-3.5 py-2 bg-slate-800/90 border-b border-slate-700/80 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Prediksi Santri Ditemukan ({predictedPulangStudents.length})</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 hidden sm:inline">
+                      Klik santri atau gunakan panah &amp; Enter untuk memilih
+                    </span>
+                  </div>
+
+                  {/* List Hasil Prediksi */}
+                  {predictedPulangStudents.length > 0 ? (
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/80">
+                      {predictedPulangStudents.map((st, idx) => {
+                        const isSelected = idx === selectedPredictionIndex;
+                        const isAlreadyPulang = checkIsStudentAlreadyPulang(st);
+                        const isPerempuan = st.jenis_kelamin === "P";
+
+                        return (
+                          <div
+                            key={st.id || idx}
+                            onClick={() => {
+                              setShowPulangPredictions(false);
+                              setSelectedPredictionIndex(-1);
+                              handleProcessPulangSantri(st);
+                            }}
+                            onMouseEnter={() => setSelectedPredictionIndex(idx)}
+                            className={`w-full text-left px-3.5 py-2.5 transition-colors cursor-pointer flex items-center justify-between gap-3 ${
+                              isSelected
+                                ? "bg-emerald-950/70 border-l-4 border-l-emerald-400 pl-2.5"
+                                : "hover:bg-slate-800/80"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-extrabold text-xs shrink-0 ${
+                                  isPerempuan
+                                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                  : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                }`}
+                              >
+                                {st.nama_lengkap.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold text-white truncate flex items-center gap-2">
+                                  <span>{st.nama_lengkap}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5 truncate">
+                                  <span>Kamar: <strong className="text-slate-300">{st.kamar || "-"}</strong></span>
+                                  <span>&bull;</span>
+                                  <span>Kelas: <strong className="text-slate-300">{st.kelas_sekolah || st.kelas_pengajian || st.kategori || "-"}</strong></span>
+                                  {st.nfc_id && (
+                                    <>
+                                      <span>&bull;</span>
+                                      <span className="text-emerald-400/90 font-mono text-[10px]">NFC: {st.nfc_id}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-2">
+                              {isAlreadyPulang ? (
+                                <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold rounded-lg flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3 text-amber-400" />
+                                  <span>Sudah Pulang</span>
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-xs">
+                                  <Check className="w-3 h-3" />
+                                  <span>Pilih Pulang</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center text-slate-400 text-xs">
+                      Tidak ada santri yang cocok dengan "<span className="text-white font-semibold">{pulangSearchSantri}</span>".
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        Cek kembali ejaan nama atau tempelkan kartu RFID/NFC secara langsung.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
